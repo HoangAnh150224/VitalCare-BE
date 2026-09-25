@@ -1,0 +1,14 @@
+# Liquibase entry point. Boot picks this path up by default (see
+# spring.liquibase.change-log in application.properties), so it is the one
+# place a new migration has to be registered.
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/001-create-identity-tables.yaml
+  - include:
+      file: db/changelog/changes/002-seed-security.sql
+  - include:
+      file: db/changelog/changes/003-add-permission-system-flag.yaml
+  - include:
+      file: db/changelog/changes/004-create-row-level-policies.yaml
+  - include:
+      file: db/changelog/changes/005-seed-row-level-permissions.sql

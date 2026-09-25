@@ -1,0 +1,204 @@
+# Row-level policies, editable while the application runs.
+#
+# A SCOPE belongs to one role and they union with each other: holding one more
+# role can only ever widen what an account sees. A FILTER belongs to no role and
+# always intersects, so a prohibition cannot be stepped around by not holding
+# the role that carried it.
+#
+# No policy rows are seeded, here or in 005. Each resource declares its own
+# DefaultScope in code, which is what makes switching a running resource on a
+# no-op -- and leaves no seed data to keep in step with role_permissions.
+databaseChangeLog:
+  - changeSet:
+      id: 004-create-row-level-policies
+      author: vitalcare
+      changes:
+        - createTable:
+            tableName: row_level_policy
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_row_level_policy
+              - column:
+                  name: kind
+                  type: varchar(8)
+                  constraints:
+                    nullable: false
+              # Null when kind = FILTER. ck_rlp_kind below keeps the two from
+              # blurring into each other.
+              - column:
+                  name: role_id
+                  type: bigint
+              - column:
+                  name: resource
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: action
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: varchar(160)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: policy_group
+                  type: varchar(64)
+              - column:
+                  name: description
+                  type: varchar(500)
+              # The condition tree. {"all":[]} is the empty tree: the full scope.
+              - column:
+                  name: scope
+                  type: jsonb
+                  constraints:
+                    nullable: false
+              # The WITH CHECK clause. Null means "same as scope" -- see
+              # RowLevelPolicy.effectiveCheckScope().
+              - column:
+                  name: check_scope
+                  type: jsonb
+              - column:
+                  name: enabled
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              # Filled when the loader quarantines a policy that no longer
+              # compiles against the current schema.
+              - column:
+                  name: invalid_reason
+                  type: varchar(500)
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+
+        # CASCADE is the deliberate exception to the RESTRICT used everywhere
+        # else in this schema: an orphaned policy is not data worth keeping, it
+        # is a fragment of a rule about nobody.
+        - addForeignKeyConstraint:
+            baseTableName: row_level_policy
+            baseColumnNames: role_id
+            constraintName: fk_rlp_role
+            referencedTableName: roles
+            referencedColumnNames: id
+            onDelete: CASCADE
+        # SET NULL: who set a policy is worth keeping, but not worth refusing
+        # to delete a leaver's account over.
+        - addForeignKeyConstraint:
+            baseTableName: row_level_policy
+            baseColumnNames: created_by_id
+            constraintName: fk_rlp_created_by
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: row_level_policy
+            baseColumnNames: updated_by_id
+            constraintName: fk_rlp_updated_by
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - sql:
+            comment: A SCOPE names a role; a FILTER names none.
+            sql: >
+              ALTER TABLE row_level_policy ADD CONSTRAINT ck_rlp_kind CHECK (
+                (kind = 'SCOPE'  AND role_id IS NOT NULL) OR
+                (kind = 'FILTER' AND role_id IS NULL))
+
+        # The cache reads the whole table and groups it by (resource, action) in
+        # memory, so these indexes serve the reload after each change rather
+        # than the request path.
+        - createIndex:
+            tableName: row_level_policy
+            indexName: idx_rlp_resource_action
+            columns:
+              - column:
+                  name: resource
+              - column:
+                  name: action
+        - createIndex:
+            tableName: row_level_policy
+            indexName: idx_rlp_role_id
+            columns:
+              - column:
+                  name: role_id
+
+        # The audit trail. Append-only, and deliberately WITHOUT a foreign key
+        # to row_level_policy: the trail of a deleted policy is the most
+        # important one there is.
+        - createTable:
+            tableName: row_level_policy_audit
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_row_level_policy_audit
+              - column:
+                  name: policy_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: operation
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: before_state
+                  type: jsonb
+              - column:
+                  name: after_state
+                  type: jsonb
+              - column:
+                  name: actor_id
+                  type: bigint
+              # Copied in, so the entry stays readable once the account is gone.
+              - column:
+                  name: actor_name
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: occurred_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: row_level_policy_audit
+            baseColumnNames: actor_id
+            constraintName: fk_rlp_audit_actor
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - createIndex:
+            tableName: row_level_policy_audit
+            indexName: idx_rlp_audit_policy
+            columns:
+              - column:
+                  name: policy_id
+              - column:
+                  name: occurred_at
+                  descending: true
