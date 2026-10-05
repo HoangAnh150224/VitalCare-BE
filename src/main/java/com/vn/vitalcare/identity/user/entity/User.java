@@ -43,10 +43,24 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 100, unique = true)
-    private String username;
+    /**
+     * The sign-in identifier, in E.164 ({@code +84901234567}).
+     *
+     * <p>Always normalised before it reaches here: {@code 0901234567} and
+     * {@code +84901234567} are one number, and the unique constraint can only
+     * say so if a single spelling is stored. {@code UserService} owns that
+     * conversion, on the way in and on the way to a lookup.
+     */
+    @Column(nullable = false, length = 20, unique = true)
+    private String phone;
 
-    @Column(nullable = false, length = 255, unique = true)
+    /**
+     * Secondary, and only for sending notifications — nothing authenticates
+     * against it, so it is never verified and must not be treated as proof of
+     * anything. Still unique, so two accounts cannot claim one inbox and cross
+     * their notifications.
+     */
+    @Column(length = 255, unique = true)
     private String email;
 
     @Column(name = "password_hash", nullable = false, length = 255)
@@ -54,6 +68,9 @@ public class User {
 
     @Column(name = "full_name", nullable = false, length = 255)
     private String fullName;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
@@ -82,8 +99,8 @@ public class User {
         // for JPA
     }
 
-    public User(String username, String email, String passwordHash, String fullName, UserStatus status) {
-        this.username = username;
+    public User(String phone, String email, String passwordHash, String fullName, UserStatus status) {
+        this.phone = phone;
         this.email = email;
         this.passwordHash = passwordHash;
         this.fullName = fullName;
@@ -136,12 +153,13 @@ public class User {
         return id;
     }
 
-    public String getUsername() {
-        return username;
+    public String getPhone() {
+        return phone;
     }
 
-    public void setUsername(String username) {
-        this.username = username;
+    /** Takes an already-normalised E.164 number; normalising is the service's job. */
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 
     public String getEmail() {
@@ -167,6 +185,14 @@ public class User {
 
     public void setFullName(String fullName) {
         this.fullName = fullName;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
     public UserStatus getStatus() {

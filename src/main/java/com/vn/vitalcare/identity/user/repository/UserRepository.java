@@ -9,20 +9,17 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificationExecutor<User> {
 
-    Optional<User> findByUsernameIgnoreCase(String username);
+    /**
+     * Resolves the number typed into the sign-in form.
+     *
+     * <p>Takes an already-normalised E.164 value — {@code UserService} converts
+     * before calling, which is what lets this be an exact match rather than a
+     * guess across spellings. No {@code IgnoreCase} variant: the column holds
+     * digits and a leading {@code +}.
+     */
+    Optional<User> findByPhone(String phone);
 
     Optional<User> findByEmailIgnoreCase(String email);
-
-    /**
-     * Resolves the identifier typed into the sign-in form, which may be either.
-     *
-     * <p>Accepting both is a convenience for the person signing in; it is safe
-     * because {@code username} and {@code email} are each unique and neither
-     * can be blank, so no single value can address two accounts.
-     */
-    @Query("select u from User u where lower(u.username) = lower(:identifier) "
-            + "or lower(u.email) = lower(:identifier)")
-    Optional<User> findByUsernameOrEmail(@Param("identifier") String identifier);
 
     /**
      * How many active accounts hold a given role.

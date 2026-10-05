@@ -322,7 +322,7 @@ public class RowLevelPolicyService {
                 currentUser(),
                 // Captured rather than joined, so the entry stays readable once
                 // the account is gone.
-                CurrentUser.username().orElse("system")));
+                CurrentUser.displayName().orElse("system")));
     }
 
     /** The policy as JSON, for the audit trail. */

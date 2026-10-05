@@ -55,10 +55,10 @@ public record RowLevelPolicyResponse(
     }
 
     /** Who touched it. Null once that account has been deleted. */
-    public record UserSummary(Long id, String username, String fullName) {
+    public record UserSummary(Long id, String fullName) {
 
         static UserSummary from(User user) {
-            return new UserSummary(user.getId(), user.getUsername(), user.getFullName());
+            return new UserSummary(user.getId(), user.getFullName());
         }
     }
 

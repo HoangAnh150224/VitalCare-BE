@@ -12,3 +12,13 @@ databaseChangeLog:
       file: db/changelog/changes/004-create-row-level-policies.yaml
   - include:
       file: db/changelog/changes/005-seed-row-level-permissions.sql
+  - include:
+      file: db/changelog/changes/006-add-user-avatar.yaml
+  - include:
+      file: db/changelog/changes/007-widen-audit-actor-name.yaml
+  - include:
+      file: db/changelog/changes/008-create-domain-tables.yaml
+  - include:
+      file: db/changelog/changes/009-add-audit-columns.yaml
+  - include:
+      file: db/changelog/changes/010-sign-in-by-phone.sql

@@ -5,14 +5,16 @@ import jakarta.validation.constraints.NotBlank;
 /**
  * {@code POST /auth/login} payload.
  *
- * <p>The field is called {@code username} but accepts an email address too, so
- * that nobody has to remember which of the two this system decided to key on.
- * No length or format rules: a credential is either right or wrong, and telling
- * someone their guess was too short only helps them guess better.
+ * <p>Any spelling of the number is accepted — {@code 0901234567} and
+ * {@code +84901234567} reach the same account, because the service normalises
+ * before it looks anything up. No format rule here on purpose: a credential is
+ * either right or wrong, and telling someone their guess was malformed
+ * separates "no such account" from "wrong shape", which only helps them guess
+ * better.
  */
 public record LoginRequest(
-        @NotBlank(message = "Username or email is required")
-        String username,
+        @NotBlank(message = "Phone number is required")
+        String phone,
 
         @NotBlank(message = "Password is required")
         String password) {

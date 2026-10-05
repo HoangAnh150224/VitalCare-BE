@@ -13,9 +13,9 @@ import java.time.Instant;
 /**
  * Mints the access tokens the API authorises requests with.
  *
- * <p>The token identifies the caller and nothing more: a subject, a username
- * and a lifetime. It deliberately carries <em>no</em> roles and no permission
- * codes.
+ * <p>The token identifies the caller and nothing more: a subject, a display
+ * name and a lifetime. It deliberately carries <em>no</em> roles and no
+ * permission codes.
  *
  * <p>Stamping them in used to make authorising a request a pure signature
  * check, but it also made the token grow with the permission model — an
@@ -32,8 +32,15 @@ import java.time.Instant;
 @Service
 public class JwtService {
 
-    /** Claim holding the username, for messages and audit text. */
-    public static final String CLAIM_USERNAME = "username";
+    /**
+     * Claim holding the account's display name, for messages and audit text.
+     *
+     * <p>The full name rather than the sign-in identifier: that identifier is
+     * now a phone number, and an audit trail reading "+84900000001 changed this
+     * policy" is both less useful than a name and a piece of personal data with
+     * no reason to be in a token or a log line.
+     */
+    public static final String CLAIM_NAME = "name";
 
     private final JwtEncoder encoder;
     private final JwtProperties properties;
@@ -56,7 +63,7 @@ public class JwtService {
                 .issuedAt(issuedAt)
                 .expiresAt(issuedAt.plus(properties.accessTokenTtl()))
                 .subject(String.valueOf(user.getId()))
-                .claim(CLAIM_USERNAME, user.getUsername())
+                .claim(CLAIM_NAME, user.getFullName())
                 .build();
 
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();

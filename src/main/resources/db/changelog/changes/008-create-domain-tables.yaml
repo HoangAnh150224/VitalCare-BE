@@ -1,0 +1,1052 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-create-domain-tables
+      author: vitalcare
+      changes:
+        - createTable:
+            tableName: clinic
+            columns:
+              - column:
+                  name: clinic_id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_clinic
+              - column:
+                  name: clinic_name
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: address
+                  type: varchar(500)
+              - column:
+                  name: contact_email
+                  type: varchar(255)
+              - column:
+                  name: contact_phone
+                  type: varchar(50)
+              - column:
+                  name: contact_person
+                  type: varchar(255)
+              - column:
+                  name: operating_status
+                  type: varchar(64)
+
+        - createTable:
+            tableName: customer
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_customer
+              - column:
+                  name: user_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: customer_code
+                  type: varchar(64)
+              - column:
+                  name: date_of_birth
+                  type: date
+              - column:
+                  name: gender
+                  type: varchar(32)
+              - column:
+                  name: address
+                  type: varchar(500)
+              - column:
+                  name: emergency_contact_name
+                  type: varchar(255)
+              - column:
+                  name: emergency_contact_phone
+                  type: varchar(50)
+              - column:
+                  name: status
+                  type: varchar(32)
+        - addUniqueConstraint:
+            tableName: customer
+            columnNames: user_id
+            constraintName: uq_customer_user_id
+        - addForeignKeyConstraint:
+            baseTableName: customer
+            baseColumnNames: user_id
+            constraintName: fk_customer_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: CASCADE
+
+        - createTable:
+            tableName: employee
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_employee
+              - column:
+                  name: user_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: employee_code
+                  type: varchar(64)
+              - column:
+                  name: staff_type
+                  type: varchar(64)
+              - column:
+                  name: specialty
+                  type: varchar(255)
+              - column:
+                  name: professional_title
+                  type: varchar(255)
+              - column:
+                  name: license_no
+                  type: varchar(128)
+              - column:
+                  name: clinic_position
+                  type: varchar(128)
+              - column:
+                  name: status
+                  type: varchar(32)
+        - addUniqueConstraint:
+            tableName: employee
+            columnNames: user_id
+            constraintName: uq_employee_user_id
+        - addForeignKeyConstraint:
+            baseTableName: employee
+            baseColumnNames: user_id
+            constraintName: fk_employee_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: employee
+            baseColumnNames: clinic_id
+            constraintName: fk_employee_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: medical_record
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_medical_record
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: blood_type
+                  type: varchar(32)
+              - column:
+                  name: allergies
+                  type: text
+              - column:
+                  name: medical_history
+                  type: text
+              - column:
+                  name: family_history
+                  type: text
+              - column:
+                  name: current_medications
+                  type: text
+              - column:
+                  name: note
+                  type: text
+        - addForeignKeyConstraint:
+            baseTableName: medical_record
+            baseColumnNames: customer_id
+            constraintName: fk_medical_record_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: clinic_service
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_clinic_service
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: service_code
+                  type: varchar(64)
+              - column:
+                  name: name
+                  type: varchar(255)
+              - column:
+                  name: description
+                  type: text
+              - column:
+                  name: price
+                  type: decimal(19,4)
+              - column:
+                  name: status
+                  type: varchar(32)
+        - addForeignKeyConstraint:
+            baseTableName: clinic_service
+            baseColumnNames: clinic_id
+            constraintName: fk_clinic_service_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: appointment
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_appointment
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: employee_id
+                  type: bigint
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: appointment_date
+                  type: date
+              - column:
+                  name: start_time
+                  type: time
+              - column:
+                  name: end_time
+                  type: time
+              - column:
+                  name: reason
+                  type: varchar(255)
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: note
+                  type: text
+              - column:
+                  name: checked_in_at
+                  type: timestamp with time zone
+              - column:
+                  name: cancelled_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: appointment
+            baseColumnNames: customer_id
+            constraintName: fk_appointment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: appointment
+            baseColumnNames: employee_id
+            constraintName: fk_appointment_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: appointment
+            baseColumnNames: clinic_id
+            constraintName: fk_appointment_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: doctor_schedule
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_doctor_schedule
+              - column:
+                  name: employee_id
+                  type: bigint
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: work_date
+                  type: date
+              - column:
+                  name: start_time
+                  type: time
+              - column:
+                  name: end_time
+                  type: time
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: note
+                  type: varchar(255)
+        - addForeignKeyConstraint:
+            baseTableName: doctor_schedule
+            baseColumnNames: employee_id
+            constraintName: fk_doctor_schedule_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: doctor_schedule
+            baseColumnNames: clinic_id
+            constraintName: fk_doctor_schedule_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: medical_device
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_medical_device
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: device_code
+                  type: varchar(64)
+              - column:
+                  name: serial_number
+                  type: varchar(128)
+              - column:
+                  name: device_type
+                  type: varchar(128)
+              - column:
+                  name: manufacturer
+                  type: varchar(255)
+              - column:
+                  name: model
+                  type: varchar(255)
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: last_seen_at
+                  type: timestamp with time zone
+              - column:
+                  name: registered_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: medical_device
+            baseColumnNames: clinic_id
+            constraintName: fk_medical_device_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: first_aid_guide
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_first_aid_guide
+              - column:
+                  name: title
+                  type: varchar(255)
+              - column:
+                  name: summary
+                  type: varchar(500)
+              - column:
+                  name: content
+                  type: text
+              - column:
+                  name: category
+                  type: varchar(128)
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: published_at
+                  type: timestamp with time zone
+
+        - createTable:
+            tableName: clinical_encounter
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_clinical_encounter
+              - column:
+                  name: appointment_id
+                  type: bigint
+              - column:
+                  name: medical_record_id
+                  type: bigint
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: employee_id
+                  type: bigint
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: started_at
+                  type: timestamp with time zone
+              - column:
+                  name: ended_at
+                  type: timestamp with time zone
+              - column:
+                  name: chief_complaint
+                  type: text
+              - column:
+                  name: diagnosis
+                  type: text
+              - column:
+                  name: clinical_note
+                  type: text
+              - column:
+                  name: status
+                  type: varchar(32)
+        - addForeignKeyConstraint:
+            baseTableName: clinical_encounter
+            baseColumnNames: appointment_id
+            constraintName: fk_clinical_encounter_appointment
+            referencedTableName: appointment
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: clinical_encounter
+            baseColumnNames: medical_record_id
+            constraintName: fk_clinical_encounter_medical_record
+            referencedTableName: medical_record
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: clinical_encounter
+            baseColumnNames: customer_id
+            constraintName: fk_clinical_encounter_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: clinical_encounter
+            baseColumnNames: employee_id
+            constraintName: fk_clinical_encounter_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: clinical_encounter
+            baseColumnNames: clinic_id
+            constraintName: fk_clinical_encounter_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: monitoring_assignment
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_monitoring_assignment
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: employee_id
+                  type: bigint
+              - column:
+                  name: assigned_at
+                  type: timestamp with time zone
+              - column:
+                  name: unassigned_at
+                  type: timestamp with time zone
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: note
+                  type: text
+        - addForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            baseColumnNames: customer_id
+            constraintName: fk_monitoring_assignment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            baseColumnNames: employee_id
+            constraintName: fk_monitoring_assignment_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: device_assignment
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_device_assignment
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: device_id
+                  type: bigint
+              - column:
+                  name: employee_id
+                  type: bigint
+              - column:
+                  name: clinical_encounter_id
+                  type: bigint
+              - column:
+                  name: assigned_at
+                  type: timestamp with time zone
+              - column:
+                  name: expected_return_at
+                  type: timestamp with time zone
+              - column:
+                  name: unassigned_at
+                  type: timestamp with time zone
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: note
+                  type: text
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: customer_id
+            constraintName: fk_device_assignment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: device_id
+            constraintName: fk_device_assignment_device
+            referencedTableName: medical_device
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: employee_id
+            constraintName: fk_device_assignment_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: clinical_encounter_id
+            constraintName: fk_device_assignment_encounter
+            referencedTableName: clinical_encounter
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: vital_signs
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_vital_signs
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: device_id
+                  type: bigint
+              - column:
+                  name: device_assignment_id
+                  type: bigint
+              - column:
+                  name: heart_rate
+                  type: integer
+              - column:
+                  name: spo2
+                  type: decimal(5,2)
+              - column:
+                  name: temperature
+                  type: decimal(5,2)
+              - column:
+                  name: systolic_bp
+                  type: integer
+              - column:
+                  name: diastolic_bp
+                  type: integer
+              - column:
+                  name: respiratory_rate
+                  type: integer
+              - column:
+                  name: measured_at
+                  type: timestamp with time zone
+              - column:
+                  name: received_at
+                  type: timestamp with time zone
+              - column:
+                  name: sync_status
+                  type: varchar(32)
+        - addForeignKeyConstraint:
+            baseTableName: vital_signs
+            baseColumnNames: customer_id
+            constraintName: fk_vital_signs_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: vital_signs
+            baseColumnNames: device_id
+            constraintName: fk_vital_signs_device
+            referencedTableName: medical_device
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: vital_signs
+            baseColumnNames: device_assignment_id
+            constraintName: fk_vital_signs_device_assignment
+            referencedTableName: device_assignment
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: vital_threshold
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_vital_threshold
+              - column:
+                  name: clinic_id
+                  type: uuid
+              - column:
+                  name: heart_rate_min
+                  type: integer
+              - column:
+                  name: heart_rate_max
+                  type: integer
+              - column:
+                  name: spo2_min
+                  type: decimal(5,2)
+              - column:
+                  name: temperature_min
+                  type: decimal(5,2)
+              - column:
+                  name: temperature_max
+                  type: decimal(5,2)
+              - column:
+                  name: systolic_bp_min
+                  type: integer
+              - column:
+                  name: systolic_bp_max
+                  type: integer
+              - column:
+                  name: diastolic_bp_min
+                  type: integer
+              - column:
+                  name: diastolic_bp_max
+                  type: integer
+              - column:
+                  name: respiratory_rate_min
+                  type: integer
+              - column:
+                  name: respiratory_rate_max
+                  type: integer
+        - addForeignKeyConstraint:
+            baseTableName: vital_threshold
+            baseColumnNames: clinic_id
+            constraintName: fk_vital_threshold_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: CASCADE
+
+        - createTable:
+            tableName: alert
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_alert
+              - column:
+                  name: vital_sign_id
+                  type: bigint
+              - column:
+                  name: alert_type
+                  type: varchar(64)
+              - column:
+                  name: severity
+                  type: varchar(32)
+              - column:
+                  name: message
+                  type: text
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: triggered_at
+                  type: timestamp with time zone
+              - column:
+                  name: acknowledged_at
+                  type: timestamp with time zone
+              - column:
+                  name: resolved_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: alert
+            baseColumnNames: vital_sign_id
+            constraintName: fk_alert_vital_sign
+            referencedTableName: vital_signs
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: notification
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_notification
+              - column:
+                  name: user_id
+                  type: bigint
+              - column:
+                  name: alert_id
+                  type: bigint
+              - column:
+                  name: type
+                  type: varchar(64)
+              - column:
+                  name: title
+                  type: varchar(255)
+              - column:
+                  name: content
+                  type: text
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: sent_at
+                  type: timestamp with time zone
+              - column:
+                  name: read_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: notification
+            baseColumnNames: user_id
+            constraintName: fk_notification_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: notification
+            baseColumnNames: alert_id
+            constraintName: fk_notification_alert
+            referencedTableName: alert
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: conversation
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_conversation
+              - column:
+                  name: type
+                  type: varchar(32)
+              - column:
+                  name: title
+                  type: varchar(255)
+              - column:
+                  name: status
+                  type: varchar(32)
+        - createTable:
+            tableName: message
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_message
+              - column:
+                  name: conversation_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sender_id
+                  type: bigint
+              - column:
+                  name: content
+                  type: text
+              - column:
+                  name: message_type
+                  type: varchar(64)
+              - column:
+                  name: sent_at
+                  type: timestamp with time zone
+              - column:
+                  name: edited_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: message
+            baseColumnNames: conversation_id
+            constraintName: fk_message_conversation
+            referencedTableName: conversation
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: message
+            baseColumnNames: sender_id
+            constraintName: fk_message_sender
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: invoice
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_invoice
+              - column:
+                  name: customer_id
+                  type: bigint
+              - column:
+                  name: clinical_encounter_id
+                  type: bigint
+              - column:
+                  name: invoice_number
+                  type: varchar(64)
+              - column:
+                  name: subtotal
+                  type: decimal(19,4)
+              - column:
+                  name: discount_amount
+                  type: decimal(19,4)
+              - column:
+                  name: total_amount
+                  type: decimal(19,4)
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: issued_at
+                  type: timestamp with time zone
+              - column:
+                  name: due_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: invoice
+            baseColumnNames: customer_id
+            constraintName: fk_invoice_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: SET NULL
+        - addForeignKeyConstraint:
+            baseTableName: invoice
+            baseColumnNames: clinical_encounter_id
+            constraintName: fk_invoice_clinical_encounter
+            referencedTableName: clinical_encounter
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: invoice_item
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_invoice_item
+              - column:
+                  name: invoice_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: clinic_service_id
+                  type: bigint
+              - column:
+                  name: description
+                  type: varchar(255)
+              - column:
+                  name: quantity
+                  type: integer
+              - column:
+                  name: unit_price
+                  type: decimal(19,4)
+              - column:
+                  name: amount
+                  type: decimal(19,4)
+        - addForeignKeyConstraint:
+            baseTableName: invoice_item
+            baseColumnNames: invoice_id
+            constraintName: fk_invoice_item_invoice
+            referencedTableName: invoice
+            referencedColumnNames: id
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: invoice_item
+            baseColumnNames: clinic_service_id
+            constraintName: fk_invoice_item_clinic_service
+            referencedTableName: clinic_service
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: payment
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_payment
+              - column:
+                  name: invoice_id
+                  type: bigint
+              - column:
+                  name: amount
+                  type: decimal(19,4)
+              - column:
+                  name: payment_method
+                  type: varchar(64)
+              - column:
+                  name: status
+                  type: varchar(32)
+              - column:
+                  name: transaction_code
+                  type: varchar(128)
+              - column:
+                  name: paid_at
+                  type: timestamp with time zone
+        - addForeignKeyConstraint:
+            baseTableName: payment
+            baseColumnNames: invoice_id
+            constraintName: fk_payment_invoice
+            referencedTableName: invoice
+            referencedColumnNames: id
+            onDelete: SET NULL
+
+        - createTable:
+            tableName: audit_log
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_audit_log
+              - column:
+                  name: actor_id
+                  type: bigint
+              - column:
+                  name: actor_name
+                  type: varchar(255)
+              - column:
+                  name: entity_type
+                  type: varchar(128)
+              - column:
+                  name: entity_id
+                  type: bigint
+              - column:
+                  name: action
+                  type: varchar(64)
+              - column:
+                  name: before_state
+                  type: jsonb
+              - column:
+                  name: after_state
+                  type: jsonb
+              - column:
+                  name: occurred_at
+                  type: timestamp with time zone
+              - column:
+                  name: ip_address
+                  type: inet
+              - column:
+                  name: user_agent
+                  type: varchar(512)
+              - column:
+                  name: request_id
+                  type: varchar(128)
+        - addForeignKeyConstraint:
+            baseTableName: audit_log
+            baseColumnNames: actor_id
+            constraintName: fk_audit_log_actor
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: SET NULL

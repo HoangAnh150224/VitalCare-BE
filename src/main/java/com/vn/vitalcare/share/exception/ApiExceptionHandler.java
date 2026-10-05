@@ -34,7 +34,7 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * Wrong username or password.
+     * Wrong phone number or password.
      *
      * <p>Deliberately the same message whichever half was wrong: saying which
      * one turns the login form into a way to find out whether an account

@@ -20,6 +20,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -43,9 +45,31 @@ public class UserService {
 
     /** Sort properties the list endpoint accepts; anything else is ignored. */
     private static final Set<String> SORTABLE =
-            Set.of("id", "username", "email", "fullName", "status", "createdAt", "lastLoginAt");
+            Set.of("id", "phone", "email", "fullName", "status", "createdAt", "lastLoginAt");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+
+    /**
+     * The spellings of a Vietnamese mobile number this system accepts, with the
+     * nine significant digits captured.
+     *
+     * <p>Carrier prefixes are deliberately not enumerated. A list of them has
+     * to be edited every time Vietnam allocates a new one, and the cost of
+     * that maintenance outweighs catching a number with a prefix nobody issues
+     * — which is a wrong number either way, and a thing business validation
+     * can take up later if it ever matters.
+     */
+    private static final Pattern PHONE = Pattern.compile("^(?:\\+84|84|0)(\\d{9})$");
+
+    /**
+     * What people put between the digits, and nothing else.
+     *
+     * <p>{@code \h} as well as {@code \s}, because Java's {@code \s} is ASCII
+     * only, and a number copied from a web page or a chat app routinely
+     * carries a no-break space ({@code U+00A0}, {@code U+202F}). Without it a
+     * correctly typed number answers "incorrect phone number or password".
+     */
+    private static final Pattern SEPARATORS = Pattern.compile("[\\s\\h.()-]");
 
     private final UserRepository repository;
 
@@ -54,7 +78,8 @@ public class UserService {
     // role endpoints would.
     private final RoleService roleService;
 
-    // Disabling an account or resetting its password has to end the sessions
+    // Disabling an account, resetting its password or moving its sign-in
+    // number has to end the sessions
     // already open under it, or the change would not take effect until the
     // refresh token expired days later.
     private final RefreshTokenService refreshTokenService;
@@ -95,23 +120,28 @@ public class UserService {
     }
 
     /**
-     * Resolves the identifier typed into the sign-in form, which may be a
-     * username or an email address. Used by the auth domain.
+     * Resolves the phone number typed into the sign-in form. Used by the auth
+     * domain.
+     *
+     * <p>Normalised first, so that someone who enrolled as {@code +84901234567}
+     * can sign in having typed {@code 0901234567}. A number this method cannot
+     * make sense of resolves to empty rather than throwing: the caller must not
+     * be able to tell a malformed number from an unknown one.
      */
-    public Optional<User> findForAuthentication(String identifier) {
-        return repository.findByUsernameOrEmail(identifier.trim());
+    public Optional<User> findForAuthentication(String phone) {
+        return normalizePhone(phone).flatMap(repository::findByPhone);
     }
 
     @Transactional
     public User create(UserRequest request) {
-        String username = request.username().trim();
-        String email = request.email().trim().toLowerCase();
+        String phone = requireNormalizedPhone(request.phone());
+        String email = normalizeEmail(request.email());
 
-        requireUsernameAvailable(username, null);
+        requirePhoneAvailable(phone, null);
         requireEmailAvailable(email, null);
 
         User user = new User(
-                username,
+                phone,
                 email,
                 passwordEncoder.encode(request.password()),
                 request.fullName().trim(),
@@ -125,13 +155,21 @@ public class UserService {
     public User update(Long id, UserPatchRequest request) {
         User user = get(id);
 
-        if (request.username() != null) {
-            String username = request.username().trim();
-            requireUsernameAvailable(username, user.getId());
-            user.setUsername(username);
+        boolean phoneChanged = false;
+        if (request.phone() != null) {
+            String phone = requireNormalizedPhone(request.phone());
+            requirePhoneAvailable(phone, user.getId());
+            // Compared normalised, so a form re-sending the same number in
+            // another spelling does not count as a change.
+            phoneChanged = !phone.equals(user.getPhone());
+            user.setPhone(phone);
         }
+        // Absent means "leave it alone"; an empty string means "remove it",
+        // which normalizeEmail turns into the null the column holds. That is
+        // the only way to clear an address, and it is what the edit screen
+        // sends once the field has been emptied.
         if (request.email() != null) {
-            String email = request.email().trim().toLowerCase();
+            String email = normalizeEmail(request.email());
             requireEmailAvailable(email, user.getId());
             user.setEmail(email);
         }
@@ -155,8 +193,11 @@ public class UserService {
         User saved = repository.save(user);
 
         // An account that just stopped being able to sign in must also stop
-        // being able to renew a token it already holds.
-        if (wasActive && !saved.canSignIn()) {
+        // being able to renew a token it already holds. So must one whose
+        // sign-in number moved: the usual reason is that the old number went
+        // to somebody else or the account was taken over, the same reasons a
+        // password reset ends every session.
+        if ((wasActive && !saved.canSignIn()) || phoneChanged) {
             refreshTokenService.revokeAllFor(saved, Instant.now());
         }
 
@@ -259,18 +300,73 @@ public class UserService {
         }
     }
 
-    private void requireUsernameAvailable(String username, Long selfId) {
-        repository.findByUsernameIgnoreCase(username).ifPresent(existing -> {
+    /**
+     * Converts any accepted spelling of a Vietnamese mobile number to the one
+     * form the column stores, E.164 — {@code 0901234567}, {@code 84901234567}
+     * and {@code +84 901 234 567} all become {@code +84901234567}.
+     *
+     * <p>This is what makes {@code uq_users_phone} mean "one account per
+     * number". Without it the constraint is satisfied by four spellings of the
+     * same line, and which account a sign-in finds depends on how the person
+     * happened to type it.
+     *
+     * <p>Empty when the value is not a number this system can key on.
+     */
+    private static Optional<String> normalizePhone(String raw) {
+        if (raw == null) {
+            return Optional.empty();
+        }
+        Matcher matcher = PHONE.matcher(SEPARATORS.matcher(raw).replaceAll(""));
+        return matcher.matches() ? Optional.of("+84" + matcher.group(1)) : Optional.empty();
+    }
+
+    /**
+     * As above, for a write, where a number that cannot be read must not be
+     * stored at all.
+     *
+     * <p>Unreachable from an HTTP request on purpose: the DTO pattern accepts a
+     * subset of what {@link #normalizePhone} does, so anything that clears
+     * validation also normalises. What it guarantees is that the two cannot
+     * drift apart quietly — if an edit to either ever opens a gap, this fails
+     * loudly rather than writing a second spelling of one number into a column
+     * whose whole purpose is that there is only ever one.
+     *
+     * <p>The offending value is not echoed back: it is unbounded caller input,
+     * and validation's per-field message is the better answer anyway.
+     */
+    private static String requireNormalizedPhone(String raw) {
+        return normalizePhone(raw)
+                .orElseThrow(() -> new IllegalArgumentException("Not a valid Vietnamese phone number"));
+    }
+
+    /** Null stays null — an account without an email address is a valid one. */
+    private static String normalizeEmail(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        return trimmed.isEmpty() ? null : trimmed.toLowerCase();
+    }
+
+    // Neither of these echoes the value back. The caller supplied it, so
+    // repeating it says nothing they do not know, while putting a patient's
+    // phone number or address into an error body puts it into every client log
+    // and monitoring tool that error passes through.
+    private void requirePhoneAvailable(String phone, Long selfId) {
+        repository.findByPhone(phone).ifPresent(existing -> {
             if (!existing.getId().equals(selfId)) {
-                throw new ConflictException("The username %s is already taken".formatted(username));
+                throw new ConflictException("That phone number is already in use");
             }
         });
     }
 
     private void requireEmailAvailable(String email, Long selfId) {
+        if (email == null) {
+            return;
+        }
         repository.findByEmailIgnoreCase(email).ifPresent(existing -> {
             if (!existing.getId().equals(selfId)) {
-                throw new ConflictException("The email %s is already in use".formatted(email));
+                throw new ConflictException("That email address is already in use");
             }
         });
     }

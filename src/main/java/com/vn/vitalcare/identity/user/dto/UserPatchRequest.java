@@ -17,11 +17,15 @@ import java.util.List;
  * ({@code POST /users/{id}/password}) rather than hiding inside a form save.
  */
 public record UserPatchRequest(
-        @Size(min = 3, max = 100, message = "Username must be between 3 and 100 characters")
-        @Pattern(regexp = "^[a-zA-Z0-9._-]+$",
-                message = "Username may only contain letters, digits, dots, underscores and hyphens")
-        String username,
+        // Same shape as UserRequest, and as what UserService accepts.
+        @Pattern(regexp = "^[\\s\\h.()-]*(?:\\+?84|0)(?:[\\s\\h.()-]*\\d){9}[\\s\\h.()-]*$",
+                message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
+        String phone,
 
+        // Omitting the field leaves the address alone; sending an empty string
+        // removes it, which is how the edit screen clears one. Both @Email and
+        // @Size accept "", so the meaning is given by the service rather than
+        // here.
         @Email(message = "Email must be a valid address")
         @Size(max = 255, message = "Email must be at most 255 characters")
         String email,

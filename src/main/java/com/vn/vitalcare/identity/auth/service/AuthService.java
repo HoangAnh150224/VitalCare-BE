@@ -40,7 +40,7 @@ public class AuthService {
      * Hash of nothing in particular, used to keep a failed sign-in as slow as a
      * successful one.
      *
-     * <p>Without it, an unknown username returns immediately while a known one
+     * <p>Without it, an unknown number returns immediately while a known one
      * pays for a BCrypt comparison first — a difference large enough to time
      * from across a network, which turns the login form into a way to enumerate
      * accounts. Verifying against this dummy hash spends the same work either
@@ -50,7 +50,7 @@ public class AuthService {
             "$2a$10$ff7CTQvwMv0Szb.qGXF3zeMUkV8Jjta52A6kYzGDeZY4YE2pyd.YS";
 
     /** The same answer for every way of failing, for the same reason. */
-    private static final String INVALID_CREDENTIALS = "Incorrect username or password";
+    private static final String INVALID_CREDENTIALS = "Incorrect phone number or password";
 
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
@@ -85,7 +85,7 @@ public class AuthService {
     /**
      * Verifies credentials and opens a session.
      *
-     * @throws BadCredentialsException on a wrong username, a wrong password or
+     * @throws BadCredentialsException on an unknown number, a wrong password or
      *                                 an account that is not active — the same
      *                                 exception and the same message for all
      *                                 three, so that a failed attempt reveals
@@ -93,7 +93,7 @@ public class AuthService {
      */
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        Optional<User> found = userService.findForAuthentication(request.username());
+        Optional<User> found = userService.findForAuthentication(request.phone());
 
         String hash = found.map(User::getPasswordHash).orElse(DUMMY_HASH);
         boolean passwordMatches = passwordEncoder.matches(request.password(), hash);
