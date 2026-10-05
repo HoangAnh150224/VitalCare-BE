@@ -69,6 +69,19 @@ public class RoleService {
     }
 
     /**
+     * A system role, by the code the seed data gave it.
+     *
+     * <p>For code that assigns a role on its own initiative, such as
+     * self-registration. Those codes are seeded as system roles, which the API
+     * refuses to rename or delete, so a miss here is a broken deployment rather
+     * than a bad request — hence an {@link IllegalStateException}, not a 404.
+     */
+    public Role getByCode(String code) {
+        return repository.findByCodeIgnoreCase(code)
+                .orElseThrow(() -> new IllegalStateException("System role " + code + " is missing"));
+    }
+
+    /**
      * Resolves the roles a user is being assigned, refusing the whole set if
      * any one id is unknown.
      *

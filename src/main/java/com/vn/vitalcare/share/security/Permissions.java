@@ -38,6 +38,27 @@ public final class Permissions {
     public static final String ROW_LEVEL_POLICIES_WRITE = "row_level_policies:write";
     public static final String ROW_LEVEL_POLICIES_DELETE = "row_level_policies:delete";
 
+    // Seeded by 013-seed-care. activate and check_in are actions of their own:
+    // turning somebody into a patient is not the same grant as editing their
+    // address.
+    public static final String CUSTOMERS_READ = "customers:read";
+    public static final String CUSTOMERS_WRITE = "customers:write";
+    public static final String CUSTOMERS_ACTIVATE = "customers:activate";
+
+    public static final String APPOINTMENTS_READ = "appointments:read";
+    public static final String APPOINTMENTS_WRITE = "appointments:write";
+    public static final String APPOINTMENTS_CHECK_IN = "appointments:check_in";
+
+    // Seeded by 015. Reading a clinic's hours needs no permission (booking
+    // reads them); clinics:read is what puts the clinic screen in a menu.
+    public static final String CLINICS_READ = "clinics:read";
+    public static final String CLINICS_WRITE = "clinics:write";
+
+    // The customer's own side of the appointment book. Every query behind it
+    // is pinned to the caller's own customer record, whatever the request says.
+    public static final String MY_APPOINTMENTS_READ = "my_appointments:read";
+    public static final String MY_APPOINTMENTS_WRITE = "my_appointments:write";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.

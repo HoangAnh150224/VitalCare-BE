@@ -22,3 +22,13 @@ databaseChangeLog:
       file: db/changelog/changes/009-add-audit-columns.yaml
   - include:
       file: db/changelog/changes/010-sign-in-by-phone.sql
+  - include:
+      file: db/changelog/changes/011-create-phone-verification.yaml
+  - include:
+      file: db/changelog/changes/012-customer-appointment-lifecycle.yaml
+  - include:
+      file: db/changelog/changes/013-seed-care.sql
+  - include:
+      file: db/changelog/changes/014-clinic-working-hours.yaml
+  - include:
+      file: db/changelog/changes/015-seed-clinic-hours.sql

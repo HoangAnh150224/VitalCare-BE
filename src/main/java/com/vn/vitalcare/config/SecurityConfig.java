@@ -96,6 +96,10 @@ public class SecurityConfig {
                         // things you must be able to do without a valid access
                         // token. Everything else needs one.
                         .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+                        // Self-registration happens before there is a token to
+                        // hold. Its own limits (one-time code, resend cooldown,
+                        // per-hour cap) are what guard it instead.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/otp").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;

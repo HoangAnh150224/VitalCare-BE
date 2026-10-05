@@ -12,6 +12,7 @@ import com.vn.vitalcare.identity.user.repository.UserRepository;
 import com.vn.vitalcare.identity.user.repository.UserSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.web.ListParams;
@@ -20,8 +21,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -48,28 +47,6 @@ public class UserService {
             Set.of("id", "phone", "email", "fullName", "status", "createdAt", "lastLoginAt");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-
-    /**
-     * The spellings of a Vietnamese mobile number this system accepts, with the
-     * nine significant digits captured.
-     *
-     * <p>Carrier prefixes are deliberately not enumerated. A list of them has
-     * to be edited every time Vietnam allocates a new one, and the cost of
-     * that maintenance outweighs catching a number with a prefix nobody issues
-     * — which is a wrong number either way, and a thing business validation
-     * can take up later if it ever matters.
-     */
-    private static final Pattern PHONE = Pattern.compile("^(?:\\+84|84|0)(\\d{9})$");
-
-    /**
-     * What people put between the digits, and nothing else.
-     *
-     * <p>{@code \h} as well as {@code \s}, because Java's {@code \s} is ASCII
-     * only, and a number copied from a web page or a chat app routinely
-     * carries a no-break space ({@code U+00A0}, {@code U+202F}). Without it a
-     * correctly typed number answers "incorrect phone number or password".
-     */
-    private static final Pattern SEPARATORS = Pattern.compile("[\\s\\h.()-]");
 
     private final UserRepository repository;
 
@@ -129,7 +106,38 @@ public class UserService {
      * be able to tell a malformed number from an unknown one.
      */
     public Optional<User> findForAuthentication(String phone) {
-        return normalizePhone(phone).flatMap(repository::findByPhone);
+        return PhoneNumbers.normalize(phone).flatMap(repository::findByPhone);
+    }
+
+    /** Whether an account already signs in with this (normalised) number. */
+    public boolean phoneInUse(String normalizedPhone) {
+        return repository.findByPhone(normalizedPhone).isPresent();
+    }
+
+    /**
+     * Creates the account behind a self-registration.
+     *
+     * <p>Separate from {@link #create} because nothing about it is the
+     * caller's choice: the role is fixed by the flow, the account is active
+     * from the start, and there is no email — the person proved a phone
+     * number, nothing else.
+     *
+     * @param roleCode the system role the flow assigns; see
+     *                 {@link RoleService#getByCode}
+     */
+    @Transactional
+    public User createSelfRegistered(String phone, String rawPassword, String fullName, String roleCode) {
+        String normalized = requireNormalizedPhone(phone);
+        requirePhoneAvailable(normalized, null);
+
+        User user = new User(
+                normalized,
+                null,
+                passwordEncoder.encode(rawPassword),
+                fullName.trim(),
+                UserStatus.ACTIVE);
+        user.setRoles(new LinkedHashSet<>(List.of(roleService.getByCode(roleCode))));
+        return repository.save(user);
     }
 
     @Transactional
@@ -301,31 +309,11 @@ public class UserService {
     }
 
     /**
-     * Converts any accepted spelling of a Vietnamese mobile number to the one
-     * form the column stores, E.164 — {@code 0901234567}, {@code 84901234567}
-     * and {@code +84 901 234 567} all become {@code +84901234567}.
-     *
-     * <p>This is what makes {@code uq_users_phone} mean "one account per
-     * number". Without it the constraint is satisfied by four spellings of the
-     * same line, and which account a sign-in finds depends on how the person
-     * happened to type it.
-     *
-     * <p>Empty when the value is not a number this system can key on.
-     */
-    private static Optional<String> normalizePhone(String raw) {
-        if (raw == null) {
-            return Optional.empty();
-        }
-        Matcher matcher = PHONE.matcher(SEPARATORS.matcher(raw).replaceAll(""));
-        return matcher.matches() ? Optional.of("+84" + matcher.group(1)) : Optional.empty();
-    }
-
-    /**
-     * As above, for a write, where a number that cannot be read must not be
-     * stored at all.
+     * {@link PhoneNumbers#normalize}, for a write, where a number that cannot
+     * be read must not be stored at all.
      *
      * <p>Unreachable from an HTTP request on purpose: the DTO pattern accepts a
-     * subset of what {@link #normalizePhone} does, so anything that clears
+     * subset of what {@link PhoneNumbers#normalize} does, so anything that clears
      * validation also normalises. What it guarantees is that the two cannot
      * drift apart quietly — if an edit to either ever opens a gap, this fails
      * loudly rather than writing a second spelling of one number into a column
@@ -335,7 +323,7 @@ public class UserService {
      * and validation's per-field message is the better answer anyway.
      */
     private static String requireNormalizedPhone(String raw) {
-        return normalizePhone(raw)
+        return PhoneNumbers.normalize(raw)
                 .orElseThrow(() -> new IllegalArgumentException("Not a valid Vietnamese phone number"));
     }
 

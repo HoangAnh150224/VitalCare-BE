@@ -109,6 +109,19 @@ public class AuthService {
     }
 
     /**
+     * Opens a session for an account another flow has just proved ownership
+     * of — self-registration, after its one-time code. The same pair a
+     * sign-in hands out, recorded as a sign-in, so the person lands signed in
+     * rather than being sent to type the password they chose a second ago.
+     */
+    @Transactional
+    public TokenResponse signInVerified(User user) {
+        Instant now = Instant.now();
+        userService.recordLogin(user, now);
+        return issue(user, now);
+    }
+
+    /**
      * Exchanges a refresh token for a new pair.
      *
      * <p>Re-reads the account rather than trusting the old token's claims, so a

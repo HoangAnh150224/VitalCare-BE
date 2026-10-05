@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -71,6 +72,12 @@ public class ApiExceptionHandler {
         return body(HttpStatus.UNPROCESSABLE_CONTENT, "Validation failed", errors);
     }
 
+    /** A service-side rule on one field, shaped like a bean validation failure. */
+    @ExceptionHandler(FieldValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleFieldValidation(FieldValidationException e) {
+        return body(HttpStatus.UNPROCESSABLE_CONTENT, "Validation failed", Map.of(e.field(), e.getMessage()));
+    }
+
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException e) {
         return body(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage(), Map.of());
@@ -103,6 +110,16 @@ public class ApiExceptionHandler {
                 ? Map.of()
                 : Map.of("scope", e.node());
         return body(HttpStatus.UNPROCESSABLE_CONTENT, e.getMessage(), errors);
+    }
+
+    /**
+     * Two writes to one row at once, and this one lost — the row's
+     * {@code version} moved after it was read. A conflict the caller can
+     * resolve by reloading, not a server failure.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, Object>> handleOptimisticLock(ObjectOptimisticLockingFailureException e) {
+        return body(HttpStatus.CONFLICT, "This record was just changed by someone else; reload and try again", Map.of());
     }
 
     /** A foreign key declared {@code ON DELETE RESTRICT} refusing the write. */

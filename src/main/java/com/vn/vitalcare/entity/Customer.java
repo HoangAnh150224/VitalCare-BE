@@ -4,6 +4,8 @@ import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -12,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "customer")
@@ -48,10 +51,35 @@ public class Customer extends BaseEntity {
     @Column(name = "emergency_contact_phone")
     private String emergencyContactPhone;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private CustomerStatus status = CustomerStatus.NEUTRAL;
+
+    @Column(name = "patient_activated_at")
+    private OffsetDateTime patientActivatedAt;
+
+    @Column(name = "patient_activated_by_id")
+    private Long patientActivatedById;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "patient_activation_source")
+    private PatientActivationSource patientActivationSource;
 
     public Customer() {
+    }
+
+    /**
+     * Makes this customer a patient, recording how, by whom and when.
+     *
+     * <p>Only called on a {@link CustomerStatus#NEUTRAL} customer; refusing a
+     * second activation is the service's job, because only it can say so in
+     * an answer the caller understands.
+     */
+    public void activateAsPatient(PatientActivationSource source, Long actorId, OffsetDateTime when) {
+        this.status = CustomerStatus.PATIENT;
+        this.patientActivationSource = source;
+        this.patientActivatedById = actorId;
+        this.patientActivatedAt = when;
     }
 
     public Long getId() {
@@ -114,11 +142,19 @@ public class Customer extends BaseEntity {
         this.emergencyContactPhone = emergencyContactPhone;
     }
 
-    public String getStatus() {
+    public CustomerStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public OffsetDateTime getPatientActivatedAt() {
+        return patientActivatedAt;
+    }
+
+    public Long getPatientActivatedById() {
+        return patientActivatedById;
+    }
+
+    public PatientActivationSource getPatientActivationSource() {
+        return patientActivationSource;
     }
 }

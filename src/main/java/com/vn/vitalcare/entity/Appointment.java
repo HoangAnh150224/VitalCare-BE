@@ -3,6 +3,8 @@ package com.vn.vitalcare.entity;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -47,8 +49,13 @@ public class Appointment extends BaseEntity {
     @Column(name = "reason")
     private String reason;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private AppointmentStatus status = AppointmentStatus.SCHEDULED;
+
+    /** The code on the appointment slip and in its QR; unique. Set once, at booking. */
+    @Column(name = "booking_code", nullable = false, length = 16, unique = true, updatable = false)
+    private String bookingCode;
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
@@ -56,10 +63,31 @@ public class Appointment extends BaseEntity {
     @Column(name = "checked_in_at")
     private OffsetDateTime checkedInAt;
 
+    // Bare users.id, like the audit columns -- see BaseEntity.
+    @Column(name = "checked_in_by_id")
+    private Long checkedInById;
+
     @Column(name = "cancelled_at")
     private OffsetDateTime cancelledAt;
 
+    @Column(name = "cancelled_by_id")
+    private Long cancelledById;
+
     public Appointment() {
+    }
+
+    /** Records the arrival. Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    public void checkIn(Long actorId, OffsetDateTime when) {
+        this.status = AppointmentStatus.CHECKED_IN;
+        this.checkedInById = actorId;
+        this.checkedInAt = when;
+    }
+
+    /** Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    public void cancel(Long actorId, OffsetDateTime when) {
+        this.status = AppointmentStatus.CANCELLED;
+        this.cancelledById = actorId;
+        this.cancelledAt = when;
     }
 
     public Long getId() {
@@ -122,12 +150,24 @@ public class Appointment extends BaseEntity {
         this.reason = reason;
     }
 
-    public String getStatus() {
+    public AppointmentStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public String getBookingCode() {
+        return bookingCode;
+    }
+
+    public void setBookingCode(String bookingCode) {
+        this.bookingCode = bookingCode;
+    }
+
+    public Long getCheckedInById() {
+        return checkedInById;
+    }
+
+    public Long getCancelledById() {
+        return cancelledById;
     }
 
     public String getNote() {

@@ -1,0 +1,79 @@
+# One-time codes sent to a phone number to prove it belongs to whoever typed it.
+#
+# Self-registration keys an account on its phone number, and the number is
+# unique: without proof of ownership, the first person to type somebody else's
+# number would take it, and the real owner could never register.
+#
+# Only a SHA-256 of the code is stored, so a live code is not sitting in plain
+# text in every backup and query console. That is all it buys: six digits are a
+# million guesses, which a stolen dump can try offline in a moment. What
+# actually protects a code is that it lives five minutes and dies after five
+# wrong attempts. A row is never reused: a resend writes a new one, and a
+# consumed or exhausted row stays as the record that bounds the resend rate.
+databaseChangeLog:
+  - changeSet:
+      id: 011-create-phone-verification
+      author: vitalcare
+      changes:
+        - createTable:
+            tableName: phone_verification
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_phone_verification
+              # E.164, normalised the same way users.phone is.
+              - column:
+                  name: phone
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              # What the code proves the number for. Only REGISTER today; the
+              # column is there so a later "change my number" flow does not
+              # accept a code that was sent to sign up.
+              - column:
+                  name: purpose
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code_hash
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              # Wrong guesses so far. The code is burned once this reaches the
+              # configured limit, so six digits cannot be walked.
+              - column:
+                  name: attempts
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: consumed_at
+                  type: timestamp with time zone
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        # Every read is "the latest codes for this number and purpose", which
+        # is both the verification lookup and the resend-rate count.
+        - createIndex:
+            tableName: phone_verification
+            indexName: idx_phone_verification_lookup
+            columns:
+              - column:
+                  name: phone
+              - column:
+                  name: purpose
+              - column:
+                  name: created_at

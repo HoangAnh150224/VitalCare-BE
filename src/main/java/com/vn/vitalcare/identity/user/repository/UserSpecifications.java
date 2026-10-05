@@ -2,6 +2,7 @@ package com.vn.vitalcare.identity.user.repository;
 
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.entity.UserStatus;
+import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.web.ListParams;
 import jakarta.persistence.criteria.JoinType;
 import java.util.ArrayList;
@@ -108,26 +109,8 @@ public final class UserSpecifications {
         };
     }
 
-    /**
-     * A search term reduced to the digits that appear in a stored number.
-     *
-     * <p>Drops the separators and then the trunk zero or country code, so
-     * {@code 0901234567}, {@code +84 901 234 567} and {@code 901234} all
-     * address the same stored {@code +84901234567}.
-     *
-     * <p>A prefix is only dropped while something is left to match on, so that
-     * searching {@code 0} or {@code 84} narrows by those digits instead of
-     * collapsing to the empty term that matches every row.
-     */
     private static String phoneSearchTail(String raw) {
-        String digits = raw.replaceAll("[\\s\\h.()+-]", "");
-        if (digits.length() > 2 && digits.startsWith("84")) {
-            return digits.substring(2);
-        }
-        if (digits.length() > 1 && digits.startsWith("0")) {
-            return digits.substring(1);
-        }
-        return digits;
+        return PhoneNumbers.searchTail(raw);
     }
 
     private static Specification<User> textSpec(String field, ListParams.Criterion criterion) {
