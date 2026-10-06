@@ -36,3 +36,7 @@ databaseChangeLog:
       file: db/changelog/changes/016-staff-and-devices.yaml
   - include:
       file: db/changelog/changes/017-seed-staff-devices.sql
+  - include:
+      file: db/changelog/changes/018-seed-view-as.sql
+  - include:
+      file: db/changelog/changes/019-front-desk-clinics.sql

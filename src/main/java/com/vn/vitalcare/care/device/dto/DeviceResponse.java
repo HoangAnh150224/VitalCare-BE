@@ -4,6 +4,7 @@ import com.vn.vitalcare.entity.DeviceAssignment;
 import com.vn.vitalcare.entity.DeviceStatus;
 import com.vn.vitalcare.entity.MedicalDevice;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 /**
  * A device, and who is wearing it now if anybody — what the device list is
@@ -19,6 +20,7 @@ public record DeviceResponse(
         DeviceStatus status,
         OffsetDateTime lastSeenAt,
         OffsetDateTime registeredAt,
+        UUID clinicId,
         Wearer currentPatient) {
 
     /** The patient wearing the device, and since when. */
@@ -42,6 +44,8 @@ public record DeviceResponse(
                 device.getStatus(),
                 device.getLastSeenAt(),
                 device.getRegisteredAt(),
+                // The id only: it reads off the proxy without loading the clinic.
+                device.getClinic() == null ? null : device.getClinic().getClinicId(),
                 wearer);
     }
 }

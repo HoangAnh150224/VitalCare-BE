@@ -18,6 +18,7 @@ import com.vn.vitalcare.care.registration.dto.RegisterRequest;
 import com.vn.vitalcare.care.registration.entity.PhoneVerification;
 import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
 import com.vn.vitalcare.care.registration.repository.PhoneVerificationRepository;
+import com.vn.vitalcare.care.registration.service.impl.RegistrationServiceImpl;
 import com.vn.vitalcare.identity.auth.service.AuthService;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.ConflictException;
@@ -70,7 +71,7 @@ class RegistrationServiceTest {
                 .thenAnswer(invocation -> Optional.ofNullable(stored.get()));
 
         OtpSender sender = (phone, code) -> sentCode.set(code);
-        service = new RegistrationService(
+        service = new RegistrationServiceImpl(
                 verifications, userService, customerService, authService, sender,
                 new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5),
                 clock);
@@ -124,7 +125,7 @@ class RegistrationServiceTest {
 
         service.register(request(sentCode.get()));
 
-        verify(userService).createSelfRegistered(PHONE, "Passw0rd!", "Nguyen Van A", RegistrationService.CUSTOMER_ROLE);
+        verify(userService).createSelfRegistered(PHONE, "Passw0rd!", "Nguyen Van A", RegistrationServiceImpl.CUSTOMER_ROLE);
         verify(customerService).createNeutral(any());
         verify(authService).signInVerified(any());
         assertNotNull(stored.get().getConsumedAt());

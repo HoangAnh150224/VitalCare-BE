@@ -64,6 +64,10 @@ public final class Permissions {
     public static final String CUSTOMERS_ASSIGN = "customers:assign";
     public static final String MY_PATIENTS_READ = "my_patients:read";
 
+    // Seeded by 018, ADMIN only: a customer's or a member of staff's own
+    // screens, seen read-only. Every endpoint behind it is a GET.
+    public static final String VIEW_AS_READ = "view_as:read";
+
     // The customer's own side of the appointment book. Every query behind it
     // is pinned to the caller's own customer record, whatever the request says.
     public static final String MY_APPOINTMENTS_READ = "my_appointments:read";

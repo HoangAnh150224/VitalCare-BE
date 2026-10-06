@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import java.util.UUID;
 
 /**
  * {@code POST /employees}: a new member of staff — the account they sign in
@@ -38,5 +39,8 @@ public record EmployeeCreateRequest(
         String licenseNo,
 
         @Size(max = 128, message = "Position must be at most 128 characters")
-        String clinicPosition) {
+        String clinicPosition,
+
+        /** Where they work; left out, the creator's own clinic, or the first one. */
+        UUID clinicId) {
 }

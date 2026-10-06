@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.customer.repository.CustomerRepository;
+import com.vn.vitalcare.care.customer.service.impl.CustomerServiceImpl;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.CustomerStatus;
 import com.vn.vitalcare.entity.PatientActivationSource;
@@ -33,7 +34,7 @@ class CustomerServiceTest {
     void setUp() {
         repository = mock(CustomerRepository.class);
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        service = new CustomerService(repository, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+        service = new CustomerServiceImpl(repository, Optional::empty, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test

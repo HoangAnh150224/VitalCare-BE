@@ -16,15 +16,18 @@ import static org.mockito.Mockito.when;
 import com.vn.vitalcare.care.assignment.dto.AssignmentRequests;
 import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
+import com.vn.vitalcare.care.assignment.service.impl.CareAssignmentServiceImpl;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.device.service.DeviceService;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.entity.AssignmentStatus;
 import com.vn.vitalcare.entity.DeviceAssignment;
 import com.vn.vitalcare.entity.DeviceStatus;
+import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
 import com.vn.vitalcare.entity.MedicalDevice;
 import com.vn.vitalcare.entity.MonitoringAssignment;
+import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import java.time.Clock;
@@ -55,7 +58,7 @@ class CareAssignmentServiceTest {
         when(careTeams.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(deviceAssignments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service = new CareAssignmentService(careTeams, deviceAssignments, customers, employees, devices,
+        service = new CareAssignmentServiceImpl(careTeams, deviceAssignments, customers, employees, devices,
                 Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -93,6 +96,19 @@ class CareAssignmentServiceTest {
 
         assertThrows(FieldValidationException.class,
                 () -> service.assignStaff(1L, new AssignmentRequests.AssignStaff(5L, null)));
+    }
+
+    @Test
+    @DisplayName("the front desk cannot be put on a care team")
+    void receptionistIsRefused() {
+        when(customers.getForUpdate(1L)).thenReturn(patient(1));
+        Employee receptionist = staff(5, EmployeeStatus.ACTIVE);
+        receptionist.setStaffType(StaffType.RECEPTIONIST);
+        when(employees.lockForUpdate(5L)).thenReturn(receptionist);
+
+        FieldValidationException e = assertThrows(FieldValidationException.class,
+                () -> service.assignStaff(1L, new AssignmentRequests.AssignStaff(5L, null)));
+        assertEquals("employeeId", e.field());
     }
 
     @Test

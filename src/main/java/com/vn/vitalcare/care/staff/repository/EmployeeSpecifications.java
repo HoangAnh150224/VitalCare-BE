@@ -8,6 +8,7 @@ import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
 /**
@@ -27,6 +28,7 @@ public final class EmployeeSpecifications {
             Specification<Employee> spec = switch (criterion.field()) {
                 case "status" -> statusSpec(criterion.value());
                 case "staffType" -> staffTypeSpec(criterion.value());
+                case "clinicId" -> clinicSpec(criterion.value());
                 default -> null;
             };
             if (spec != null) {
@@ -48,6 +50,19 @@ public final class EmployeeSpecifications {
             specs.add((root, query, cb) -> root.get("id").in(ids));
         }
         return Specification.allOf(specs);
+    }
+
+    /** Only the staff of one clinic: the front desk's {@code ClinicScope}. */
+    public static Specification<Employee> atClinic(UUID clinicId) {
+        return (root, query, cb) -> cb.equal(root.get("clinic").get("clinicId"), clinicId);
+    }
+
+    private static Specification<Employee> clinicSpec(String raw) {
+        try {
+            return atClinic(UUID.fromString(raw.trim()));
+        } catch (IllegalArgumentException e) {
+            return (root, query, cb) -> cb.disjunction();
+        }
     }
 
     /** Only members of staff who can be put on a care team. */

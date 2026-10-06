@@ -9,10 +9,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
+import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
+import com.vn.vitalcare.care.appointment.service.impl.AppointmentServiceImpl;
 import com.vn.vitalcare.care.clinic.service.ScheduleFixture;
 import com.vn.vitalcare.care.customer.repository.CustomerRepository;
 import com.vn.vitalcare.care.customer.service.CustomerService;
+import com.vn.vitalcare.care.customer.service.impl.CustomerServiceImpl;
+import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.entity.Customer;
@@ -22,12 +26,14 @@ import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.entity.UserStatus;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +58,8 @@ class AppointmentServiceTest {
     private AppointmentRepository repository;
     private AppointmentService service;
     private Customer customer;
+    /** The signed-in receptionist's clinic; null for somebody tied to none. */
+    private UUID scopedTo;
 
     @BeforeEach
     void setUp() {
@@ -66,11 +74,13 @@ class AppointmentServiceTest {
         CustomerRepository customers = Mockito.mock(CustomerRepository.class);
         when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service = new AppointmentService(
+        ClinicScope scope = () -> Optional.ofNullable(scopedTo);
+        service = new AppointmentServiceImpl(
                 repository,
-                new CustomerService(customers, clock),
+                new CustomerServiceImpl(customers, scope, clock),
                 fixture.clinicService,
                 fixture.schedule,
+                scope,
                 clock);
 
         customer = new Customer();
@@ -226,6 +236,41 @@ class AppointmentServiceTest {
         stored(appointmentOn(TODAY.plusDays(2)));
 
         assertEquals(AppointmentStatus.CANCELLED, service.cancel(1L).getStatus());
+    }
+
+    @Test
+    @DisplayName("a receptionist finds their own clinic's appointment by id and by code")
+    void ownClinicIsInScope() {
+        scopedTo = ScheduleFixture.CLINIC_ID;
+        Appointment appointment = stored(appointmentOn(TODAY));
+        when(repository.findByBookingCodeAndDeletedAtIsNull("K7M29QXA")).thenReturn(Optional.of(appointment));
+
+        assertEquals(appointment, service.get(1L));
+        assertEquals(appointment, service.getByCode("K7M29QXA"));
+    }
+
+    @Test
+    @DisplayName("another clinic's appointment is not found for a receptionist, so it cannot be checked in or cancelled")
+    void otherClinicIsNotFound() {
+        scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
+        Appointment appointment = stored(appointmentOn(TODAY));
+        when(repository.findByBookingCodeAndDeletedAtIsNull("K7M29QXA")).thenReturn(Optional.of(appointment));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.get(1L));
+        assertThrows(ResourceNotFoundException.class, () -> service.getByCode("K7M29QXA"));
+        assertThrows(ResourceNotFoundException.class, () -> service.checkIn(1L));
+        assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L));
+        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("a receptionist cannot book at another clinic")
+    void bookingAtAnotherClinicIsRefused() {
+        scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
+        assertField("clinicId", () -> service.bookFor(new StaffBookingRequest(
+                1L, ScheduleFixture.CLINIC_ID, TODAY, LocalTime.of(14, 0), "Check-up", null)));
+        verify(repository, never()).save(any());
     }
 
     private static void assertField(String field, org.junit.jupiter.api.function.Executable call) {

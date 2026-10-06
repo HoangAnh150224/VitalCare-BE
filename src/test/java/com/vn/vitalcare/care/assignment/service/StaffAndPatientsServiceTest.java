@@ -14,11 +14,13 @@ import static org.mockito.Mockito.when;
 import com.vn.vitalcare.care.assignment.dto.MyPatientResponse;
 import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
+import com.vn.vitalcare.care.assignment.service.impl.MyPatientsServiceImpl;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.staff.dto.EmployeeCreateRequest;
 import com.vn.vitalcare.care.staff.dto.EmployeePatchRequest;
 import com.vn.vitalcare.care.staff.repository.EmployeeRepository;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
+import com.vn.vitalcare.care.staff.service.impl.EmployeeServiceImpl;
 import com.vn.vitalcare.entity.AssignmentStatus;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
@@ -55,7 +57,7 @@ class StaffAndPatientsServiceTest {
         when(clinics.listAll()).thenReturn(List.of());
         when(employeeRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        employees = new EmployeeService(employeeRepository, careTeams, userService, clinics,
+        employees = new EmployeeServiceImpl(employeeRepository, careTeams, userService, clinics, Optional::empty,
                 Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -70,7 +72,7 @@ class StaffAndPatientsServiceTest {
         });
 
         Employee created = employees.create(new EmployeeCreateRequest(
-                "0900000050", "BS. A", "Passw0rd!", StaffType.NURSE, null, null, null, null));
+                "0900000050", "BS. A", "Passw0rd!", StaffType.NURSE, null, null, null, null, null));
 
         verify(userService).createStaffAccount("0900000050", "Passw0rd!", "BS. A", "NURSE");
         assertEquals("NV000007", created.getEmployeeCode());
@@ -103,7 +105,7 @@ class StaffAndPatientsServiceTest {
         when(current.getForCurrentUser()).thenReturn(me);
         when(careTeams.findByEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtDesc(5L))
                 .thenReturn(List.of(assignment(patient(1), me)));
-        MyPatientsService myPatients = new MyPatientsService(current, careTeams, deviceAssignments);
+        MyPatientsService myPatients = new MyPatientsServiceImpl(current, careTeams, deviceAssignments);
 
         List<MyPatientResponse> list = myPatients.list();
         assertEquals(1, list.size());
@@ -111,6 +113,28 @@ class StaffAndPatientsServiceTest {
 
         assertEquals(1L, myPatients.get(1L).id());
         assertThrows(ResourceNotFoundException.class, () -> myPatients.get(2L));
+    }
+
+    @Test
+    @DisplayName("every caseload at once: one row per patient with their whole team, narrowed by a member of staff")
+    void allPatientsGroupsByPatient() {
+        Employee doctor = staff(5, EmployeeStatus.ACTIVE);
+        Employee nurse = staff(6, EmployeeStatus.ACTIVE);
+        var first = patient(1);
+        var second = patient(2);
+        when(careTeams.findByUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtAsc()).thenReturn(List.of(
+                assignment(first, doctor), assignment(first, nurse), assignment(second, nurse)));
+        MyPatientsService myPatients =
+                new MyPatientsServiceImpl(mock(EmployeeService.class), careTeams, deviceAssignments);
+
+        List<MyPatientResponse> all = myPatients.listAll(null);
+        assertEquals(List.of(1L, 2L), all.stream().map(MyPatientResponse::id).toList());
+        assertEquals(2, all.getFirst().careTeam().size());
+
+        List<MyPatientResponse> doctors = myPatients.listAll(5L);
+        assertEquals(List.of(1L), doctors.stream().map(MyPatientResponse::id).toList());
+        // Narrowed to the doctor's patients, but each still shows the whole team.
+        assertEquals(2, doctors.getFirst().careTeam().size());
     }
 
     private static MonitoringAssignment assignment(com.vn.vitalcare.entity.Customer customer, Employee employee) {

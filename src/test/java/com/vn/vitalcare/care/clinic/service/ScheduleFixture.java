@@ -10,6 +10,8 @@ import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.clinic.ClinicProperties;
 import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
 import com.vn.vitalcare.care.clinic.repository.ClinicWorkingHoursRepository;
+import com.vn.vitalcare.care.clinic.service.impl.ClinicScheduleServiceImpl;
+import com.vn.vitalcare.care.clinic.service.impl.ClinicServiceImpl;
 import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.ClinicWorkingHours;
 import java.time.Clock;
@@ -76,8 +78,8 @@ public final class ScheduleFixture {
         });
 
         ClinicProperties properties = new ClinicProperties(CLINIC_ZONE, 30);
-        clinicService = new ClinicService(clinics, properties, clock);
-        schedule = new ClinicScheduleService(clinics, hours, appointments, properties, clock);
+        clinicService = new ClinicServiceImpl(clinics, properties, clock);
+        schedule = new ClinicScheduleServiceImpl(clinics, hours, appointments, properties, clock);
     }
 
     private ClinicWorkingHours session(DayOfWeek day, String open, String close) {

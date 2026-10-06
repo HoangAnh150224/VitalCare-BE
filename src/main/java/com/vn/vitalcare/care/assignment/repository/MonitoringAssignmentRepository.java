@@ -24,6 +24,10 @@ public interface MonitoringAssignmentRepository extends JpaRepository<Monitoring
 
     boolean existsByCustomerIdAndEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNull(Long customerId, Long employeeId);
 
+    /** Every open assignment, oldest first — the administrator's view of every caseload at once. */
+    @EntityGraph(attributePaths = {"customer", "customer.user", "employee", "employee.user"})
+    List<MonitoringAssignment> findByUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtAsc();
+
     /** The patients a member of staff is following now — "my patients". */
     @EntityGraph(attributePaths = {"customer", "customer.user"})
     List<MonitoringAssignment> findByEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtDesc(

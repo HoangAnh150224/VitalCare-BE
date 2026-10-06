@@ -6,6 +6,7 @@ import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
 /** Translates the parsed query string into a JPA {@link Specification}; deleted rows are excluded. */
@@ -19,6 +20,13 @@ public final class MedicalDeviceSpecifications {
         specs.add(BaseEntitySpecifications.notDeleted());
 
         for (ListParams.Criterion criterion : params.filters()) {
+            if ("clinicId".equals(criterion.field())) {
+                try {
+                    specs.add(atClinic(UUID.fromString(criterion.value().trim())));
+                } catch (IllegalArgumentException e) {
+                    specs.add((root, query, cb) -> cb.disjunction());
+                }
+            }
             if ("status".equals(criterion.field())) {
                 try {
                     DeviceStatus status = DeviceStatus.from(criterion.value());
@@ -41,5 +49,10 @@ public final class MedicalDeviceSpecifications {
             specs.add((root, query, cb) -> root.get("id").in(ids));
         }
         return Specification.allOf(specs);
+    }
+
+    /** Only one clinic's devices: the front desk's {@code ClinicScope}. */
+    public static Specification<MedicalDevice> atClinic(UUID clinicId) {
+        return (root, query, cb) -> cb.equal(root.get("clinic").get("clinicId"), clinicId);
     }
 }
