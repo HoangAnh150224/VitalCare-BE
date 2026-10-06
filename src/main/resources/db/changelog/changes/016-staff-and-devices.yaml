@@ -1,0 +1,198 @@
+# The rules behind putting a patient in somebody's care and on a device.
+#
+# employee: a member of staff has a type (doctor, nurse) and a status;
+# deactivating somebody is how they leave, so employee.user_id moves to
+# RESTRICT for the reason customer.user_id did in 012.
+#
+# medical_device: every device has a code people refer to it by, unique, and
+# a status the assignment workflow drives.
+#
+# monitoring_assignment / device_assignment: who is in a patient's care team,
+# and which device a patient wears. A row is never deleted to undo an
+# assignment -- it is ended, and stays as the history. The partial unique
+# indexes are the rules that must hold even if two people click at once:
+#   - one person is in one patient's team at most once at a time;
+#   - one device is on one patient at a time;
+#   - one patient wears one device at a time.
+# All four tables were created empty by 008; there is nothing to backfill.
+databaseChangeLog:
+  - changeSet:
+      id: 016-staff-and-devices
+      author: vitalcare
+      changes:
+        # --- employee -------------------------------------------------------
+        - addNotNullConstraint:
+            tableName: employee
+            columnName: staff_type
+            columnDataType: varchar(64)
+        - addDefaultValue:
+            tableName: employee
+            columnName: status
+            defaultValue: ACTIVE
+        - addNotNullConstraint:
+            tableName: employee
+            columnName: status
+            columnDataType: varchar(32)
+            defaultNullValue: ACTIVE
+        - addUniqueConstraint:
+            tableName: employee
+            columnNames: employee_code
+            constraintName: uq_employee_code
+        - dropForeignKeyConstraint:
+            baseTableName: employee
+            constraintName: fk_employee_user
+        - addForeignKeyConstraint:
+            baseTableName: employee
+            baseColumnNames: user_id
+            constraintName: fk_employee_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: RESTRICT
+
+        # --- medical_device -------------------------------------------------
+        - addNotNullConstraint:
+            tableName: medical_device
+            columnName: device_code
+            columnDataType: varchar(64)
+        - addUniqueConstraint:
+            tableName: medical_device
+            columnNames: device_code
+            constraintName: uq_medical_device_code
+        - addUniqueConstraint:
+            tableName: medical_device
+            columnNames: serial_number
+            constraintName: uq_medical_device_serial
+        - addDefaultValue:
+            tableName: medical_device
+            columnName: status
+            defaultValue: AVAILABLE
+        - addNotNullConstraint:
+            tableName: medical_device
+            columnName: status
+            columnDataType: varchar(32)
+            defaultNullValue: AVAILABLE
+
+        # --- monitoring_assignment ------------------------------------------
+        - addNotNullConstraint:
+            tableName: monitoring_assignment
+            columnName: customer_id
+            columnDataType: bigint
+        - addNotNullConstraint:
+            tableName: monitoring_assignment
+            columnName: employee_id
+            columnDataType: bigint
+        - addNotNullConstraint:
+            tableName: monitoring_assignment
+            columnName: assigned_at
+            columnDataType: timestamp with time zone
+        - addNotNullConstraint:
+            tableName: monitoring_assignment
+            columnName: status
+            columnDataType: varchar(32)
+        # Bare users.id, like the audit columns -- see BaseEntity.
+        - addColumn:
+            tableName: monitoring_assignment
+            columns:
+              - column:
+                  name: assigned_by_id
+                  type: bigint
+              - column:
+                  name: ended_by_id
+                  type: bigint
+        - dropForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            constraintName: fk_monitoring_assignment_customer
+        - addForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            baseColumnNames: customer_id
+            constraintName: fk_monitoring_assignment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: RESTRICT
+        - dropForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            constraintName: fk_monitoring_assignment_employee
+        - addForeignKeyConstraint:
+            baseTableName: monitoring_assignment
+            baseColumnNames: employee_id
+            constraintName: fk_monitoring_assignment_employee
+            referencedTableName: employee
+            referencedColumnNames: id
+            onDelete: RESTRICT
+        # "My patients" reads a member of staff's open assignments.
+        - createIndex:
+            tableName: monitoring_assignment
+            indexName: idx_monitoring_assignment_employee_open
+            columns:
+              - column:
+                  name: employee_id
+              - column:
+                  name: unassigned_at
+
+        # --- device_assignment ----------------------------------------------
+        - addNotNullConstraint:
+            tableName: device_assignment
+            columnName: customer_id
+            columnDataType: bigint
+        - addNotNullConstraint:
+            tableName: device_assignment
+            columnName: device_id
+            columnDataType: bigint
+        - addNotNullConstraint:
+            tableName: device_assignment
+            columnName: assigned_at
+            columnDataType: timestamp with time zone
+        - addNotNullConstraint:
+            tableName: device_assignment
+            columnName: status
+            columnDataType: varchar(32)
+        - addColumn:
+            tableName: device_assignment
+            columns:
+              - column:
+                  name: assigned_by_id
+                  type: bigint
+              - column:
+                  name: returned_by_id
+                  type: bigint
+        - dropForeignKeyConstraint:
+            baseTableName: device_assignment
+            constraintName: fk_device_assignment_customer
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: customer_id
+            constraintName: fk_device_assignment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: RESTRICT
+        - dropForeignKeyConstraint:
+            baseTableName: device_assignment
+            constraintName: fk_device_assignment_device
+        - addForeignKeyConstraint:
+            baseTableName: device_assignment
+            baseColumnNames: device_id
+            constraintName: fk_device_assignment_device
+            referencedTableName: medical_device
+            referencedColumnNames: id
+            onDelete: RESTRICT
+
+        # --- the rules that must survive two clicks at once -----------------
+        - sql:
+            sql: >-
+              CREATE UNIQUE INDEX uq_monitoring_assignment_open
+                ON monitoring_assignment (customer_id, employee_id)
+                WHERE unassigned_at IS NULL AND deleted_at IS NULL
+        - sql:
+            sql: >-
+              CREATE UNIQUE INDEX uq_device_assignment_device_open
+                ON device_assignment (device_id)
+                WHERE unassigned_at IS NULL AND deleted_at IS NULL
+        - sql:
+            sql: >-
+              CREATE UNIQUE INDEX uq_device_assignment_customer_open
+                ON device_assignment (customer_id)
+                WHERE unassigned_at IS NULL AND deleted_at IS NULL
+      # No rollback, as in 012: undoing this would mean putting back the
+      # nullable, cascading shape of 008 that the rules above replaced. A
+      # rollback that undid only part of it would leave the schema in neither
+      # state, so this changeset is rolled back by restoring the database.

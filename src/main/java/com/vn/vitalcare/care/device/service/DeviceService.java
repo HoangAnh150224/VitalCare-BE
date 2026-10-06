@@ -1,0 +1,159 @@
+package com.vn.vitalcare.care.device.service;
+
+import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
+import com.vn.vitalcare.care.clinic.service.ClinicService;
+import com.vn.vitalcare.care.device.dto.DevicePatchRequest;
+import com.vn.vitalcare.care.device.dto.DeviceRequest;
+import com.vn.vitalcare.care.device.repository.MedicalDeviceRepository;
+import com.vn.vitalcare.care.device.repository.MedicalDeviceSpecifications;
+import com.vn.vitalcare.entity.DeviceAssignment;
+import com.vn.vitalcare.entity.DeviceStatus;
+import com.vn.vitalcare.entity.MedicalDevice;
+import com.vn.vitalcare.share.data.BaseEntitySpecifications;
+import com.vn.vitalcare.share.exception.ConflictException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.web.ListParams;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** The clinic's monitoring devices: registering them, and taking them in and out of use. */
+@Service
+@Transactional(readOnly = true)
+public class DeviceService {
+
+    private static final Set<String> SORTABLE = Set.of("id", "deviceCode", "status", "registeredAt", "lastSeenAt");
+
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.asc("deviceCode"));
+
+    private final MedicalDeviceRepository repository;
+    private final DeviceAssignmentRepository assignments;
+    private final ClinicService clinicService;
+    private final Clock clock;
+
+    public DeviceService(MedicalDeviceRepository repository,
+                         DeviceAssignmentRepository assignments,
+                         ClinicService clinicService,
+                         Clock clock) {
+        this.repository = repository;
+        this.assignments = assignments;
+        this.clinicService = clinicService;
+        this.clock = clock;
+    }
+
+    public Page<MedicalDevice> list(ListParams params) {
+        return repository.findAll(MedicalDeviceSpecifications.from(params), params.pageable(SORTABLE, DEFAULT_SORT));
+    }
+
+    public List<MedicalDevice> getMany(List<Long> ids) {
+        Specification<MedicalDevice> byIds = (root, query, cb) -> root.get("id").in(ids);
+        return repository.findAll(Specification.allOf(BaseEntitySpecifications.notDeleted(), byIds));
+    }
+
+    public MedicalDevice get(Long id) {
+        return repository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Device", id));
+    }
+
+    /** Who is wearing each of these devices now, keyed by device id — one query for a whole page. */
+    public Map<Long, DeviceAssignment> openAssignments(Collection<Long> deviceIds) {
+        if (deviceIds.isEmpty()) {
+            return Map.of();
+        }
+        return assignments.findByDeviceIdInAndUnassignedAtIsNullAndDeletedAtIsNull(deviceIds).stream()
+                .collect(Collectors.toMap(a -> a.getDevice().getId(), Function.identity()));
+    }
+
+    public List<DeviceAssignment> history(Long deviceId) {
+        get(deviceId);
+        return assignments.findByDeviceIdAndDeletedAtIsNullOrderByAssignedAtDesc(deviceId);
+    }
+
+    @Transactional
+    public MedicalDevice register(DeviceRequest request) {
+        String code = request.deviceCode().trim().toUpperCase(Locale.ROOT);
+        if (repository.existsByDeviceCodeIgnoreCase(code)) {
+            throw new FieldValidationException("deviceCode", "A device with that code already exists");
+        }
+        String serial = blankToNull(request.serialNumber());
+        if (serial != null && repository.existsBySerialNumberIgnoreCase(serial)) {
+            throw new FieldValidationException("serialNumber", "A device with that serial number already exists");
+        }
+
+        MedicalDevice device = new MedicalDevice();
+        device.setDeviceCode(code);
+        device.setSerialNumber(serial);
+        device.setDeviceType(blankToNull(request.deviceType()));
+        device.setManufacturer(blankToNull(request.manufacturer()));
+        device.setModel(blankToNull(request.model()));
+        device.setRegisteredAt(OffsetDateTime.now(clock));
+        clinicService.listAll().stream().findFirst().ifPresent(device::setClinic);
+        return repository.save(device);
+    }
+
+    /**
+     * Edits a device. A status change takes the device lock and follows the
+     * rules the assignment workflow depends on: assigned is set only by
+     * handing the device out, and a device on a patient cannot be sent for
+     * maintenance or retired until it comes back.
+     */
+    @Transactional
+    public MedicalDevice update(Long id, DevicePatchRequest request) {
+        MedicalDevice device = request.status() == null ? get(id) : lockForUpdate(id);
+
+        if (request.serialNumber() != null) {
+            String serial = blankToNull(request.serialNumber());
+            if (serial != null && !serial.equalsIgnoreCase(device.getSerialNumber())
+                    && repository.existsBySerialNumberIgnoreCase(serial)) {
+                throw new FieldValidationException("serialNumber", "A device with that serial number already exists");
+            }
+            device.setSerialNumber(serial);
+        }
+        if (request.deviceType() != null) {
+            device.setDeviceType(blankToNull(request.deviceType()));
+        }
+        if (request.manufacturer() != null) {
+            device.setManufacturer(blankToNull(request.manufacturer()));
+        }
+        if (request.model() != null) {
+            device.setModel(blankToNull(request.model()));
+        }
+        if (request.status() != null && request.status() != device.getStatus()) {
+            if (request.status() == DeviceStatus.ASSIGNED) {
+                throw new FieldValidationException("status", "A device becomes assigned by handing it to a patient");
+            }
+            if (device.getStatus() == DeviceStatus.ASSIGNED
+                    || assignments.existsByDeviceIdAndUnassignedAtIsNullAndDeletedAtIsNull(device.getId())) {
+                throw new ConflictException("This device is on a patient; take it back first");
+            }
+            device.setStatus(request.status());
+        }
+        return repository.save(device);
+    }
+
+    /** The device, locked for the rest of the caller's transaction. */
+    @Transactional
+    public MedicalDevice lockForUpdate(Long id) {
+        return repository.findForUpdate(id).orElseThrow(() -> new ResourceNotFoundException("Device", id));
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+}

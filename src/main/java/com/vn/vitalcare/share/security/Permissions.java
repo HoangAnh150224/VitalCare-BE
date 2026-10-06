@@ -54,6 +54,16 @@ public final class Permissions {
     public static final String CLINICS_READ = "clinics:read";
     public static final String CLINICS_WRITE = "clinics:write";
 
+    // Seeded by 017. customers:assign is putting a patient in somebody's care
+    // team and on a device; my_patients is a member of clinical staff's own
+    // list, pinned to the caller like my_appointments.
+    public static final String EMPLOYEES_READ = "employees:read";
+    public static final String EMPLOYEES_WRITE = "employees:write";
+    public static final String DEVICES_READ = "devices:read";
+    public static final String DEVICES_WRITE = "devices:write";
+    public static final String CUSTOMERS_ASSIGN = "customers:assign";
+    public static final String MY_PATIENTS_READ = "my_patients:read";
+
     // The customer's own side of the appointment book. Every query behind it
     // is pinned to the caller's own customer record, whatever the request says.
     public static final String MY_APPOINTMENTS_READ = "my_appointments:read";

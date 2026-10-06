@@ -3,6 +3,8 @@ package com.vn.vitalcare.entity;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -35,11 +37,47 @@ public class MonitoringAssignment extends BaseEntity {
     @Column(name = "unassigned_at")
     private OffsetDateTime unassignedAt;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private AssignmentStatus status = AssignmentStatus.ACTIVE;
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
+
+    // Bare users.id, like the audit columns -- see BaseEntity.
+    @Column(name = "assigned_by_id")
+    private Long assignedById;
+
+    @Column(name = "ended_by_id")
+    private Long endedById;
+
+    /** Opens the assignment: who, by whom, when. */
+    public void start(Customer customer, Employee employee, Long actorId, OffsetDateTime when) {
+        this.customer = customer;
+        this.employee = employee;
+        this.assignedById = actorId;
+        this.assignedAt = when;
+        this.status = AssignmentStatus.ACTIVE;
+    }
+
+    /** Takes the person off the patient's care team. The row stays as the history. */
+    public void end(Long actorId, OffsetDateTime when) {
+        this.status = AssignmentStatus.ENDED;
+        this.endedById = actorId;
+        this.unassignedAt = when;
+    }
+
+    public boolean isActive() {
+        return status == AssignmentStatus.ACTIVE;
+    }
+
+    public Long getAssignedById() {
+        return assignedById;
+    }
+
+    public Long getEndedById() {
+        return endedById;
+    }
 
     public MonitoringAssignment() {
     }
@@ -80,12 +118,8 @@ public class MonitoringAssignment extends BaseEntity {
         this.unassignedAt = unassignedAt;
     }
 
-    public String getStatus() {
+    public AssignmentStatus getStatus() {
         return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
     }
 
     public String getNote() {

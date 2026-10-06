@@ -4,6 +4,8 @@ import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -37,8 +39,9 @@ public class Employee extends BaseEntity {
     // A second copy here could disagree with the one login reads, and then
     // changing your number on this screen would lock you out.
 
-    @Column(name = "staff_type")
-    private String staffType;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "staff_type", nullable = false)
+    private StaffType staffType;
 
     @Column(name = "specialty")
     private String specialty;
@@ -52,8 +55,9 @@ public class Employee extends BaseEntity {
     @Column(name = "clinic_position")
     private String clinicPosition;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private EmployeeStatus status = EmployeeStatus.ACTIVE;
 
     public Employee() {
     }
@@ -86,11 +90,11 @@ public class Employee extends BaseEntity {
         this.employeeCode = employeeCode;
     }
 
-    public String getStaffType() {
+    public StaffType getStaffType() {
         return staffType;
     }
 
-    public void setStaffType(String staffType) {
+    public void setStaffType(StaffType staffType) {
         this.staffType = staffType;
     }
 
@@ -126,11 +130,11 @@ public class Employee extends BaseEntity {
         this.clinicPosition = clinicPosition;
     }
 
-    public String getStatus() {
+    public EmployeeStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(EmployeeStatus status) {
         this.status = status;
     }
 }

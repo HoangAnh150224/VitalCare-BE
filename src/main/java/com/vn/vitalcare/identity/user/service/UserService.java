@@ -127,6 +127,55 @@ public class UserService {
      */
     @Transactional
     public User createSelfRegistered(String phone, String rawPassword, String fullName, String roleCode) {
+        return createWithSystemRole(phone, rawPassword, fullName, roleCode);
+    }
+
+    /**
+     * Creates the account behind a new member of staff, holding the system
+     * role their kind of staff gets. Same shape as a self-registration — the
+     * role is decided by the caller's workflow, not chosen on a form.
+     */
+    @Transactional
+    public User createStaffAccount(String phone, String rawPassword, String fullName, String roleCode) {
+        return createWithSystemRole(phone, rawPassword, fullName, roleCode);
+    }
+
+    /**
+     * Lets an account sign in, or stops it — for workflows that own an
+     * account's lifecycle, such as a member of staff leaving.
+     *
+     * <p>Stopping it ends every session open under it and drops its cached
+     * authorities, the same as disabling it on the user screen, so a token it
+     * already holds stops working on the next request.
+     */
+    @Transactional
+    public User setSignInAllowed(Long id, boolean allowed) {
+        User user = get(id);
+        boolean wasActive = user.canSignIn();
+        if (allowed) {
+            // Only undoes what this workflow did. A LOCKED account was locked
+            // for a security reason by an administrator; somebody coming back
+            // to work does not clear that.
+            if (user.getStatus() == UserStatus.INACTIVE) {
+                user.setStatus(UserStatus.ACTIVE);
+            }
+        } else {
+            // The same guard the user screen applies: a staff account can
+            // also hold ADMIN, and it must not be the last one switched off.
+            requireAdminSurvives(user, user.getRoles(), UserStatus.INACTIVE);
+            if (user.getStatus() == UserStatus.ACTIVE) {
+                user.setStatus(UserStatus.INACTIVE);
+            }
+        }
+        User saved = repository.save(user);
+        if (wasActive && !saved.canSignIn()) {
+            refreshTokenService.revokeAllFor(saved, Instant.now());
+        }
+        events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        return saved;
+    }
+
+    private User createWithSystemRole(String phone, String rawPassword, String fullName, String roleCode) {
         String normalized = requireNormalizedPhone(phone);
         requirePhoneAvailable(normalized, null);
 

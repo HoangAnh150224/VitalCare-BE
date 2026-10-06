@@ -55,6 +55,13 @@ public class CustomerService {
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
     }
 
+    /** The customer, locked for the rest of the caller's transaction. See {@code CustomerRepository.findForUpdate}. */
+    @Transactional
+    public Customer getForUpdate(Long id) {
+        return repository.findForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
+    }
+
     /**
      * The customer record behind the signed-in account.
      *

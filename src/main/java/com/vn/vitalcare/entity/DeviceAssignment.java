@@ -3,6 +3,8 @@ package com.vn.vitalcare.entity;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -46,11 +48,47 @@ public class DeviceAssignment extends BaseEntity {
     @Column(name = "unassigned_at")
     private OffsetDateTime unassignedAt;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private AssignmentStatus status = AssignmentStatus.ACTIVE;
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
+
+    // Bare users.id, like the audit columns -- see BaseEntity.
+    @Column(name = "assigned_by_id")
+    private Long assignedById;
+
+    @Column(name = "returned_by_id")
+    private Long returnedById;
+
+    /** Puts the device on the patient. The device's own status is the service's to move. */
+    public void start(Customer customer, MedicalDevice device, Long actorId, OffsetDateTime when) {
+        this.customer = customer;
+        this.device = device;
+        this.assignedById = actorId;
+        this.assignedAt = when;
+        this.status = AssignmentStatus.ACTIVE;
+    }
+
+    /** The device came back. The row stays as the history of who wore it. */
+    public void end(Long actorId, OffsetDateTime when) {
+        this.status = AssignmentStatus.ENDED;
+        this.returnedById = actorId;
+        this.unassignedAt = when;
+    }
+
+    public boolean isActive() {
+        return status == AssignmentStatus.ACTIVE;
+    }
+
+    public Long getAssignedById() {
+        return assignedById;
+    }
+
+    public Long getReturnedById() {
+        return returnedById;
+    }
 
     public DeviceAssignment() {
     }
@@ -115,12 +153,8 @@ public class DeviceAssignment extends BaseEntity {
         this.unassignedAt = unassignedAt;
     }
 
-    public String getStatus() {
+    public AssignmentStatus getStatus() {
         return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
     }
 
     public String getNote() {

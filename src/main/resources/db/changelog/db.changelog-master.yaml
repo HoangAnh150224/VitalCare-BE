@@ -32,3 +32,7 @@ databaseChangeLog:
       file: db/changelog/changes/014-clinic-working-hours.yaml
   - include:
       file: db/changelog/changes/015-seed-clinic-hours.sql
+  - include:
+      file: db/changelog/changes/016-staff-and-devices.yaml
+  - include:
+      file: db/changelog/changes/017-seed-staff-devices.sql
