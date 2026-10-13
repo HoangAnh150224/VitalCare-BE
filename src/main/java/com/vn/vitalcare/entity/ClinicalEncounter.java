@@ -1,8 +1,11 @@
 package com.vn.vitalcare.entity;
 
 import com.vn.vitalcare.share.data.BaseEntity;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelResource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -11,8 +14,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
+@RowLevelResource("clinical_encounters")
 @Table(name = "clinical_encounter")
 public class ClinicalEncounter extends BaseEntity {
 
@@ -41,6 +46,10 @@ public class ClinicalEncounter extends BaseEntity {
     @JoinColumn(name = "clinic_id")
     private Clinic clinic;
 
+    /** The same column as {@link #clinic}, as a plain value, for row-level policies; see {@code MedicalDevice}. */
+    @Column(name = "clinic_id", insertable = false, updatable = false)
+    private UUID clinicId;
+
     @Column(name = "started_at")
     private OffsetDateTime startedAt;
 
@@ -56,8 +65,13 @@ public class ClinicalEncounter extends BaseEntity {
     @Column(name = "clinical_note", columnDefinition = "text")
     private String clinicalNote;
 
+    /** What the patient is told to do next: when to return, self-care, when to come back sooner. */
+    @Column(name = "follow_up", columnDefinition = "text")
+    private String followUp;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status")
-    private String status;
+    private EncounterStatus status = EncounterStatus.IN_PROGRESS;
 
     public ClinicalEncounter() {
     }
@@ -104,6 +118,11 @@ public class ClinicalEncounter extends BaseEntity {
 
     public void setClinic(Clinic clinic) {
         this.clinic = clinic;
+        this.clinicId = clinic == null ? null : clinic.getClinicId();
+    }
+
+    public UUID getClinicId() {
+        return clinicId;
     }
 
     public OffsetDateTime getStartedAt() {
@@ -146,11 +165,19 @@ public class ClinicalEncounter extends BaseEntity {
         this.clinicalNote = clinicalNote;
     }
 
-    public String getStatus() {
+    public String getFollowUp() {
+        return followUp;
+    }
+
+    public void setFollowUp(String followUp) {
+        this.followUp = followUp;
+    }
+
+    public EncounterStatus getStatus() {
         return status;
     }
 
-    public void setStatus(String status) {
+    public void setStatus(EncounterStatus status) {
         this.status = status;
     }
 }

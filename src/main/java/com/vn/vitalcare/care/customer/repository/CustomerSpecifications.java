@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.customer.repository;
 
 import com.vn.vitalcare.entity.Appointment;
+import com.vn.vitalcare.entity.ClinicalEncounter;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.CustomerStatus;
 import com.vn.vitalcare.entity.MonitoringAssignment;
@@ -61,8 +62,8 @@ public final class CustomerSpecifications {
     }
 
     /**
-     * The customers a clinic serves: booked there at least once, or followed
-     * by somebody who works there.
+     * The customers a clinic serves: booked there at least once, seen there,
+     * or followed by somebody who works there.
      */
     public static Specification<Customer> ofClinic(UUID clinicId) {
         return (root, query, cb) -> {
@@ -81,7 +82,14 @@ public final class CustomerSpecifications {
                     cb.isNull(assignment.get("unassignedAt")),
                     cb.isNull(assignment.get("deletedAt")));
 
-            return cb.or(cb.exists(booked), cb.exists(followed));
+            Subquery<Long> seen = query.subquery(Long.class);
+            Root<ClinicalEncounter> encounter = seen.from(ClinicalEncounter.class);
+            seen.select(encounter.get("id")).where(
+                    cb.equal(encounter.get("customer"), root),
+                    cb.equal(encounter.get("clinicId"), clinicId),
+                    cb.isNull(encounter.get("deletedAt")));
+
+            return cb.or(cb.exists(booked), cb.exists(followed), cb.exists(seen));
         };
     }
 
@@ -97,7 +105,14 @@ public final class CustomerSpecifications {
             any.select(appointment.get("id")).where(
                     cb.equal(appointment.get("customer"), root),
                     cb.isNull(appointment.get("deletedAt")));
-            return cb.not(cb.exists(any));
+            // Seen somewhere without booking -- a walk-in -- is that clinic's
+            // too, not everybody's: their record now holds health data.
+            Subquery<Long> anyVisit = query.subquery(Long.class);
+            Root<ClinicalEncounter> encounter = anyVisit.from(ClinicalEncounter.class);
+            anyVisit.select(encounter.get("id")).where(
+                    cb.equal(encounter.get("customer"), root),
+                    cb.isNull(encounter.get("deletedAt")));
+            return cb.and(cb.not(cb.exists(any)), cb.not(cb.exists(anyVisit)));
         };
         return ofClinic(clinicId).or(unbooked);
     }

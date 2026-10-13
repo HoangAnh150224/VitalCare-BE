@@ -67,6 +67,13 @@ public final class Permissions {
     public static final String CUSTOMERS_ASSIGN_STAFF = "customers:assign_staff";
     public static final String MY_PATIENTS_READ = "my_patients:read";
 
+    // Seeded by 024. The visit and the record it adds to are the Doctor's and
+    // Healthcare Staff's (SRS 3.1.3), not the clinic's or system's administrators'.
+    public static final String CLINICAL_ENCOUNTERS_READ = "clinical_encounters:read";
+    public static final String CLINICAL_ENCOUNTERS_WRITE = "clinical_encounters:write";
+    public static final String MEDICAL_RECORDS_READ = "medical_records:read";
+    public static final String MEDICAL_RECORDS_WRITE = "medical_records:write";
+
     // Seeded by 018, ADMIN only: a customer's or a member of staff's own
     // screens, seen read-only. Every endpoint behind it is a GET.
     public static final String VIEW_AS_READ = "view_as:read";
