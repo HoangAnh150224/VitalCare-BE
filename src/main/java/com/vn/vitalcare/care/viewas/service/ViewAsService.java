@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.viewas.service;
 
 import com.vn.vitalcare.care.assignment.dto.MyPatientResponse;
+import com.vn.vitalcare.care.device.dto.DeviceResponse;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.List;
@@ -21,6 +22,18 @@ public interface ViewAsService {
 
     /** A customer's "my appointments"; a missing customer answers 404. */
     Page<Appointment> customerAppointments(Long customerId, ListParams params);
+
+    /**
+     * The front desk's list of registered visits, as the desk sees it. Read
+     * outside the administrator's own row-level scope, which holds no
+     * appointments (SRS 3.1.3): looking over a role's shoulder is what
+     * {@code view_as:read} is for. {@code clinicId} in {@code params} narrows
+     * it to one receptionist's clinic.
+     */
+    Page<Appointment> frontDeskAppointments(ListParams params);
+
+    /** The front desk's device list, with who wears each; on the same footing. */
+    List<DeviceResponse> frontDeskDevices(ListParams params, long[] total);
 
     /** One of a customer's appointments; somebody else's appointment answers 404, as it does for them. */
     Appointment customerAppointment(Long customerId, Long appointmentId);

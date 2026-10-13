@@ -10,6 +10,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vn.vitalcare.care.ClinicRowLevel;
+import com.vn.vitalcare.care.device.service.DeviceService;
 import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.care.assignment.dto.MyPatientResponse;
@@ -59,7 +61,8 @@ class ViewAsControllerTest {
         careTeams = mock(MonitoringAssignmentRepository.class);
         MyPatientsService myPatients =
                 new MyPatientsServiceImpl(employees, careTeams, mock(DeviceAssignmentRepository.class));
-        controller = new ViewAsController(new ViewAsServiceImpl(customers, appointments, employees, myPatients));
+        controller = new ViewAsController(new ViewAsServiceImpl(customers, appointments, employees, myPatients,
+                mock(DeviceService.class), ClinicRowLevel.unrestricted()));
     }
 
     @Test

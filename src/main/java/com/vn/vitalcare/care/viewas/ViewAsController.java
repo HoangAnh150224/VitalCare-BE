@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.viewas;
 
 import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
 import com.vn.vitalcare.care.assignment.dto.MyPatientResponse;
+import com.vn.vitalcare.care.device.dto.DeviceResponse;
 import com.vn.vitalcare.care.viewas.service.ViewAsService;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.share.security.Permissions;
@@ -48,6 +49,24 @@ public class ViewAsController {
             @PathVariable Long customerId, @RequestParam MultiValueMap<String, String> query) {
         Page<Appointment> page = service.customerAppointments(customerId, new ListParams(query));
         return ListResponse.of(page.map(AppointmentResponse::forCustomer).getContent(), page.getTotalElements());
+    }
+
+    /** The front desk's registered visits; {@code clinicId} narrows them to one receptionist's clinic. */
+    @GetMapping("/appointments")
+    @PreAuthorize("hasAuthority('" + Permissions.VIEW_AS_READ + "')")
+    public ResponseEntity<List<AppointmentResponse>> frontDeskAppointments(
+            @RequestParam MultiValueMap<String, String> query) {
+        Page<Appointment> page = service.frontDeskAppointments(new ListParams(query));
+        return ListResponse.of(page.map(AppointmentResponse::from).getContent(), page.getTotalElements());
+    }
+
+    /** The front desk's devices. */
+    @GetMapping("/devices")
+    @PreAuthorize("hasAuthority('" + Permissions.VIEW_AS_READ + "')")
+    public ResponseEntity<List<DeviceResponse>> frontDeskDevices(@RequestParam MultiValueMap<String, String> query) {
+        long[] total = new long[1];
+        List<DeviceResponse> rows = service.frontDeskDevices(new ListParams(query), total);
+        return ListResponse.of(rows, total[0]);
     }
 
     /** One of a customer's appointment slips. */
