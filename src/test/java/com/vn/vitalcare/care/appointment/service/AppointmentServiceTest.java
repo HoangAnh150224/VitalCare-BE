@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
+import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.appointment.service.impl.AppointmentServiceImpl;
@@ -309,6 +310,39 @@ class AppointmentServiceTest {
     void customerBookingIgnoresStaffScope() {
         scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
         assertEquals(ScheduleFixture.CLINIC_ID, service.bookOwn(customer, booking(TODAY, "14:00")).getClinicId());
+    }
+
+    @Test
+    @DisplayName("an appointment moves to another free slot and keeps its code")
+    void reschedules() {
+        Appointment appointment = stored(appointmentOn(TODAY.plusDays(2)));
+        appointment.setBookingCode("K7M29QXA");
+
+        Appointment moved = service.reschedule(1L, new RescheduleRequest(TODAY.plusDays(3), LocalTime.of(8, 0)));
+
+        assertEquals(TODAY.plusDays(3), moved.getAppointmentDate());
+        assertEquals(LocalTime.of(8, 0), moved.getStartTime());
+        assertEquals(LocalTime.of(8, 30), moved.getEndTime());
+        assertEquals("K7M29QXA", moved.getBookingCode());
+        assertEquals(AppointmentStatus.SCHEDULED, moved.getStatus());
+    }
+
+    @Test
+    @DisplayName("BR-26: no rescheduling within two hours of the start, to the time it has, or off the clinic's slots")
+    void rescheduleRules() {
+        Appointment later = stored(appointmentOn(TODAY.plusDays(2)));
+        assertField("startTime",
+                () -> service.reschedule(1L, new RescheduleRequest(TODAY.plusDays(2), LocalTime.of(14, 0))));
+        assertField("startTime",
+                () -> service.reschedule(1L, new RescheduleRequest(TODAY.plusDays(2), LocalTime.of(14, 10))));
+        assertEquals(LocalTime.of(14, 0), later.getStartTime());
+
+        // NOW is 10:00 at the clinic; 11:00 today is one hour away.
+        Appointment soon = stored(appointmentOn(TODAY));
+        soon.setStartTime(LocalTime.of(11, 0));
+        assertThrows(ConflictException.class,
+                () -> service.reschedule(1L, new RescheduleRequest(TODAY.plusDays(1), LocalTime.of(8, 0))));
+        assertEquals(TODAY, soon.getAppointmentDate());
     }
 
     private static void assertField(String field, org.junit.jupiter.api.function.Executable call) {
