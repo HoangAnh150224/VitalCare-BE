@@ -4,12 +4,11 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * An appointment's state.
+ * Where a registered visit stands.
  *
- * <p>Both ways out of {@link #SCHEDULED} are final: a checked-in appointment
- * cannot be cancelled after the fact, and a cancelled one cannot be checked in
- * — the customer books again. Completion and no-show belong to the encounter
- * workflow and are added with it.
+ * <p>Registered, then checked in at the desk, then completed. The two other
+ * ways out of {@link #SCHEDULED} are final: a cancelled visit and one the
+ * patient never came to both stay as they are — the patient registers again.
  */
 public enum AppointmentStatus {
 
@@ -17,7 +16,11 @@ public enum AppointmentStatus {
 
     CHECKED_IN("checked_in"),
 
-    CANCELLED("cancelled");
+    COMPLETED("completed"),
+
+    CANCELLED("cancelled"),
+
+    NO_SHOW("no_show");
 
     private final String value;
 

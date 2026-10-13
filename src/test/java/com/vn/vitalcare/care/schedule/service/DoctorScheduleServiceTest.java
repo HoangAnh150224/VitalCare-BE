@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.ClinicRowLevel;
+import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.schedule.dto.DoctorScheduleRequest;
 import com.vn.vitalcare.care.schedule.repository.DoctorScheduleRepository;
@@ -17,7 +18,6 @@ import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.DoctorSchedule;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
-import com.vn.vitalcare.entity.ScheduleStatus;
 import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
@@ -39,6 +39,7 @@ class DoctorScheduleServiceTest {
 
     private DoctorScheduleRepository repository;
     private EmployeeService employees;
+    private AppointmentRepository appointments;
     private DoctorScheduleService service;
     private Employee doctor;
     private Employee otherDoctor;
@@ -62,18 +63,19 @@ class DoctorScheduleServiceTest {
         ClinicService clinics = mock(ClinicService.class);
         when(clinics.today()).thenReturn(TODAY);
 
-        service = new DoctorScheduleServiceImpl(repository, employees, clinics, new ClinicRowLevel(() -> CLINIC));
+        appointments = mock(AppointmentRepository.class);
+        service = new DoctorScheduleServiceImpl(
+                repository, appointments, employees, clinics, new ClinicRowLevel(() -> CLINIC));
     }
 
     @Test
-    @DisplayName("a doctor's new period is their own, working unless said otherwise; they cannot add one for a colleague")
+    @DisplayName("a doctor's new period is their own; they cannot add one for a colleague")
     void doctorManagesOwn() {
         when(employees.getForCurrentUser()).thenReturn(doctor);
 
         DoctorSchedule created = service.create(period(null, "08:00", "12:00"));
         assertEquals(doctor, created.getEmployee());
         assertEquals(CLINIC, created.getClinicId());
-        assertEquals(ScheduleStatus.WORKING, created.getStatus());
 
         assertField("employeeId", () -> service.create(period(12L, "08:00", "12:00")));
     }
@@ -97,7 +99,12 @@ class DoctorScheduleServiceTest {
         assertField("endTime", () -> service.create(period(null, "12:00", "08:00")));
         assertField("endTime", () -> service.create(period(null, "08:00", "08:00")));
         assertField("workDate", () -> service.create(
-                new DoctorScheduleRequest(null, TODAY.minusDays(1), LocalTime.of(8, 0), LocalTime.of(12, 0), null, null)));
+                new DoctorScheduleRequest(null, TODAY.minusDays(1), LocalTime.of(8, 0), LocalTime.of(12, 0), null)));
+
+        // SRS 3.11.7: a period covering a visit somebody already registered is refused.
+        when(appointments.countExpectedBetween(any(), any(), any(), any())).thenReturn(2L);
+        assertThrows(ConflictException.class, () -> service.create(period(null, "08:00", "12:00")));
+        when(appointments.countExpectedBetween(any(), any(), any(), any())).thenReturn(0L);
 
         when(repository.exists(any(Specification.class))).thenReturn(true);
         assertThrows(ConflictException.class, () -> service.create(period(null, "08:00", "12:00")));
@@ -124,7 +131,7 @@ class DoctorScheduleServiceTest {
 
     private static DoctorScheduleRequest period(Long employeeId, String start, String end) {
         return new DoctorScheduleRequest(employeeId, TODAY.plusDays(1), LocalTime.parse(start), LocalTime.parse(end),
-                null, null);
+                null);
     }
 
     private static Employee staff(Long id, StaffType type, Clinic clinic) {

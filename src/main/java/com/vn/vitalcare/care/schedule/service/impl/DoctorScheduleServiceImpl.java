@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.schedule.service.impl;
 
+import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.schedule.dto.DoctorScheduleRequest;
 import com.vn.vitalcare.care.schedule.repository.DoctorScheduleRepository;
@@ -9,7 +10,6 @@ import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.entity.DoctorSchedule;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
-import com.vn.vitalcare.entity.ScheduleStatus;
 import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
@@ -32,7 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class DoctorScheduleServiceImpl implements DoctorScheduleService {
 
-    private static final Set<String> SORTABLE = Set.of("id", "workDate", "startTime", "status");
+    private static final Set<String> SORTABLE = Set.of("id", "workDate", "startTime");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.asc("workDate"), Sort.Order.asc("startTime"));
 
@@ -40,12 +40,15 @@ public class DoctorScheduleServiceImpl implements DoctorScheduleService {
     private final EmployeeService employeeService;
     private final ClinicService clinicService;
     private final RowLevelSecurity rowLevel;
+    private final AppointmentRepository appointments;
 
     public DoctorScheduleServiceImpl(DoctorScheduleRepository repository,
+                                     AppointmentRepository appointments,
                                      EmployeeService employeeService,
                                      ClinicService clinicService,
                                      RowLevelSecurity rowLevel) {
         this.repository = repository;
+        this.appointments = appointments;
         this.employeeService = employeeService;
         this.clinicService = clinicService;
         this.rowLevel = rowLevel;
@@ -72,7 +75,7 @@ public class DoctorScheduleServiceImpl implements DoctorScheduleService {
     @Override
     @Transactional
     public DoctorSchedule create(DoctorScheduleRequest request) {
-        Employee doctor = doctorFor(request.employeeId());
+        Employee doctor = manageableDoctor(request.employeeId());
         if (doctor.getClinic() == null) {
             throw new ConflictException("That doctor's staff record is not tied to a clinic");
         }
@@ -111,7 +114,8 @@ public class DoctorScheduleServiceImpl implements DoctorScheduleService {
      * doctor a clinic administrator names otherwise -- read through the
      * "employees" scope, so another clinic's doctor is not found.
      */
-    private Employee doctorFor(Long employeeId) {
+    @Override
+    public Employee manageableDoctor(Long employeeId) {
         Employee caller = employeeService.getForCurrentUser();
         if (caller.getStaffType() == StaffType.DOCTOR) {
             if (employeeId != null && !employeeId.equals(caller.getId())) {
@@ -147,18 +151,24 @@ public class DoctorScheduleServiceImpl implements DoctorScheduleService {
 
     @Override
     public Predicate<DoctorSchedule> changeableByCaller() {
+        Predicate<Employee> manageable = manageableByCaller();
+        return schedule -> manageable.test(schedule.getEmployee());
+    }
+
+    @Override
+    public Predicate<Employee> manageableByCaller() {
         Employee caller;
         try {
             caller = employeeService.getForCurrentUser();
         } catch (ConflictException e) {
             // No staff record: not a doctor, so the scope is the whole answer.
-            return schedule -> true;
+            return doctor -> true;
         }
         if (caller.getStaffType() != StaffType.DOCTOR) {
-            return schedule -> true;
+            return doctor -> true;
         }
         Long own = caller.getId();
-        return schedule -> own.equals(schedule.getEmployee().getId());
+        return doctor -> own.equals(doctor.getId());
     }
 
     private void apply(DoctorSchedule schedule, DoctorScheduleRequest request) {
@@ -169,17 +179,23 @@ public class DoctorScheduleServiceImpl implements DoctorScheduleService {
         if (!request.workDate().equals(schedule.getWorkDate()) && request.workDate().isBefore(clinicService.today())) {
             throw new FieldValidationException("workDate", "The date cannot be in the past");
         }
-        // ponytail: checked, not locked -- two saves at the same instant could
-        // both pass. An exclusion constraint on (employee, date, time range) is
-        // the fix if schedules are ever edited concurrently.
+        // The lock a registration takes: no visit is given a turn in this
+        // period while it is being blocked, and two saves cannot both pass.
+        employeeService.lockDoctor(schedule.getEmployee().getId());
         if (repository.exists(DoctorScheduleSpecifications.overlapping(schedule.getEmployee().getId(),
                 request.workDate(), request.startTime(), request.endTime(), schedule.getId()))) {
             throw new ConflictException("That doctor already has a period overlapping this one on that day");
         }
+        // SRS 3.11.7: existing visits in the affected time are checked before saving.
+        long affected = appointments.countExpectedBetween(schedule.getEmployee().getId(), request.workDate(),
+                request.startTime(), request.endTime());
+        if (affected > 0) {
+            throw new ConflictException(
+                    affected + " registered visit(s) fall in that time; move or cancel them first");
+        }
         schedule.setWorkDate(request.workDate());
         schedule.setStartTime(request.startTime());
         schedule.setEndTime(request.endTime());
-        schedule.setStatus(request.status() == null ? ScheduleStatus.WORKING : request.status());
         schedule.setNote(blankToNull(request.note()));
     }
 

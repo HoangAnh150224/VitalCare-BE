@@ -140,6 +140,10 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         encounter.setStatus(EncounterStatus.COMPLETED);
         encounter.setEndedAt(OffsetDateTime.now(clock));
         rowLevel.checkWritable(encounter);
+        // The visit this encounter documents is over too.
+        if (encounter.getAppointment() != null) {
+            appointmentService.completeForEncounter(encounter.getAppointment().getId());
+        }
         return repository.persist(encounter);
     }
 

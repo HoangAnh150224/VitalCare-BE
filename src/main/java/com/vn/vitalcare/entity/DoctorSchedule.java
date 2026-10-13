@@ -4,8 +4,6 @@ import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelResource;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -17,7 +15,10 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
 
-/** One period of one doctor's day: a shift they work, or time they are off. */
+/**
+ * A period of one day in which a doctor takes no patients — the "blocked time"
+ * of a doctor's schedule. The week they do work is {@link DoctorWorkingHours}.
+ */
 @Entity
 @RowLevelResource("doctor_schedules")
 @Table(name = "doctor_schedule")
@@ -48,10 +49,6 @@ public class DoctorSchedule extends BaseEntity {
 
     @Column(name = "end_time")
     private LocalTime endTime;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
-    private ScheduleStatus status = ScheduleStatus.WORKING;
 
     @Column(name = "note")
     private String note;
@@ -106,14 +103,6 @@ public class DoctorSchedule extends BaseEntity {
 
     public void setEndTime(LocalTime endTime) {
         this.endTime = endTime;
-    }
-
-    public ScheduleStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(ScheduleStatus status) {
-        this.status = status;
     }
 
     public String getNote() {

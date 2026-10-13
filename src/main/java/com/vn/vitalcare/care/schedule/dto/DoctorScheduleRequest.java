@@ -1,13 +1,12 @@
 package com.vn.vitalcare.care.schedule.dto;
 
-import com.vn.vitalcare.entity.ScheduleStatus;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
 /**
- * {@code POST} and {@code PATCH /doctor_schedules}: one period of a doctor's day.
+ * {@code POST} and {@code PATCH /doctor_schedules}: a period a doctor blocks.
  *
  * <p>{@code employeeId} is whose it is, and counts on create only: a doctor
  * leaves it out (it is theirs), a clinic administrator names the doctor. A
@@ -25,9 +24,7 @@ public record DoctorScheduleRequest(
         @NotNull(message = "An end time is required")
         LocalTime endTime,
 
-        /** Working when left out. */
-        ScheduleStatus status,
-
-        @Size(max = 255, message = "Note must be at most 255 characters")
+        /** Why the doctor takes nobody then; shown where the day's turns are missing. */
+        @Size(max = 255, message = "Reason must be at most 255 characters")
         String note) {
 }

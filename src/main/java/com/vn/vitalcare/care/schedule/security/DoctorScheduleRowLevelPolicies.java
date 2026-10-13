@@ -1,7 +1,6 @@
 package com.vn.vitalcare.care.schedule.security;
 
 import com.vn.vitalcare.entity.DoctorSchedule;
-import com.vn.vitalcare.entity.ScheduleStatus;
 import com.vn.vitalcare.share.security.rowlevel.DefaultScope;
 import com.vn.vitalcare.share.security.rowlevel.FieldDescriptor;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelPolicySet;
@@ -11,8 +10,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
- * Doctor schedules under row-level management: a shift belongs to the clinic
- * it is worked at (SRS BR-04). {@code NONE} by default, for the reason given
+ * A doctor's blocked time under row-level management: it belongs to the
+ * clinic the doctor works at (SRS BR-04). {@code NONE} by default, for the reason given
  * on {@code EmployeeRowLevelPolicies}.
  */
 @Component
@@ -37,8 +36,7 @@ public class DoctorScheduleRowLevelPolicies implements RowLevelPolicySet<DoctorS
     public List<FieldDescriptor> fields() {
         return List.of(
                 FieldDescriptor.id("id"),
-                FieldDescriptor.column("clinicId", UUID.class),
-                FieldDescriptor.column("status", ScheduleStatus.class));
+                FieldDescriptor.column("clinicId", UUID.class));
     }
 
     @Override

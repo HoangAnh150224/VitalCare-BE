@@ -59,6 +59,15 @@ public class Appointment extends BaseEntity {
     @Column(name = "end_time")
     private LocalTime endTime;
 
+    /**
+     * The number called at the doctor's door: per doctor, per day, issued when
+     * the visit is registered. {@link #startTime} and {@link #endTime} are
+     * about when that number is expected, not a time anybody chose. Null on
+     * rows from before visits were registered this way.
+     */
+    @Column(name = "queue_number")
+    private Integer queueNumber;
+
     @Column(name = "reason")
     private String reason;
 
@@ -98,6 +107,16 @@ public class Appointment extends BaseEntity {
         this.status = AppointmentStatus.CHECKED_IN;
         this.checkedInById = actorId;
         this.checkedInAt = when;
+    }
+
+    /** The visit happened. Only valid from {@link AppointmentStatus#CHECKED_IN}; the service checks. */
+    public void complete() {
+        this.status = AppointmentStatus.COMPLETED;
+    }
+
+    /** The patient never arrived. Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    public void markNoShow() {
+        this.status = AppointmentStatus.NO_SHOW;
     }
 
     /** Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
@@ -163,6 +182,14 @@ public class Appointment extends BaseEntity {
 
     public void setEndTime(LocalTime endTime) {
         this.endTime = endTime;
+    }
+
+    public Integer getQueueNumber() {
+        return queueNumber;
+    }
+
+    public void setQueueNumber(Integer queueNumber) {
+        this.queueNumber = queueNumber;
     }
 
     public String getReason() {

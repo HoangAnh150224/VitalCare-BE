@@ -1,7 +1,6 @@
 package com.vn.vitalcare.care.schedule.repository;
 
 import com.vn.vitalcare.entity.DoctorSchedule;
-import com.vn.vitalcare.entity.ScheduleStatus;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.web.ListParams;
 import java.time.LocalDate;
@@ -24,12 +23,6 @@ public final class DoctorScheduleSpecifications {
         for (ListParams.Criterion criterion : params.filters()) {
             try {
                 switch (criterion.field()) {
-                    case "status" -> {
-                        ScheduleStatus status = ScheduleStatus.from(criterion.value());
-                        if (status != null) {
-                            specs.add((root, query, cb) -> cb.equal(root.get("status"), status));
-                        }
-                    }
                     case "employee.id", "employeeId" -> {
                         Long employeeId = Long.valueOf(criterion.value().trim());
                         specs.add((root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId));
@@ -47,7 +40,7 @@ public final class DoctorScheduleSpecifications {
                     }
                 }
             } catch (IllegalArgumentException | DateTimeParseException e) {
-                // A value that cannot be a status, an id or a date matches nothing.
+                // A value that cannot be an id or a date matches nothing.
                 specs.add((root, query, cb) -> cb.disjunction());
             }
         }
@@ -60,6 +53,19 @@ public final class DoctorScheduleSpecifications {
             specs.add((root, query, cb) -> root.get("id").in(ids));
         }
         return Specification.allOf(specs);
+    }
+
+    /**
+     * Everything a doctor has blocked on one day.
+     *
+     * <p>Not scoped: read to work out how many patients the day holds, for
+     * whoever is registering a visit — a customer holds no scope here.
+     */
+    public static Specification<DoctorSchedule> onDay(Long employeeId, LocalDate date) {
+        return (root, query, cb) -> cb.and(
+                cb.isNull(root.get("deletedAt")),
+                cb.equal(root.get("employee").get("id"), employeeId),
+                cb.equal(root.get("workDate"), date));
     }
 
     /**

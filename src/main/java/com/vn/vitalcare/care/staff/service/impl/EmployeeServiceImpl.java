@@ -1,5 +1,7 @@
 package com.vn.vitalcare.care.staff.service.impl;
 
+import java.util.Optional;
+import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.staff.dto.EmployeeCreateRequest;
@@ -221,6 +223,29 @@ public class EmployeeServiceImpl implements EmployeeService {
      * asked of the database separately, after the lock is held -- the row it
      * answers about is the one this transaction now owns.
      */
+    @Override
+    public List<Employee> doctorsOf(UUID clinicId) {
+        return repository.findByClinicIdAndStaffTypeAndStatusAndDeletedAtIsNullOrderByIdAsc(
+                clinicId, StaffType.DOCTOR, EmployeeStatus.ACTIVE);
+    }
+
+    @Override
+    public Employee doctor(Long id) {
+        return activeDoctor(repository.findByIdAndDeletedAtIsNull(id), id);
+    }
+
+    @Override
+    @Transactional
+    public Employee lockDoctor(Long id) {
+        return activeDoctor(repository.findForUpdate(id), id);
+    }
+
+    private static Employee activeDoctor(Optional<Employee> found, Long id) {
+        return found
+                .filter(row -> row.getStaffType() == StaffType.DOCTOR && row.getStatus() == EmployeeStatus.ACTIVE)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor", id));
+    }
+
     private Employee lock(Long id, Action action) {
         Employee row = repository.findForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
