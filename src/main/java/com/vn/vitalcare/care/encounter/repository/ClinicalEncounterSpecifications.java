@@ -31,6 +31,15 @@ public final class ClinicalEncounterSpecifications {
                     specs.add((root, query, cb) -> cb.disjunction());
                 }
             }
+            // The encounter of one registered visit: "related encounter" on an appointment's page.
+            if ("appointment.id".equals(criterion.field()) || "appointmentId".equals(criterion.field())) {
+                try {
+                    Long appointmentId = Long.valueOf(criterion.value().trim());
+                    specs.add((root, query, cb) -> cb.equal(root.get("appointment").get("id"), appointmentId));
+                } catch (NumberFormatException e) {
+                    specs.add((root, query, cb) -> cb.disjunction());
+                }
+            }
             // One patient's encounters: the history panel on a patient's page.
             if ("customer.id".equals(criterion.field()) || "customerId".equals(criterion.field())) {
                 try {

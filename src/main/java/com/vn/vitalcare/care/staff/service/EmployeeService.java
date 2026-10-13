@@ -5,6 +5,7 @@ import com.vn.vitalcare.care.staff.dto.EmployeePatchRequest;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 
 /**
@@ -36,4 +37,19 @@ public interface EmployeeService {
     Employee lockForUpdate(Long id);
 
     Employee update(Long id, EmployeePatchRequest request);
+
+    /**
+     * A clinic's active doctors — who a visit can be registered with.
+     *
+     * <p>Outside the "employees" row-level scope on purpose, like the two
+     * below: a customer registering a visit holds no staff scope, and that a
+     * clinic has these doctors is what the clinic tells everybody.
+     */
+    List<Employee> doctorsOf(UUID clinicId);
+
+    /** One active doctor; anybody else, or nobody, answers as not found. */
+    Employee doctor(Long id);
+
+    /** {@link #doctor}, locked for the rest of the transaction — taken while a queue number is issued. */
+    Employee lockDoctor(Long id);
 }

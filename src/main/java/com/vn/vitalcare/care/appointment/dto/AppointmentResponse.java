@@ -26,6 +26,10 @@ public record AppointmentResponse(
         String bookingCode,
         CustomerSummary customer,
         ClinicSummary clinic,
+        /** Who the visit is with; null on rows from before a doctor was required. */
+        DoctorSummary doctor,
+        /** The number called at the doctor's door; the times below are about when. */
+        Integer queueNumber,
         LocalDate appointmentDate,
         LocalTime startTime,
         LocalTime endTime,
@@ -52,6 +56,9 @@ public record AppointmentResponse(
     public record ClinicSummary(UUID id, String name) {
     }
 
+    public record DoctorSummary(Long id, String fullName, String specialty) {
+    }
+
     /**
      * The same appointment as its customer may see it: without the front
      * desk's internal note, which is written for staff and nobody else.
@@ -59,7 +66,8 @@ public record AppointmentResponse(
     public static AppointmentResponse forCustomer(Appointment appointment) {
         AppointmentResponse full = from(appointment);
         return new AppointmentResponse(
-                full.id(), full.bookingCode(), full.customer(), full.clinic(), full.appointmentDate(), full.startTime(),
+                full.id(), full.bookingCode(), full.customer(), full.clinic(), full.doctor(), full.queueNumber(),
+                full.appointmentDate(), full.startTime(),
                 full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
                 full.cancelledAt(), full.cancelReason(), full.createdAt(), Map.of());
     }
@@ -73,6 +81,7 @@ public record AppointmentResponse(
         var customer = appointment.getCustomer();
         var user = customer.getUser();
         var clinic = appointment.getClinic();
+        var doctor = appointment.getEmployee();
         return new AppointmentResponse(
                 appointment.getId(),
                 appointment.getBookingCode(),
@@ -83,6 +92,9 @@ public record AppointmentResponse(
                         user.getPhone(),
                         customer.getStatus()),
                 new ClinicSummary(clinic.getClinicId(), clinic.getClinicName()),
+                doctor == null ? null
+                        : new DoctorSummary(doctor.getId(), doctor.getUser().getFullName(), doctor.getSpecialty()),
+                appointment.getQueueNumber(),
                 appointment.getAppointmentDate(),
                 appointment.getStartTime(),
                 appointment.getEndTime(),

@@ -1,10 +1,13 @@
 package com.vn.vitalcare.care.staff.repository;
 
 import com.vn.vitalcare.entity.Employee;
+import com.vn.vitalcare.entity.EmployeeStatus;
+import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.share.data.SecuredRepository;
 import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -44,6 +47,18 @@ public interface EmployeeRepository extends SecuredRepository<Employee, Long> {
      */
     // Not scoped here -- a locking query takes no specification. The service
     // checks the row-level scope on the locked row before using it.
+    /**
+     * Not scoped: a clinic's doctors are what anybody registering a visit
+     * chooses from, a customer included, and a customer holds no staff scope.
+     */
+    @EntityGraph(attributePaths = "user")
+    List<Employee> findByClinicIdAndStaffTypeAndStatusAndDeletedAtIsNullOrderByIdAsc(
+            UUID clinicId, StaffType staffType, EmployeeStatus status);
+
+    /** Not scoped, for the same reason: the one doctor a registration names. */
+    @EntityGraph(attributePaths = "user")
+    Optional<Employee> findByIdAndDeletedAtIsNull(Long id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Employee e join fetch e.user where e.id = :id and e.deletedAt is null")
     Optional<Employee> findForUpdate(@Param("id") Long id);

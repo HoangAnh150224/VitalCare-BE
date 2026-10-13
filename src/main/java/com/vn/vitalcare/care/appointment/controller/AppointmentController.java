@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.appointment.controller;
 
 import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
+import com.vn.vitalcare.care.appointment.dto.AppointmentUpdateRequest;
 import com.vn.vitalcare.care.appointment.dto.CancelAppointmentRequest;
 import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -90,6 +92,25 @@ public class AppointmentController {
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_CHECK_IN + "')")
     public AppointmentResponse checkIn(@PathVariable Long id) {
         return AppointmentResponse.from(service.checkIn(id), rowLevel);
+    }
+
+    /** Corrects the reason and the desk's note. */
+    @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse update(@PathVariable Long id, @Valid @RequestBody AppointmentUpdateRequest request) {
+        return AppointmentResponse.from(service.update(id, request), rowLevel);
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse complete(@PathVariable Long id) {
+        return AppointmentResponse.from(service.complete(id), rowLevel);
+    }
+
+    @PostMapping("/{id}/no-show")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse noShow(@PathVariable Long id) {
+        return AppointmentResponse.from(service.markNoShow(id), rowLevel);
     }
 
     @PostMapping("/{id}/cancel")

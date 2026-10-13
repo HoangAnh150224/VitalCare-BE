@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.appointment.service;
 
+import com.vn.vitalcare.care.appointment.dto.AppointmentUpdateRequest;
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
 import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
@@ -10,8 +11,9 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 
 /**
- * The appointment book: booking, cancelling, and the check-in that can turn a
- * neutral customer into a patient.
+ * Registered visits: a customer registers with a doctor for a day and gets the
+ * day's next queue number; the desk checks them in, which can turn a neutral
+ * customer into a patient; the visit is completed, or cancelled, or missed.
  */
 public interface AppointmentService {
 
@@ -38,11 +40,21 @@ public interface AppointmentService {
      */
     Appointment getOwn(Customer customer, Long id);
 
-    /** The front desk booking for a customer. Booking never activates anybody. */
+    /**
+     * The front desk registering a visit for a customer. Registering never
+     * activates anybody.
+     *
+     * <p>Refused when the doctor does not see patients that day, the day is
+     * full or already over, the date is past or beyond the booking window, or
+     * the customer is already registered with that doctor that day.
+     */
     Appointment bookFor(StaffBookingRequest request);
 
-    /** A customer booking for themselves. Booking never activates anybody. */
+    /** A customer registering for themselves, under the same rules. */
     Appointment bookOwn(Customer customer, BookingRequest request);
+
+    /** Corrects the reason and the desk's note; who, with whom and when change by {@link #reschedule}. */
+    Appointment update(Long id, AppointmentUpdateRequest request);
 
     /**
      * Records the customer's arrival, and makes a neutral customer a patient.
@@ -59,16 +71,30 @@ public interface AppointmentService {
      */
     Appointment checkIn(Long id);
 
+    /** The visit happened. Only a checked-in appointment completes. */
+    Appointment complete(Long id);
+
+    /**
+     * The same, as the consequence of the visit's encounter being completed —
+     * not an act of the desk's, so outside the "appointments" scope: the
+     * clinician completing an encounter may hold no appointment permission.
+     * Does nothing unless the appointment is checked in.
+     */
+    void completeForEncounter(Long appointmentId);
+
+    /** The patient never came. Only from registered, and not before the day itself. */
+    Appointment markNoShow(Long id);
+
     /** The clinic cancelling a customer's appointment; the reason is kept and shown to the customer. */
     Appointment cancel(Long id, String reason);
 
     Appointment cancelOwn(Customer customer, Long id);
 
     /**
-     * Moves an appointment to another of its clinic's slots, under the rules a
-     * booking and a cancellation already have: still scheduled, at least two
-     * hours ahead (SRS BR-26), and a slot with a place left. The booking code
-     * stays, so the slip the customer holds is still theirs.
+     * Moves a visit to another day or another doctor, where it gets a new
+     * queue number, under the rules a registration and a cancellation already
+     * have: still registered, and at least two hours before it was expected
+     * (SRS BR-26). The code stays, so the slip the customer holds is still theirs.
      */
     Appointment reschedule(Long id, RescheduleRequest request);
 

@@ -34,6 +34,7 @@ public final class AppointmentSpecifications {
                 // Filtered through the nested id the response reports.
                 case "customer.id", "customerId" -> customerSpec(criterion);
                 case "clinic.id", "clinicId" -> clinicSpec(criterion);
+                case "doctor.id", "employee.id", "employeeId" -> doctorSpec(criterion);
                 default -> null;
             };
             if (spec != null) {
@@ -66,6 +67,15 @@ public final class AppointmentSpecifications {
     /** Pins a query to one customer's appointments — the customer-facing endpoints. */
     public static Specification<Appointment> ofCustomer(Long customerId) {
         return (root, query, cb) -> cb.equal(root.get("customer").get("id"), customerId);
+    }
+
+    private static Specification<Appointment> doctorSpec(ListParams.Criterion criterion) {
+        try {
+            Long employeeId = Long.valueOf(criterion.value().trim());
+            return (root, query, cb) -> cb.equal(root.get("employee").get("id"), employeeId);
+        } catch (NumberFormatException e) {
+            return (root, query, cb) -> cb.disjunction();
+        }
     }
 
     private static Specification<Appointment> statusSpec(ListParams.Criterion criterion) {
