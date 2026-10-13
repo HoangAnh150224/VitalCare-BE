@@ -221,7 +221,7 @@ class AppointmentServiceTest {
     @DisplayName("a cancelled appointment cannot be checked in")
     void cancelledCannotBeCheckedIn() {
         Appointment appointment = stored(appointmentOn(TODAY));
-        appointment.cancel(null, null);
+        appointment.cancel(null, null, null);
 
         assertThrows(ConflictException.class, () -> service.checkIn(1L));
         assertEquals(CustomerStatus.NEUTRAL, customer.getStatus());
@@ -233,7 +233,7 @@ class AppointmentServiceTest {
         stored(appointmentOn(TODAY));
         service.checkIn(1L);
 
-        assertThrows(ConflictException.class, () -> service.cancel(1L));
+        assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
     }
 
     @Test
@@ -241,7 +241,9 @@ class AppointmentServiceTest {
     void scheduledCancels() {
         stored(appointmentOn(TODAY.plusDays(2)));
 
-        assertEquals(AppointmentStatus.CANCELLED, service.cancel(1L).getStatus());
+        Appointment cancelled = service.cancel(1L, " Bác sĩ nghỉ đột xuất ");
+        assertEquals(AppointmentStatus.CANCELLED, cancelled.getStatus());
+        assertEquals("Bác sĩ nghỉ đột xuất", cancelled.getCancelReason());
     }
 
     @Test
@@ -251,7 +253,7 @@ class AppointmentServiceTest {
         Appointment soon = stored(appointmentOn(TODAY));
         soon.setStartTime(LocalTime.of(11, 0));
 
-        assertThrows(ConflictException.class, () -> service.cancel(1L));
+        assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
         assertEquals(AppointmentStatus.SCHEDULED, soon.getStatus());
     }
 
@@ -276,7 +278,7 @@ class AppointmentServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.get(1L));
         assertThrows(ResourceNotFoundException.class, () -> service.getByCode("K7M29QXA"));
         assertThrows(ResourceNotFoundException.class, () -> service.checkIn(1L));
-        assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L));
+        assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L, "reason"));
         assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
         verify(repository, never()).persist(any());
     }

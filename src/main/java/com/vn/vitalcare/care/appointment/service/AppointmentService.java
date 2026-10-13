@@ -58,7 +58,8 @@ public interface AppointmentService {
      */
     Appointment checkIn(Long id);
 
-    Appointment cancel(Long id);
+    /** The clinic cancelling a customer's appointment; the reason is kept and shown to the customer. */
+    Appointment cancel(Long id, String reason);
 
     Appointment cancelOwn(Customer customer, Long id);
 }

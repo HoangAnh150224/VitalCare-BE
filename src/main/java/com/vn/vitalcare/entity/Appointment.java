@@ -86,6 +86,10 @@ public class Appointment extends BaseEntity {
     @Column(name = "cancelled_by_id")
     private Long cancelledById;
 
+    /** Why it was cancelled. Required from the clinic; a customer cancelling their own gives none. */
+    @Column(name = "cancel_reason", length = 500)
+    private String cancelReason;
+
     public Appointment() {
     }
 
@@ -97,8 +101,9 @@ public class Appointment extends BaseEntity {
     }
 
     /** Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
-    public void cancel(Long actorId, OffsetDateTime when) {
+    public void cancel(Long actorId, OffsetDateTime when, String reason) {
         this.status = AppointmentStatus.CANCELLED;
+        this.cancelReason = reason;
         this.cancelledById = actorId;
         this.cancelledAt = when;
     }
@@ -182,6 +187,10 @@ public class Appointment extends BaseEntity {
 
     public Long getCheckedInById() {
         return checkedInById;
+    }
+
+    public String getCancelReason() {
+        return cancelReason;
     }
 
     public Long getCancelledById() {

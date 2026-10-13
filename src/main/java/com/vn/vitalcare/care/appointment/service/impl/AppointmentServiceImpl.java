@@ -156,18 +156,18 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     @Transactional
-    public Appointment cancel(Long id) {
-        return cancel(find(id, Action.WRITE), true);
+    public Appointment cancel(Long id, String reason) {
+        return cancel(find(id, Action.WRITE), reason.trim(), true);
     }
 
     @Override
     @Transactional
     public Appointment cancelOwn(Customer customer, Long id) {
-        return cancel(getOwn(customer, id), false);
+        return cancel(getOwn(customer, id), null, false);
     }
 
     /** @param byStaff whether the desk cancels it, and so the write policy applies; see {@link #book}. */
-    private Appointment cancel(Appointment appointment, boolean byStaff) {
+    private Appointment cancel(Appointment appointment, String reason, boolean byStaff) {
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
             throw new ConflictException("Only a scheduled appointment can be cancelled");
         }
@@ -176,7 +176,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (LocalDateTime.now(clock.withZone(clinicTimeZone())).isAfter(start.minusHours(2))) {
             throw new ConflictException("An appointment can only be cancelled up to two hours before it starts");
         }
-        appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock), reason);
         if (byStaff) {
             rowLevel.checkWritable(appointment);
         }

@@ -34,6 +34,8 @@ public record AppointmentResponse(
         String note,
         OffsetDateTime checkedInAt,
         OffsetDateTime cancelledAt,
+        /** Why the clinic cancelled it; the customer sees this too. */
+        String cancelReason,
         Instant createdAt,
         /**
          * What the caller may do to this row, from the row-level write and
@@ -59,7 +61,7 @@ public record AppointmentResponse(
         return new AppointmentResponse(
                 full.id(), full.bookingCode(), full.customer(), full.clinic(), full.appointmentDate(), full.startTime(),
                 full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
-                full.cancelledAt(), full.createdAt(), Map.of());
+                full.cancelledAt(), full.cancelReason(), full.createdAt(), Map.of());
     }
 
     /** Without row flags — for a caller with no scope to report against. */
@@ -89,6 +91,7 @@ public record AppointmentResponse(
                 appointment.getNote(),
                 appointment.getCheckedInAt(),
                 appointment.getCancelledAt(),
+                appointment.getCancelReason(),
                 appointment.getCreatedAt(),
                 rowLevel == null ? Map.of() : rowLevel.capabilities(appointment));
     }
