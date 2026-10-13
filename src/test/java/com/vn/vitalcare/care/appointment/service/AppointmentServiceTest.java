@@ -245,6 +245,17 @@ class AppointmentServiceTest {
     }
 
     @Test
+    @DisplayName("BR-26: an appointment starting in under two hours can no longer be cancelled")
+    void lateCancelIsRefused() {
+        // NOW is 10:00 at the clinic; 11:00 today is one hour away.
+        Appointment soon = stored(appointmentOn(TODAY));
+        soon.setStartTime(LocalTime.of(11, 0));
+
+        assertThrows(ConflictException.class, () -> service.cancel(1L));
+        assertEquals(AppointmentStatus.SCHEDULED, soon.getStatus());
+    }
+
+    @Test
     @DisplayName("a receptionist finds their own clinic's appointment by id and by code")
     void ownClinicIsInScope() {
         scopedTo = ScheduleFixture.CLINIC_ID;

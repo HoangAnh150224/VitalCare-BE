@@ -171,6 +171,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
             throw new ConflictException("Only a scheduled appointment can be cancelled");
         }
+        // SRS BR-26: no later than two hours before it starts, for the desk and the patient alike.
+        LocalDateTime start = LocalDateTime.of(appointment.getAppointmentDate(), appointment.getStartTime());
+        if (LocalDateTime.now(clock.withZone(clinicTimeZone())).isAfter(start.minusHours(2))) {
+            throw new ConflictException("An appointment can only be cancelled up to two hours before it starts");
+        }
         appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         if (byStaff) {
             rowLevel.checkWritable(appointment);
