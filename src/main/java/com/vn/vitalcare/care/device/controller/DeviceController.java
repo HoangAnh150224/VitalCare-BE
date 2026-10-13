@@ -7,6 +7,7 @@ import com.vn.vitalcare.care.device.dto.DeviceResponse;
 import com.vn.vitalcare.care.device.service.DeviceService;
 import com.vn.vitalcare.entity.DeviceAssignment;
 import com.vn.vitalcare.entity.MedicalDevice;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
@@ -38,9 +39,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService service;
+    private final RowLevelSecurity rowLevel;
 
-    public DeviceController(DeviceService service) {
+    public DeviceController(DeviceService service, RowLevelSecurity rowLevel) {
         this.service = service;
+        this.rowLevel = rowLevel;
     }
 
     @GetMapping
@@ -77,7 +80,7 @@ public class DeviceController {
         MedicalDevice created = service.register(request);
         return ResponseEntity
                 .created(URI.create("/api/devices/" + created.getId()))
-                .body(DeviceResponse.from(created, null));
+                .body(DeviceResponse.from(created, null, rowLevel));
     }
 
     @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
@@ -88,6 +91,6 @@ public class DeviceController {
 
     private List<DeviceResponse> withWearers(List<MedicalDevice> devices) {
         Map<Long, DeviceAssignment> open = service.openAssignments(devices.stream().map(MedicalDevice::getId).toList());
-        return devices.stream().map(device -> DeviceResponse.from(device, open.get(device.getId()))).toList();
+        return devices.stream().map(device -> DeviceResponse.from(device, open.get(device.getId()), rowLevel)).toList();
     }
 }
