@@ -106,7 +106,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     public Page<Appointment> listForCustomer(Customer customer, ListParams params) {
         Specification<Appointment> spec = AppointmentSpecifications.from(params)
-                .and(AppointmentSpecifications.ofCustomer(customer.getId()));
+                .and(AppointmentSpecifications.ofAccount(customer.getId()));
         return repository.findAll(spec, params.pageable(SORTABLE, DEFAULT_SORT));
     }
 
@@ -123,7 +123,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     public Appointment getOwn(Customer customer, Long id) {
-        return repository.findByIdAndCustomerIdAndDeletedAtIsNull(id, customer.getId())
+        return repository.findOwn(id, customer.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Appointment", id));
     }
 
@@ -141,7 +141,19 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional
     public Appointment bookOwn(Customer customer, BookingRequest request) {
-        return book(customer, request, false);
+        Customer patient = customer;
+        if (request.patientId() != null) {
+            try {
+                patient = customerService.ownProfile(customer, request.patientId());
+            } catch (ResourceNotFoundException e) {
+                throw new FieldValidationException("patientId", "Pick one of your own profiles");
+            }
+        }
+        if (!patient.isCompleteForVisit()) {
+            throw new FieldValidationException("patientId",
+                    "Fill in this profile's date of birth and gender before registering a visit");
+        }
+        return book(patient, request, false);
     }
 
     @Override

@@ -1,5 +1,9 @@
 package com.vn.vitalcare.care.customer.service.impl;
 
+import com.vn.vitalcare.share.phone.PhoneNumbers;
+import java.util.ArrayList;
+import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.care.customer.dto.ProfileRequest;
 import com.vn.vitalcare.care.customer.dto.CustomerPatchRequest;
 import com.vn.vitalcare.care.customer.repository.CustomerRepository;
 import com.vn.vitalcare.care.customer.repository.CustomerSpecifications;
@@ -38,6 +42,9 @@ public class CustomerServiceImpl implements CustomerService {
     private static final Set<String> SORTABLE = Set.of("id", "customerCode", "status", "createdAt");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+
+    /** Relatives under one account; a family, not a register. */
+    private static final int MAX_DEPENDENTS = 10;
 
     private final CustomerRepository repository;
     private final ClinicScope clinicScope;
@@ -110,6 +117,91 @@ public class CustomerServiceImpl implements CustomerService {
         Long userId = CurrentUser.id().orElseThrow(() -> new ConflictException("Not signed in"));
         return repository.findByUserIdAndDeletedAtIsNull(userId)
                 .orElseThrow(() -> new ConflictException("This account has no customer profile"));
+    }
+
+    @Override
+    public List<Customer> profilesOf(Customer owner) {
+        List<Customer> profiles = new ArrayList<>();
+        profiles.add(owner);
+        profiles.addAll(repository.findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(owner.getId()));
+        return profiles;
+    }
+
+    @Override
+    public Customer ownProfile(Customer owner, Long id) {
+        if (id.equals(owner.getId())) {
+            return owner;
+        }
+        return repository.findByIdAndGuardianIdAndDeletedAtIsNull(id, owner.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
+    }
+
+    @Override
+    @Transactional
+    public Customer createDependent(Customer owner, ProfileRequest request) {
+        List<Customer> existing = repository.findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(owner.getId());
+        if (existing.size() >= MAX_DEPENDENTS) {
+            throw new ConflictException("An account holds at most %d relatives".formatted(MAX_DEPENDENTS));
+        }
+        Customer dependent = new Customer();
+        dependent.setGuardian(owner);
+        applyProfile(dependent, request);
+        // The same person entered twice -- a double click on Save, usually.
+        if (existing.stream().anyMatch(other -> other.getFullName().equalsIgnoreCase(dependent.getFullName())
+                && request.dateOfBirth().equals(other.getDateOfBirth()))) {
+            throw new ConflictException("This relative is already under your account");
+        }
+        Customer saved = repository.save(dependent);
+        saved.setCustomerCode("KH%06d".formatted(saved.getId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Customer updateOwnProfile(Customer owner, Long id, ProfileRequest request) {
+        ownProfile(owner, id);
+        // Read again inside this transaction, with its account: the caller's
+        // copy is detached, and saving that would hand back a row whose name
+        // cannot be read once the transaction has closed.
+        Customer profile = repository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
+        applyProfile(profile, request);
+        return repository.save(profile);
+    }
+
+    /**
+     * A relative needs a name, a number to reach them on and what they are to
+     * the owner. The owner's own name and number are the account's and stay
+     * out of the profile.
+     */
+    private static void applyProfile(Customer profile, ProfileRequest request) {
+        if (profile.isDependent()) {
+            String name = request.fullName() == null ? "" : request.fullName().trim();
+            String phone = request.phone() == null ? "" : request.phone().trim();
+            String relationship = request.relationship() == null ? "" : request.relationship().trim();
+            if (name.isEmpty()) {
+                throw new FieldValidationException("fullName", "A name is required");
+            }
+            // Stored as sign-in numbers are, so the desk finds a relative by
+            // number however it was typed here.
+            String normalized = PhoneNumbers.normalize(phone)
+                    .orElseThrow(() -> new FieldValidationException("phone", "A valid phone number is required"));
+            if (relationship.isEmpty()) {
+                throw new FieldValidationException("relationship", "Say whose profile this is");
+            }
+            profile.setFullName(name);
+            profile.setPhone(normalized);
+            profile.setRelationship(relationship);
+        }
+        profile.setDateOfBirth(request.dateOfBirth());
+        profile.setGender(request.gender());
+        // As in update: null leaves a text field alone, an empty string clears it.
+        if (request.nationalId() != null) {
+            profile.setNationalId(blankToNull(request.nationalId()));
+        }
+        if (request.address() != null) {
+            profile.setAddress(blankToNull(request.address()));
+        }
     }
 
     @Override

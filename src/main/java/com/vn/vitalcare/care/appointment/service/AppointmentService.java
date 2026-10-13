@@ -25,7 +25,10 @@ public interface AppointmentService {
 
     Page<Appointment> list(ListParams params);
 
-    /** One customer's appointments; the filter cannot be widened by anything in {@code params}. */
+    /**
+     * The appointments of one account — its owner's and their relatives';
+     * the filter cannot be widened by anything in {@code params}.
+     */
     Page<Appointment> listForCustomer(Customer customer, ListParams params);
 
     List<Appointment> getMany(List<Long> ids);
@@ -33,7 +36,7 @@ public interface AppointmentService {
     Appointment get(Long id);
 
     /**
-     * One of the customer's own appointments.
+     * One of the account's own appointments: the owner's, or a relative's.
      *
      * <p>Somebody else's id answers exactly as a missing one does — a 404, not
      * a 403 — so the endpoint cannot be used to learn which ids exist.
@@ -50,7 +53,11 @@ public interface AppointmentService {
      */
     Appointment bookFor(StaffBookingRequest request);
 
-    /** A customer registering for themselves, under the same rules. */
+    /**
+     * A customer registering for themselves or for one of the relatives under
+     * their account, under the same rules. Refused, on {@code patientId}, when
+     * the profile is not theirs or does not yet give a date of birth and gender.
+     */
     Appointment bookOwn(Customer customer, BookingRequest request);
 
     /** Corrects the reason and the desk's note; who, with whom and when change by {@link #reschedule}. */

@@ -8,6 +8,7 @@ import com.vn.vitalcare.entity.MonitoringAssignment;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.web.ListParams;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 import java.util.ArrayList;
@@ -46,10 +47,13 @@ public final class CustomerSpecifications {
         // One term across the name, the number and the code -- the three
         // things a receptionist has in front of them when somebody walks in.
         params.search().ifPresent(term -> specs.add((root, query, cb) -> {
-            var user = root.join("user");
+            // Left: a dependent has no account, and carries a name and number of their own.
+            var user = root.join("user", JoinType.LEFT);
             return cb.or(
                     cb.like(cb.lower(user.get("fullName")), ListParams.likePattern(term)),
                     cb.like(user.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
+                    cb.like(cb.lower(root.get("fullName")), ListParams.likePattern(term)),
+                    cb.like(root.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(root.get("customerCode")), ListParams.likePattern(term)));
         }));
 
@@ -129,7 +133,10 @@ public final class CustomerSpecifications {
         return (root, query, cb) -> {
             var byCode = cb.equal(cb.lower(root.get("customerCode")), code.toLowerCase(Locale.ROOT));
             return phone
-                    .map(normalized -> cb.or(byCode, cb.equal(root.join("user").get("phone"), normalized)))
+                    .map(normalized -> cb.or(byCode,
+                            cb.equal(root.join("user", JoinType.LEFT).get("phone"), normalized),
+                            // A relative has no account; the number is their own.
+                            cb.equal(root.get("phone"), normalized)))
                     .orElse(byCode);
         };
     }

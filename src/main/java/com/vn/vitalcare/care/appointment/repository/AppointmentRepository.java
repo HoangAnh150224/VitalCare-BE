@@ -33,9 +33,14 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic", "employee", "employee.user"})
     Optional<Appointment> findOne(Specification<Appointment> spec);
 
-    /** Not scoped: pinned to the customer, for their own appointments; they hold no row-level scope. */
+    /**
+     * Not scoped: pinned to one account — its owner's appointments and those
+     * of the relatives under it. A customer holds no row-level scope.
+     */
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic", "employee", "employee.user"})
-    Optional<Appointment> findByIdAndCustomerIdAndDeletedAtIsNull(Long id, Long customerId);
+    @Query("select a from Appointment a join a.customer c left join c.guardian g "
+            + "where a.id = :id and a.deletedAt is null and (c.id = :ownerId or g.id = :ownerId)")
+    Optional<Appointment> findOwn(@Param("id") Long id, @Param("ownerId") Long ownerCustomerId);
 
     // The three below are not scoped: they count one doctor's day to issue a
     // queue number or size the day, for whoever is registering -- a customer

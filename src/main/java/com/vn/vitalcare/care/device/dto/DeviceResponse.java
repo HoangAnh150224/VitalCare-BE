@@ -48,7 +48,7 @@ public record DeviceResponse(
         if (open != null) {
             var customer = open.getCustomer();
             wearer = new Wearer(
-                    customer.getId(), customer.getCustomerCode(), customer.getUser().getFullName(), open.getAssignedAt());
+                    customer.getId(), customer.getCustomerCode(), customer.getFullName(), open.getAssignedAt());
         }
         return new DeviceResponse(
                 device.getId(),

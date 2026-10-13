@@ -10,15 +10,21 @@ import java.time.OffsetDateTime;
 /**
  * A customer as the staff screens show it.
  *
- * <p>Name and number come from the account rather than being stored twice:
- * {@code users} owns them, and the sign-in number in particular must never
- * have a second copy that could disagree.
+ * <p>An account owner's name and number come from the account rather than
+ * being stored twice: {@code users} owns them, and the sign-in number in
+ * particular must never have a second copy that could disagree. A dependent
+ * has no account and carries their own.
  */
 public record CustomerResponse(
         Long id,
         String customerCode,
         CustomerStatus status,
+        /** The profile's own account; null for a dependent, who has none. */
         Long userId,
+        /** Whose relative this is, for a dependent; null on an account owner's profile. */
+        GuardianSummary guardian,
+        String relationship,
+        String nationalId,
         String fullName,
         String phone,
         String email,
@@ -31,16 +37,24 @@ public record CustomerResponse(
         PatientActivationSource patientActivationSource,
         Instant createdAt) {
 
+    public record GuardianSummary(Long id, String customerCode, String fullName, String phone) {
+    }
+
     public static CustomerResponse from(Customer customer) {
         var user = customer.getUser();
+        var guardian = customer.getGuardian();
         return new CustomerResponse(
                 customer.getId(),
                 customer.getCustomerCode(),
                 customer.getStatus(),
-                user.getId(),
-                user.getFullName(),
-                user.getPhone(),
-                user.getEmail(),
+                user == null ? null : user.getId(),
+                guardian == null ? null : new GuardianSummary(
+                        guardian.getId(), guardian.getCustomerCode(), guardian.getFullName(), guardian.getPhone()),
+                customer.getRelationship(),
+                customer.getNationalId(),
+                customer.getFullName(),
+                customer.getPhone(),
+                user == null ? null : user.getEmail(),
                 customer.getDateOfBirth(),
                 customer.getGender(),
                 customer.getAddress(),

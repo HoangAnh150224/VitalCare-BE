@@ -60,7 +60,8 @@ public final class MonitoringAssignmentSpecifications {
             Join<Object, Object> employee = root.join("employee", JoinType.LEFT);
             String pattern = ListParams.likePattern(term);
             return cb.or(
-                    cb.like(cb.lower(customer.get("user").get("fullName")), pattern),
+                    cb.like(cb.lower(customer.join("user", JoinType.LEFT).get("fullName")), pattern),
+                    cb.like(cb.lower(customer.get("fullName")), pattern),
                     cb.like(cb.lower(customer.get("customerCode")), pattern),
                     cb.like(cb.lower(employee.get("user").get("fullName")), pattern));
         }));

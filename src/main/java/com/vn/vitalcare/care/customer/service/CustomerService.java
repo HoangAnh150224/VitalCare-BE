@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.customer.service;
 
 import com.vn.vitalcare.care.customer.dto.CustomerPatchRequest;
+import com.vn.vitalcare.care.customer.dto.ProfileRequest;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.CustomerStatus;
 import com.vn.vitalcare.entity.PatientActivationSource;
@@ -10,6 +11,22 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 
 public interface CustomerService {
+
+    // --- the account owner's side: their own profile and their relatives' -----
+
+    /** The owner's own profile first, then the relatives they register visits for. */
+    List<Customer> profilesOf(Customer owner);
+
+    /** One of those profiles; anybody else's answers as not found. */
+    Customer ownProfile(Customer owner, Long id);
+
+    /** A relative with no account of their own, under the owner's. */
+    Customer createDependent(Customer owner, ProfileRequest request);
+
+    /** Fills in the owner's own profile, or corrects a relative's. */
+    Customer updateOwnProfile(Customer owner, Long id, ProfileRequest request);
+
+    // --- the clinic's side -----------------------------------------------------
 
     Page<Customer> list(ListParams params);
 

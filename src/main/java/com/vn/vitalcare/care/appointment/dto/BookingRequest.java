@@ -9,11 +9,17 @@ import java.time.LocalDate;
  * {@code POST /my_appointments}: a customer registering a visit for themselves.
  *
  * <p>A doctor and a day, nothing finer: the visit gets that doctor's next
- * queue number for the day, and the clinic is the doctor's. There is no
- * customer field, on purpose — whose visit it is comes from the access token,
- * so nothing a client sends can register for somebody else.
+ * queue number for the day, and the clinic is the doctor's. Whose account it
+ * is comes from the access token; {@code patientId} only chooses among that
+ * account's own profiles, so nothing a client sends registers for a stranger.
  */
 public record BookingRequest(
+        /**
+         * Which of the account's profiles the visit is for: the owner's own
+         * when left out, or one of the relatives under the account.
+         */
+        Long patientId,
+
         @NotNull(message = "A doctor is required")
         Long employeeId,
 
