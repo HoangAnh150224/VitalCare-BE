@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.appointment.controller;
 
 import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
 import com.vn.vitalcare.care.appointment.dto.CancelAppointmentRequest;
+import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.entity.Appointment;
@@ -95,5 +96,11 @@ public class AppointmentController {
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
     public AppointmentResponse cancel(@PathVariable Long id, @Valid @RequestBody CancelAppointmentRequest request) {
         return AppointmentResponse.from(service.cancel(id, request.reason()), rowLevel);
+    }
+
+    @PostMapping("/{id}/reschedule")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse reschedule(@PathVariable Long id, @Valid @RequestBody RescheduleRequest request) {
+        return AppointmentResponse.from(service.reschedule(id, request), rowLevel);
     }
 }

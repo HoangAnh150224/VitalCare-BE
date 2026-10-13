@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.appointment.service;
 
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
+import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.Customer;
@@ -62,4 +63,14 @@ public interface AppointmentService {
     Appointment cancel(Long id, String reason);
 
     Appointment cancelOwn(Customer customer, Long id);
+
+    /**
+     * Moves an appointment to another of its clinic's slots, under the rules a
+     * booking and a cancellation already have: still scheduled, at least two
+     * hours ahead (SRS BR-26), and a slot with a place left. The booking code
+     * stays, so the slip the customer holds is still theirs.
+     */
+    Appointment reschedule(Long id, RescheduleRequest request);
+
+    Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request);
 }

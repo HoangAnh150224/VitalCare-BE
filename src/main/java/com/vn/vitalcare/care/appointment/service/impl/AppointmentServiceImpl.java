@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.appointment.service.impl;
 
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
+import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.appointment.repository.AppointmentSpecifications;
@@ -26,6 +27,7 @@ import com.vn.vitalcare.share.web.ListParams;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -168,19 +170,60 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     /** @param byStaff whether the desk cancels it, and so the write policy applies; see {@link #book}. */
     private Appointment cancel(Appointment appointment, String reason, boolean byStaff) {
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
-            throw new ConflictException("Only a scheduled appointment can be cancelled");
-        }
-        // SRS BR-26: no later than two hours before it starts, for the desk and the patient alike.
-        LocalDateTime start = LocalDateTime.of(appointment.getAppointmentDate(), appointment.getStartTime());
-        if (LocalDateTime.now(clock.withZone(clinicTimeZone())).isAfter(start.minusHours(2))) {
-            throw new ConflictException("An appointment can only be cancelled up to two hours before it starts");
-        }
+        requireChangeable(appointment, "cancelled");
         appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock), reason);
         if (byStaff) {
             rowLevel.checkWritable(appointment);
         }
         return repository.persist(appointment);
+    }
+
+    @Override
+    @Transactional
+    public Appointment reschedule(Long id, RescheduleRequest request) {
+        return reschedule(find(id, Action.WRITE), request, true);
+    }
+
+    @Override
+    @Transactional
+    public Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request) {
+        return reschedule(getOwn(customer, id), request, false);
+    }
+
+    /** @param byStaff as in {@link #cancel(Appointment, String, boolean)}. */
+    private Appointment reschedule(Appointment appointment, RescheduleRequest request, boolean byStaff) {
+        requireChangeable(appointment, "rescheduled");
+        // Refused rather than counted around: the slot checks below would see
+        // this appointment's own place as taken.
+        if (request.appointmentDate().equals(appointment.getAppointmentDate())
+                && request.startTime().equals(appointment.getStartTime())) {
+            throw new FieldValidationException("startTime", "That is the time the appointment already has");
+        }
+
+        Clinic clinic = clinicService.getForUpdate(appointment.getClinicId());
+        Slot slot = freeSlot(appointment.getCustomer(), clinic, request.appointmentDate(), request.startTime());
+        appointment.setAppointmentDate(request.appointmentDate());
+        appointment.setStartTime(slot.startTime());
+        appointment.setEndTime(slot.endTime());
+        if (byStaff) {
+            rowLevel.checkWritable(appointment);
+        }
+        return repository.persist(appointment);
+    }
+
+    /**
+     * SRS BR-26: an appointment changes only while it is scheduled, and no
+     * later than two hours before it starts -- for the desk and the patient alike.
+     */
+    private void requireChangeable(Appointment appointment, String change) {
+        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+            throw new ConflictException("Only a scheduled appointment can be " + change);
+        }
+        LocalDateTime start = LocalDateTime.of(appointment.getAppointmentDate(), appointment.getStartTime());
+        if (LocalDateTime.now(clock.withZone(clinicTimeZone())).isAfter(start.minusHours(2))) {
+            throw new ConflictException(
+                    "An appointment can only be " + change + " up to two hours before it starts");
+        }
     }
 
     /**
@@ -208,33 +251,8 @@ public class AppointmentServiceImpl implements AppointmentService {
      */
     private Appointment book(Customer customer, BookingRequest request, boolean byStaff) {
         LocalDate date = request.appointmentDate();
-        if (date.isBefore(clinicService.today())) {
-            throw new FieldValidationException("appointmentDate", "The date cannot be in the past");
-        }
-        if (!clinicService.isWithinBookingWindow(date)) {
-            throw new FieldValidationException("appointmentDate", "Bookings are open up to %s".formatted(
-                    clinicService.lastBookableDate()));
-        }
-
         Clinic clinic = clinicService.getForUpdate(request.clinicId());
-        if (!schedule.isOpenOn(clinic, date)) {
-            throw new FieldValidationException("appointmentDate", "The clinic is closed on that day");
-        }
-        Slot slot = schedule.slotStartingAt(clinic, date, request.startTime())
-                .orElseThrow(() -> new FieldValidationException("startTime", "Pick one of the clinic's time slots"));
-
-        LocalDateTime now = LocalDateTime.now(clock.withZone(clinicTimeZone()));
-        if (!LocalDateTime.of(date, slot.startTime()).isAfter(now)) {
-            throw new FieldValidationException("startTime", "That time has already passed today");
-        }
-
-        if (repository.existsByCustomerIdAndAppointmentDateAndStartTimeAndStatusAndDeletedAtIsNull(
-                customer.getId(), date, slot.startTime(), AppointmentStatus.SCHEDULED)) {
-            throw new ConflictException("There is already an appointment booked at that time");
-        }
-        if (schedule.bookedIn(clinic, date, slot.startTime()) >= slot.capacity()) {
-            throw new ConflictException("That time slot is fully booked");
-        }
+        Slot slot = freeSlot(customer, clinic, date, request.startTime());
 
         Appointment appointment = new Appointment();
         appointment.setCustomer(customer);
@@ -252,6 +270,41 @@ public class AppointmentServiceImpl implements AppointmentService {
             rowLevel.checkWritable(saved);
         }
         return saved;
+    }
+
+    /**
+     * The slot of {@code clinic} starting at {@code start} on {@code date},
+     * once it is known the customer can have a place in it. What a booking and
+     * a reschedule share. The caller holds the clinic lock.
+     */
+    private Slot freeSlot(Customer customer, Clinic clinic, LocalDate date, LocalTime start) {
+        if (date.isBefore(clinicService.today())) {
+            throw new FieldValidationException("appointmentDate", "The date cannot be in the past");
+        }
+        if (!clinicService.isWithinBookingWindow(date)) {
+            throw new FieldValidationException("appointmentDate", "Bookings are open up to %s".formatted(
+                    clinicService.lastBookableDate()));
+        }
+
+        if (!schedule.isOpenOn(clinic, date)) {
+            throw new FieldValidationException("appointmentDate", "The clinic is closed on that day");
+        }
+        Slot slot = schedule.slotStartingAt(clinic, date, start)
+                .orElseThrow(() -> new FieldValidationException("startTime", "Pick one of the clinic's time slots"));
+
+        LocalDateTime now = LocalDateTime.now(clock.withZone(clinicTimeZone()));
+        if (!LocalDateTime.of(date, slot.startTime()).isAfter(now)) {
+            throw new FieldValidationException("startTime", "That time has already passed today");
+        }
+
+        if (repository.existsByCustomerIdAndAppointmentDateAndStartTimeAndStatusAndDeletedAtIsNull(
+                customer.getId(), date, slot.startTime(), AppointmentStatus.SCHEDULED)) {
+            throw new ConflictException("There is already an appointment booked at that time");
+        }
+        if (schedule.bookedIn(clinic, date, slot.startTime()) >= slot.capacity()) {
+            throw new ConflictException("That time slot is fully booked");
+        }
+        return slot;
     }
 
     private String newBookingCode() {
