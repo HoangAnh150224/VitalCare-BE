@@ -170,6 +170,31 @@ public class RowLevelSecurityImpl implements RowLevelSecurity {
     }
 
     @Override
+    public boolean hasUnrestrictedScope(Class<?> entityClass, Action action) {
+        Optional<RowLevelRegistry.Managed> managed = registry.byEntity(entityClass);
+        if (managed.isEmpty() || BYPASS.get()) {
+            return true;
+        }
+        Optional<RowLevelPrincipal> principal = principals.current();
+        if (principal.isEmpty()) {
+            return true;
+        }
+        EffectiveScope effective = effectiveScope(managed.get(), action);
+        if (effective.blocked()) {
+            // A quarantined FILTER refuses everything; nobody is unrestricted.
+            return false;
+        }
+        List<EffectiveScope.Contribution> applicable = applicableScopes(effective, principal.get());
+        if (applicable.isEmpty()) {
+            return effective.defaultScope() == DefaultScope.FULL;
+        }
+        // Scopes are ORed, so one that restricts nothing is enough. A
+        // design-time scope's Specification cannot be inspected, so it never
+        // counts as unrestricted.
+        return applicable.stream().anyMatch(scope -> scope.isRuntime() && scope.plan().isUnrestricted());
+    }
+
+    @Override
     public List<String> fetchHints(Class<?> entityClass) {
         return registry.byEntity(entityClass)
                 .map(managed -> managed.fields().values().stream()

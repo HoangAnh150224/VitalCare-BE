@@ -71,6 +71,20 @@ public interface RowLevelSecurity {
     /** Whether the caller may read this row — for masking an embedded summary. */
     boolean canRead(Object entity);
 
+    /**
+     * Whether the caller's scopes on this resource reach every row — a scope of
+     * {@code {"all": []}}, or no scope under a {@code FULL} default.
+     *
+     * <p>Working filters are deliberately not considered: they narrow
+     * everybody alike, and this answers "is this caller bound to a part of the
+     * data", which a filter says nothing about. A quarantined filter is
+     * different — it closes the pair for everybody — so a blocked pair is never
+     * unrestricted. For a domain that keeps a rule of its own beside the engine
+     * and needs to know whether the caller is one of the people that rule
+     * should not apply to.
+     */
+    boolean hasUnrestrictedScope(Class<?> entityClass, Action action);
+
     /** The associations a managed entity must have loaded before flags can be computed. */
     List<String> fetchHints(Class<?> entityClass);
 
