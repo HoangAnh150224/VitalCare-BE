@@ -12,20 +12,22 @@ import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
 import com.vn.vitalcare.entity.MonitoringAssignment;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
-import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.share.security.rowlevel.Action;
 import com.vn.vitalcare.share.web.ListParams;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -45,7 +47,12 @@ public class EmployeeServiceImpl implements EmployeeService {
     private final MonitoringAssignmentRepository careTeams;
     private final UserService userService;
     private final ClinicService clinicService;
+    // Only to pick the clinic a new member of staff joins when the request
+    // names none; which clinics' staff the caller reaches, and may add to, is
+    // the "employees" row-level policy's.
     private final ClinicScope clinicScope;
+    private final RowLevelSecurity rowLevel;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public EmployeeServiceImpl(EmployeeRepository repository,
@@ -53,32 +60,35 @@ public class EmployeeServiceImpl implements EmployeeService {
                                UserService userService,
                                ClinicService clinicService,
                                ClinicScope clinicScope,
+                               RowLevelSecurity rowLevel,
+                               ApplicationEventPublisher events,
                                Clock clock) {
         this.repository = repository;
         this.careTeams = careTeams;
         this.userService = userService;
         this.clinicService = clinicService;
         this.clinicScope = clinicScope;
+        this.rowLevel = rowLevel;
+        this.events = events;
         this.clock = clock;
     }
 
     @Override
     public Page<Employee> list(ListParams params) {
-        return repository.findAll(scope().and(EmployeeSpecifications.from(params)),
+        return repository.findAll(
+                rowLevel.scope(Employee.class, Action.READ).and(EmployeeSpecifications.from(params)),
                 params.pageable(SORTABLE, DEFAULT_SORT));
     }
 
     @Override
     public List<Employee> getMany(List<Long> ids) {
-        Specification<Employee> byIds = (root, query, cb) -> root.get("id").in(ids);
-        return repository.findAll(Specification.allOf(scope(), BaseEntitySpecifications.notDeleted(), byIds));
+        return repository.findAll(Specification.allOf(
+                rowLevel.byIds(Employee.class, Action.READ, ids), BaseEntitySpecifications.notDeleted()));
     }
 
     @Override
     public Employee get(Long id) {
-        return repository.findByIdAndDeletedAtIsNull(id)
-                .filter(this::inScope)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
+        return find(id, Action.READ);
     }
 
     @Override
@@ -91,11 +101,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public Employee create(EmployeeCreateRequest request) {
-        User user = userService.createStaffAccount(
-                request.phone(), request.password(), request.fullName(), request.staffType().roleCode());
-
         Employee employee = new Employee();
-        employee.setUser(user);
         employee.setStaffType(request.staffType());
         employee.setSpecialty(blankToNull(request.specialty()));
         employee.setProfessionalTitle(blankToNull(request.professionalTitle()));
@@ -103,26 +109,41 @@ public class EmployeeServiceImpl implements EmployeeService {
         employee.setClinicPosition(blankToNull(request.clinicPosition()));
         employee.setClinic(clinicFor(request.clinicId()));
 
-        Employee saved = repository.save(employee);
+        User user = userService.createStaffAccount(
+                request.phone(), request.password(), request.fullName(), request.staffType().roleCode());
+        employee.setUser(user);
+
+        Employee saved = repository.persist(employee);
+        // WITH CHECK against the complete row, as the framework does it: after
+        // the flush, when the id and audit stamps exist. A clinic outside the
+        // caller's scope throws here, and the rollback takes the sign-in
+        // account created above with it -- it is the same transaction.
+        repository.flush();
+        rowLevel.checkWritable(saved);
         // Derived from the id, like the customer code.
         saved.setEmployeeCode("NV%06d".formatted(saved.getId()));
+        // Their clinic is what their own policies compare against, and it is
+        // read into the authority cache: drop anything cached for the account.
+        events.publishEvent(new AuthoritiesChanged.ForUser(user.getId()));
         return saved;
     }
 
     @Override
     @Transactional
     public Employee lockForUpdate(Long id) {
-        return repository.findForUpdate(id)
-                .filter(this::inScope)
-                .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
+        // Read scope: a care-team assignment locks the member of staff to stop
+        // them leaving mid-assignment, but does not change them.
+        return lock(id, Action.READ);
     }
 
     @Override
     @Transactional
     public Employee update(Long id, EmployeePatchRequest request) {
-        // A status change takes the lock a care-team assignment takes, so
-        // leaving and being assigned cannot interleave.
-        Employee employee = request.status() == null ? get(id) : lockForUpdate(id);
+        // USING, on the state as it stands: through the write scope, so a
+        // member of staff the caller may see but not edit is a 404. A status
+        // change takes the lock a care-team assignment takes, so leaving and
+        // being assigned cannot interleave.
+        Employee employee = request.status() == null ? find(id, Action.WRITE) : lock(id, Action.WRITE);
 
         if (request.specialty() != null) {
             employee.setSpecialty(blankToNull(request.specialty()));
@@ -139,7 +160,9 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (request.status() != null && request.status() != employee.getStatus()) {
             changeStatus(employee, request.status());
         }
-        return repository.save(employee);
+        // WITH CHECK, on the state this save leaves behind.
+        rowLevel.checkWritable(employee);
+        return repository.persist(employee);
     }
 
     /**
@@ -168,34 +191,43 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     /**
      * Where a new member of staff works: the clinic asked for, else the
-     * creator's own, else the first one. Somebody tied to a clinic cannot put
-     * staff in another.
+     * creator's own, else the first one. Whether the creator may add staff
+     * there is the write policy's to say; the caller checks it.
      */
     private Clinic clinicFor(UUID requested) {
-        Optional<UUID> own = clinicScope.currentClinicId();
         if (requested != null) {
-            if (own.isPresent() && !own.get().equals(requested)) {
-                throw new FieldValidationException("clinicId", "You can only add staff to the clinic you work at");
-            }
             return clinicService.get(requested);
         }
-        return own.map(clinicService::get)
+        return clinicScope.currentClinicId()
+                .map(clinicService::get)
                 .or(() -> clinicService.listAll().stream().findFirst())
                 .orElse(null);
     }
 
-    /** The caller's clinic as a filter; unrestricted for somebody tied to no clinic. */
-    private Specification<Employee> scope() {
-        return clinicScope.currentClinicId()
-                .map(EmployeeSpecifications::atClinic)
-                .orElse((root, query, cb) -> cb.conjunction());
+    /**
+     * One row through the caller's scope for {@code action}, in the query
+     * itself. Outside it is a 404, indistinguishable from a row that does not
+     * exist -- deliberately, as in the framework's {@code TaskService}.
+     */
+    private Employee find(Long id, Action action) {
+        return repository.findOne(Specification.allOf(
+                        rowLevel.byId(Employee.class, action, id), BaseEntitySpecifications.notDeleted()))
+                .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
     }
 
-    /** Another clinic's member of staff answers as not found, never as forbidden. */
-    private boolean inScope(Employee employee) {
-        return clinicScope.currentClinicId()
-                .map(clinic -> employee.getClinic() != null && clinic.equals(employee.getClinic().getClinicId()))
-                .orElse(true);
+    /**
+     * The row under a pessimistic lock, then the same scope check as
+     * {@link #find}. The lock query takes no specification, so the scope is
+     * asked of the database separately, after the lock is held -- the row it
+     * answers about is the one this transaction now owns.
+     */
+    private Employee lock(Long id, Action action) {
+        Employee row = repository.findForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
+        if (!repository.exists(rowLevel.byId(Employee.class, action, id))) {
+            throw new ResourceNotFoundException("Employee", id);
+        }
+        return row;
     }
 
     private static String blankToNull(String value) {

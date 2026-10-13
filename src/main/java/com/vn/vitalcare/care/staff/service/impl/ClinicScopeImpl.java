@@ -1,33 +1,31 @@
 package com.vn.vitalcare.care.staff.service.impl;
 
-import com.vn.vitalcare.care.staff.repository.EmployeeRepository;
 import com.vn.vitalcare.care.staff.service.ClinicScope;
-import com.vn.vitalcare.entity.Clinic;
-import com.vn.vitalcare.entity.Employee;
-import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelPrincipalResolver;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelPrincipal;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-/** The {@link ClinicScope} the application runs on: the clinic on the caller's staff record. */
+/**
+ * The {@link ClinicScope} the application runs on: the clinic on the caller's
+ * staff record, as {@link StaffClinicPlacement} put it on the principal.
+ *
+ * <p>Read from the authority cache rather than queried per call; creating a
+ * member of staff evicts their entry, so the answer is current from their
+ * first request.
+ */
 @Service
-@Transactional(readOnly = true)
 public class ClinicScopeImpl implements ClinicScope {
 
-    private final EmployeeRepository employees;
+    private final RowLevelPrincipalResolver principals;
 
-    public ClinicScopeImpl(EmployeeRepository employees) {
-        this.employees = employees;
+    public ClinicScopeImpl(RowLevelPrincipalResolver principals) {
+        this.principals = principals;
     }
 
     @Override
     public Optional<UUID> currentClinicId() {
-        // Read on every call rather than carried in the token, so moving
-        // somebody to another clinic takes effect on their next request.
-        return CurrentUser.id()
-                .flatMap(employees::findByUserIdAndDeletedAtIsNull)
-                .map(Employee::getClinic)
-                .map(Clinic::getClinicId);
+        return principals.current().map(RowLevelPrincipal::clinicId);
     }
 }

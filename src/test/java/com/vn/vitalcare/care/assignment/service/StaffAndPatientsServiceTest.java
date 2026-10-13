@@ -8,9 +8,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.assignment.dto.MyPatientResponse;
 import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
@@ -22,20 +24,24 @@ import com.vn.vitalcare.care.staff.repository.EmployeeRepository;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.care.staff.service.impl.EmployeeServiceImpl;
 import com.vn.vitalcare.entity.AssignmentStatus;
+import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
 import com.vn.vitalcare.entity.MonitoringAssignment;
 import com.vn.vitalcare.entity.StaffType;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelViolationException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** Creating and retiring staff, and the "my patients" view that is pinned to the caller. */
@@ -55,17 +61,17 @@ class StaffAndPatientsServiceTest {
         userService = mock(UserService.class);
         ClinicService clinics = mock(ClinicService.class);
         when(clinics.listAll()).thenReturn(List.of());
-        when(employeeRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(employeeRepository.persist(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         employees = new EmployeeServiceImpl(employeeRepository, careTeams, userService, clinics, Optional::empty,
-                Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+                ClinicRowLevel.unrestricted(), event -> { }, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
     @DisplayName("a new member of staff gets the role their kind of staff holds, and a code")
     void createStaff() {
         when(userService.createStaffAccount(any(), any(), any(), any())).thenReturn(user(50, "+84900000050", "BS. A"));
-        when(employeeRepository.save(any())).thenAnswer(invocation -> {
+        when(employeeRepository.persist(any())).thenAnswer(invocation -> {
             Employee employee = invocation.getArgument(0);
             ReflectionTestUtils.setField(employee, "id", 7L);
             return employee;
@@ -80,12 +86,35 @@ class StaffAndPatientsServiceTest {
     }
 
     @Test
+    @DisplayName("staff cannot be added to a clinic outside the creator's scope: the saved row is refused")
+    void creatingAtAnotherClinicIsRefused() {
+        UUID own = UUID.fromString("5b1f8c2e-6a3d-4f7e-9c41-2d8e0a7b3c19");
+        UUID other = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
+        Clinic otherClinic = new Clinic();
+        otherClinic.setClinicId(other);
+        ClinicService clinics = mock(ClinicService.class);
+        when(clinics.get(other)).thenReturn(otherClinic);
+        EmployeeService scoped = new EmployeeServiceImpl(employeeRepository, careTeams, userService, clinics,
+                () -> Optional.of(own), new ClinicRowLevel(() -> own), event -> { },
+                Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+
+        when(userService.createStaffAccount(any(), any(), any(), any())).thenReturn(user(51, "+84900000051", "BS. B"));
+
+        assertThrows(RowLevelViolationException.class, () -> scoped.create(new EmployeeCreateRequest(
+                "0900000051", "BS. B", "Passw0rd!", StaffType.DOCTOR, null, null, null, null, other)));
+        // Checked against the flushed row, as the framework does; the exception
+        // rolls the account and the staff record back together.
+        verify(employeeRepository).flush();
+    }
+
+    @Test
     @DisplayName("somebody who leaves comes off every care team, and their account stops signing in")
     void leavingEndsAssignments() {
         Employee leaving = staff(5, EmployeeStatus.ACTIVE);
         MonitoringAssignment first = assignment(patient(1), leaving);
         MonitoringAssignment second = assignment(patient(2), leaving);
         when(employeeRepository.findForUpdate(5L)).thenReturn(Optional.of(leaving));
+        when(employeeRepository.exists(any(Specification.class))).thenReturn(true);
         when(careTeams.findByEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtDesc(5L))
                 .thenReturn(List.of(first, second));
 

@@ -10,17 +10,18 @@ import com.vn.vitalcare.care.clinic.service.ClinicScheduleService;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.clinic.service.Slot;
 import com.vn.vitalcare.care.customer.service.CustomerService;
-import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.PatientActivationSource;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.share.security.rowlevel.Action;
 import com.vn.vitalcare.share.web.ListParams;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -28,9 +29,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -55,34 +54,43 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final CustomerService customerService;
     private final ClinicService clinicService;
     private final ClinicScheduleService schedule;
-    private final ClinicScope clinicScope;
+    // Which clinics' appointments the staff screens reach is a row-level
+    // policy on "appointments". The customer's own paths (bookOwn, getOwn,
+    // cancelOwn, listForCustomer) are pinned to the customer and do not go
+    // through it: a customer holds no scope here, and the default is none.
+    private final RowLevelSecurity rowLevel;
     private final Clock clock;
 
     public AppointmentServiceImpl(AppointmentRepository repository,
                                   CustomerService customerService,
                                   ClinicService clinicService,
                                   ClinicScheduleService schedule,
-                                  ClinicScope clinicScope,
+                                  RowLevelSecurity rowLevel,
                                   Clock clock) {
         this.repository = repository;
         this.customerService = customerService;
         this.clinicService = clinicService;
         this.schedule = schedule;
-        this.clinicScope = clinicScope;
+        this.rowLevel = rowLevel;
         this.clock = clock;
     }
 
     @Override
     public Appointment getByCode(String rawCode) {
         String code = BookingCodes.normalize(rawCode);
-        return repository.findByBookingCodeAndDeletedAtIsNull(code)
-                .filter(this::inScope)
+        // Through the read scope: another clinic's appointment answers as not
+        // found, never as forbidden.
+        return repository.findOne(Specification.allOf(
+                        rowLevel.scope(Appointment.class, Action.READ),
+                        BaseEntitySpecifications.notDeleted(),
+                        AppointmentSpecifications.byBookingCode(code)))
                 .orElseThrow(() -> new ResourceNotFoundException("Appointment", code));
     }
 
     @Override
     public Page<Appointment> list(ListParams params) {
-        return repository.findAll(scope().and(AppointmentSpecifications.from(params)),
+        return repository.findAll(
+                rowLevel.scope(Appointment.class, Action.READ).and(AppointmentSpecifications.from(params)),
                 params.pageable(SORTABLE, DEFAULT_SORT));
     }
 
@@ -95,15 +103,13 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     public List<Appointment> getMany(List<Long> ids) {
-        Specification<Appointment> byIds = (root, query, cb) -> root.get("id").in(ids);
-        return repository.findAll(Specification.allOf(scope(), BaseEntitySpecifications.notDeleted(), byIds));
+        return repository.findAll(Specification.allOf(
+                rowLevel.byIds(Appointment.class, Action.READ, ids), BaseEntitySpecifications.notDeleted()));
     }
 
     @Override
     public Appointment get(Long id) {
-        return repository.findByIdAndDeletedAtIsNull(id)
-                .filter(this::inScope)
-                .orElseThrow(() -> new ResourceNotFoundException("Appointment", id));
+        return find(id, Action.READ);
     }
 
     @Override
@@ -115,12 +121,10 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional
     public Appointment bookFor(StaffBookingRequest request) {
-        Optional<UUID> ownClinic = clinicScope.currentClinicId();
-        if (ownClinic.isPresent() && !ownClinic.get().equals(request.clinicId())) {
-            throw new FieldValidationException("clinicId", "You can only book at the clinic you work at");
-        }
         Customer customer = customerService.getForBooking(request.customerId());
-        Appointment appointment = book(customer, request.booking());
+        // Whether the desk may book at that clinic is the "appointments" write
+        // policy's to say; see book.
+        Appointment appointment = book(customer, request.booking(), true);
         appointment.setNote(blankToNull(request.note()));
         return appointment;
     }
@@ -128,13 +132,15 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional
     public Appointment bookOwn(Customer customer, BookingRequest request) {
-        return book(customer, request);
+        return book(customer, request, false);
     }
 
     @Override
     @Transactional
     public Appointment checkIn(Long id) {
-        Appointment appointment = get(id);
+        // USING through the write scope: an appointment the desk may see but
+        // not change is a 404.
+        Appointment appointment = find(id, Action.WRITE);
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
             throw new ConflictException("Only a scheduled appointment can be checked in");
         }
@@ -143,28 +149,44 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
 
         appointment.checkIn(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        rowLevel.checkWritable(appointment);
         customerService.activateIfNeutral(appointment.getCustomer(), PatientActivationSource.CHECK_IN);
-        return repository.save(appointment);
+        return repository.persist(appointment);
     }
 
     @Override
     @Transactional
     public Appointment cancel(Long id) {
-        return cancel(get(id));
+        return cancel(find(id, Action.WRITE), true);
     }
 
     @Override
     @Transactional
     public Appointment cancelOwn(Customer customer, Long id) {
-        return cancel(getOwn(customer, id));
+        return cancel(getOwn(customer, id), false);
     }
 
-    private Appointment cancel(Appointment appointment) {
+    /** @param byStaff whether the desk cancels it, and so the write policy applies; see {@link #book}. */
+    private Appointment cancel(Appointment appointment, boolean byStaff) {
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
             throw new ConflictException("Only a scheduled appointment can be cancelled");
         }
         appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
-        return repository.save(appointment);
+        if (byStaff) {
+            rowLevel.checkWritable(appointment);
+        }
+        return repository.persist(appointment);
+    }
+
+    /**
+     * One row through the caller's scope for {@code action}, in the query
+     * itself. Outside it is a 404, indistinguishable from a row that does not
+     * exist -- deliberately, as in the framework's {@code TaskService}.
+     */
+    private Appointment find(Long id, Action action) {
+        return repository.findOne(Specification.allOf(
+                        rowLevel.byId(Appointment.class, action, id), BaseEntitySpecifications.notDeleted()))
+                .orElseThrow(() -> new ResourceNotFoundException("Appointment", id));
     }
 
     /**
@@ -174,8 +196,12 @@ public class AppointmentServiceImpl implements AppointmentService {
      * place in a slot goes to exactly one of two people asking for it at once
      * — see {@code ClinicRepository.findForUpdate}. The end time is the slot's,
      * not the client's: a booking is a place in a slot, nothing finer.
+     *
+     * @param byStaff whether the booking is made at the desk, and so has to
+     *                fall inside the caller's row-level scope. A customer
+     *                booking their own visit holds no scope and needs none.
      */
-    private Appointment book(Customer customer, BookingRequest request) {
+    private Appointment book(Customer customer, BookingRequest request, boolean byStaff) {
         LocalDate date = request.appointmentDate();
         if (date.isBefore(clinicService.today())) {
             throw new FieldValidationException("appointmentDate", "The date cannot be in the past");
@@ -213,24 +239,14 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setEndTime(slot.endTime());
         appointment.setReason(blankToNull(request.reason()));
         appointment.setBookingCode(newBookingCode());
-        return repository.save(appointment);
-    }
-
-    /**
-     * The caller's clinic as a filter: a receptionist sees their own clinic's
-     * appointments, somebody tied to no clinic sees every clinic's.
-     */
-    private Specification<Appointment> scope() {
-        return clinicScope.currentClinicId()
-                .map(AppointmentSpecifications::atClinic)
-                .orElse((root, query, cb) -> cb.conjunction());
-    }
-
-    /** Another clinic's appointment answers as not found, never as forbidden. */
-    private boolean inScope(Appointment appointment) {
-        return clinicScope.currentClinicId()
-                .map(clinic -> clinic.equals(appointment.getClinic().getClinicId()))
-                .orElse(true);
+        Appointment saved = repository.persist(appointment);
+        if (byStaff) {
+            // WITH CHECK against the complete row, after the flush; a refusal
+            // rolls the insert back.
+            repository.flush();
+            rowLevel.checkWritable(saved);
+        }
+        return saved;
     }
 
     private String newBookingCode() {

@@ -52,7 +52,7 @@ public final class EmployeeSpecifications {
         return Specification.allOf(specs);
     }
 
-    /** Only the staff of one clinic: the front desk's {@code ClinicScope}. */
+    /** Only the staff of one clinic: the {@code clinicId} filter. */
     public static Specification<Employee> atClinic(UUID clinicId) {
         return (root, query, cb) -> cb.equal(root.get("clinic").get("clinicId"), clinicId);
     }
