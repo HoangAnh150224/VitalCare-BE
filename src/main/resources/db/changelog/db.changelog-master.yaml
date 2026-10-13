@@ -52,3 +52,5 @@ databaseChangeLog:
       file: db/changelog/changes/024-clinical-encounters.sql
   - include:
       file: db/changelog/changes/025-front-desk-loses-account-access.sql
+  - include:
+      file: db/changelog/changes/026-doctor-schedules-and-assignments.sql
