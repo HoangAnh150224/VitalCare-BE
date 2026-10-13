@@ -1,6 +1,7 @@
 package com.vn.vitalcare.identity.rowlevel.dto;
 
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Why one account sees what it sees.
@@ -28,6 +29,7 @@ public record ExplainResponse(
             long userId,
             Long organizationId,
             Long departmentId,
+            UUID clinicId,
             List<String> roleCodes) {
     }
 

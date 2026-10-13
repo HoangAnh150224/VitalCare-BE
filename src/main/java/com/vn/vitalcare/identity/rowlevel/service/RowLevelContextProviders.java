@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,6 +39,12 @@ public class RowLevelContextProviders {
     @Bean
     RowLevelContextProvider currentDepartmentId() {
         return provider("user.departmentId", Long.class, RowLevelPrincipal::departmentId);
+    }
+
+    /** The clinic the caller's staff record places them at; see {@code ClinicPlacement}. */
+    @Bean
+    RowLevelContextProvider currentClinicId() {
+        return provider("user.clinicId", UUID.class, RowLevelPrincipal::clinicId);
     }
 
     /** A set, so it is usable only with {@code in} and {@code notIn}. */
