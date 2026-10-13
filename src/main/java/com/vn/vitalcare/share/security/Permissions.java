@@ -74,6 +74,14 @@ public final class Permissions {
     public static final String MEDICAL_RECORDS_READ = "medical_records:read";
     public static final String MEDICAL_RECORDS_WRITE = "medical_records:write";
 
+    // Seeded by 026. Everybody at the clinic reads the schedule; the doctor
+    // and the clinic administrator change it (SRS 3.1.3).
+    public static final String DOCTOR_SCHEDULES_READ = "doctor_schedules:read";
+    public static final String DOCTOR_SCHEDULES_WRITE = "doctor_schedules:write";
+    public static final String DOCTOR_SCHEDULES_DELETE = "doctor_schedules:delete";
+    // The clinic's care-team assignments as a list; changing one stays customers:assign_staff.
+    public static final String MONITORING_ASSIGNMENTS_READ = "monitoring_assignments:read";
+
     // Seeded by 018, ADMIN only: a customer's or a member of staff's own
     // screens, seen read-only. Every endpoint behind it is a GET.
     public static final String VIEW_AS_READ = "view_as:read";
