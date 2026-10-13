@@ -14,6 +14,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /**
@@ -296,7 +297,12 @@ public class PolicyCompiler {
             if (type == Instant.class) {
                 return Instant.parse(value.toString().trim());
             }
-        } catch (NumberFormatException | DateTimeParseException e) {
+            if (type == UUID.class) {
+                return UUID.fromString(value.toString().trim());
+            }
+        } catch (IllegalArgumentException | DateTimeParseException e) {
+            // NumberFormatException is an IllegalArgumentException, and so is
+            // what UUID.fromString throws.
             throw new PolicyValidationException(at, """
                     "%s" is not a valid %s for %s"""
                     .formatted(value, type.getSimpleName(), field.policyPath()));
