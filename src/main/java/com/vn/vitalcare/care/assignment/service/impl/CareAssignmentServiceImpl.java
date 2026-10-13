@@ -1,8 +1,17 @@
 package com.vn.vitalcare.care.assignment.service.impl;
 
+import com.vn.vitalcare.care.staff.service.ClinicScope;
+import com.vn.vitalcare.share.data.BaseEntitySpecifications;
+import com.vn.vitalcare.share.security.rowlevel.Action;
+import com.vn.vitalcare.share.web.ListParams;
+import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import com.vn.vitalcare.care.assignment.dto.AssignmentRequests;
 import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
+import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentSpecifications;
 import com.vn.vitalcare.care.assignment.service.CareAssignmentService;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.device.service.DeviceService;
@@ -41,6 +50,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
     // the "devices" write policy is checked on the state that leaves it in.
     // DeviceService.lockForUpdate has already checked the other half.
     private final RowLevelSecurity rowLevel;
+    private final ClinicScope clinicScope;
     private final Clock clock;
 
     public CareAssignmentServiceImpl(MonitoringAssignmentRepository careTeams,
@@ -49,6 +59,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
                                      EmployeeService employeeService,
                                      DeviceService deviceService,
                                      RowLevelSecurity rowLevel,
+                                     ClinicScope clinicScope,
                                      Clock clock) {
         this.careTeams = careTeams;
         this.deviceAssignments = deviceAssignments;
@@ -56,7 +67,43 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         this.employeeService = employeeService;
         this.deviceService = deviceService;
         this.rowLevel = rowLevel;
+        this.clinicScope = clinicScope;
         this.clock = clock;
+    }
+
+    // --- the clinic's assignments --------------------------------------------
+
+    private static final Set<String> SORTABLE = Set.of("id", "assignedAt", "unassignedAt", "status");
+
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("assignedAt"), Sort.Order.desc("id"));
+
+    @Override
+    public Page<MonitoringAssignment> assignments(ListParams params) {
+        return careTeams.findAll(
+                inClinic().and(MonitoringAssignmentSpecifications.from(params)),
+                params.pageable(SORTABLE, DEFAULT_SORT));
+    }
+
+    @Override
+    public MonitoringAssignment assignment(Long id) {
+        return careTeams.findOne(Specification.allOf(
+                        inClinic(), BaseEntitySpecifications.notDeleted(), MonitoringAssignmentSpecifications.byId(id)))
+                .orElseThrow(() -> new ResourceNotFoundException("Care team assignment", id));
+    }
+
+    /**
+     * Applied before the caller's own filters, so nothing in a query string
+     * widens it. Somebody with no clinic sees every clinic's only if their
+     * staff scope does too, and nothing otherwise -- as
+     * {@code CustomerServiceImpl.boundScope}.
+     */
+    private Specification<MonitoringAssignment> inClinic() {
+        if (rowLevel.hasUnrestrictedScope(Employee.class, Action.READ)) {
+            return (root, query, cb) -> cb.conjunction();
+        }
+        return clinicScope.currentClinicId()
+                .map(MonitoringAssignmentSpecifications::ofClinic)
+                .orElse((root, query, cb) -> cb.disjunction());
     }
 
     // --- care team -----------------------------------------------------------

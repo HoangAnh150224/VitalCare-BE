@@ -1,5 +1,7 @@
 package com.vn.vitalcare.care.assignment.service;
 
+import com.vn.vitalcare.share.web.ListParams;
+import org.springframework.data.domain.Page;
 import com.vn.vitalcare.care.assignment.dto.AssignmentRequests;
 import com.vn.vitalcare.entity.DeviceAssignment;
 import com.vn.vitalcare.entity.MonitoringAssignment;
@@ -15,6 +17,15 @@ import java.util.Optional;
  * history of who followed the patient and what they wore.
  */
 public interface CareAssignmentService {
+
+    /**
+     * The care-team assignments of the caller's clinic, current and past —
+     * every clinic's for somebody tied to none.
+     */
+    Page<MonitoringAssignment> assignments(ListParams params);
+
+    /** One of them; another clinic's answers as not found. */
+    MonitoringAssignment assignment(Long id);
 
     List<MonitoringAssignment> careTeam(Long customerId);
 
