@@ -86,6 +86,24 @@ class StaffAndPatientsServiceTest {
     }
 
     @Test
+    @DisplayName("a clinic administrator is created as staff and gets the CLINIC_ADMIN role")
+    void createClinicAdmin() {
+        when(userService.createStaffAccount(any(), any(), any(), any()))
+                .thenReturn(user(52, "+84900000052", "QTPK. C"));
+        when(employeeRepository.persist(any())).thenAnswer(invocation -> {
+            Employee employee = invocation.getArgument(0);
+            ReflectionTestUtils.setField(employee, "id", 8L);
+            return employee;
+        });
+
+        Employee created = employees.create(new EmployeeCreateRequest(
+                "0900000052", "QTPK. C", "Passw0rd!", StaffType.from("clinic_admin"), null, null, null, null, null));
+
+        verify(userService).createStaffAccount("0900000052", "Passw0rd!", "QTPK. C", "CLINIC_ADMIN");
+        assertEquals(StaffType.CLINIC_ADMIN, created.getStaffType());
+    }
+
+    @Test
     @DisplayName("staff cannot be added to a clinic outside the creator's scope: the saved row is refused")
     void creatingAtAnotherClinicIsRefused() {
         UUID own = UUID.fromString("5b1f8c2e-6a3d-4f7e-9c41-2d8e0a7b3c19");

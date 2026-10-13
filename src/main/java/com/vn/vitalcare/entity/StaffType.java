@@ -16,7 +16,14 @@ public enum StaffType {
 
     NURSE("nurse", "NURSE"),
 
-    RECEPTIONIST("receptionist", "MANAGER");
+    RECEPTIONIST("receptionist", "MANAGER"),
+
+    /**
+     * Runs one clinic: its staff, devices and appointments, through the
+     * row-level policies on {@code CLINIC_ADMIN}. Anybody who may create staff
+     * may create one, for now; who may is to be narrowed later.
+     */
+    CLINIC_ADMIN("clinic_admin", "CLINIC_ADMIN");
 
     private final String value;
     private final String roleCode;
@@ -31,14 +38,17 @@ public enum StaffType {
         return value;
     }
 
-    /** The system role, seeded by 002 and 017, that an account of this kind holds. */
+    /** The system role, seeded by 002, 017 and 021, that an account of this kind holds. */
     public String roleCode() {
         return roleCode;
     }
 
-    /** Whether somebody of this kind can be on a patient's care team. The front desk cannot. */
+    /**
+     * Whether somebody of this kind can be on a patient's care team: doctors
+     * and nurses. The front desk and the clinic's administrator cannot.
+     */
     public boolean isClinical() {
-        return this != RECEPTIONIST;
+        return this == DOCTOR || this == NURSE;
     }
 
     @JsonCreator
