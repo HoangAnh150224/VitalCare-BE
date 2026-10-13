@@ -83,6 +83,7 @@ class AppointmentServiceTest {
     private AppointmentRepository repository;
     private AppointmentService service;
     private Customer customer;
+    private CustomerRepository customers;
     private Employee doctor;
     private Clinic clinic;
     /** The signed-in receptionist's clinic; null for somebody tied to none. */
@@ -147,6 +148,9 @@ class AppointmentServiceTest {
 
         customer = new Customer();
         customer.setUser(new User("+84912345678", null, "hash", "Nguyen Van A", UserStatus.ACTIVE));
+        customer.setDateOfBirth(LocalDate.of(1990, 1, 1));
+        customer.setGender("male");
+        this.customers = customers;
         when(customers.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(customer));
     }
 
@@ -247,7 +251,7 @@ class AppointmentServiceTest {
     @Test
     @DisplayName("somebody who is not one of the clinic's doctors is refused on the doctor")
     void unknownDoctor() {
-        assertField("employeeId", () -> service.bookOwn(customer, new BookingRequest(99L, TUESDAY, "Check-up")));
+        assertField("employeeId", () -> service.bookOwn(customer, new BookingRequest(null, 99L, TUESDAY, "Check-up")));
     }
 
     @Test
@@ -258,6 +262,50 @@ class AppointmentServiceTest {
 
         assertThrows(ConflictException.class, () -> service.bookOwn(customer, booking(TUESDAY)));
         verify(repository, never()).persist(any());
+    }
+
+    // --- relatives --------------------------------------------------------------
+
+    @Test
+    @DisplayName("the account's owner registers a visit for a relative under the account: the visit is the relative's")
+    void registersForARelative() {
+        Customer child = relative();
+        when(customers.findByIdAndGuardianIdAndDeletedAtIsNull(eq(5L), any())).thenReturn(Optional.of(child));
+
+        Appointment booked = service.bookOwn(customer, new BookingRequest(5L, DOCTOR, TUESDAY, "Sốt"));
+
+        assertEquals(child, booked.getCustomer());
+        assertEquals("Nguyen Van Con", booked.getCustomer().getFullName());
+        assertEquals(1, booked.getQueueNumber());
+    }
+
+    @Test
+    @DisplayName("a profile of another account, and one with no date of birth yet, are refused on the patient")
+    void relativeRules() {
+        // 6 is nobody under this account.
+        when(customers.findByIdAndGuardianIdAndDeletedAtIsNull(eq(6L), any())).thenReturn(Optional.empty());
+        assertField("patientId", () -> service.bookOwn(customer, new BookingRequest(6L, DOCTOR, TUESDAY, "Sốt")));
+
+        Customer incomplete = relative();
+        incomplete.setDateOfBirth(null);
+        when(customers.findByIdAndGuardianIdAndDeletedAtIsNull(eq(5L), any())).thenReturn(Optional.of(incomplete));
+        assertField("patientId", () -> service.bookOwn(customer, new BookingRequest(5L, DOCTOR, TUESDAY, "Sốt")));
+
+        // The owner's own profile is held to the same rule.
+        customer.setGender(null);
+        assertField("patientId", () -> service.bookOwn(customer, booking(TUESDAY)));
+        verify(repository, never()).persist(any());
+    }
+
+    private Customer relative() {
+        Customer child = new Customer();
+        child.setGuardian(customer);
+        child.setFullName("Nguyen Van Con");
+        child.setPhone("0912345678");
+        child.setRelationship("child");
+        child.setDateOfBirth(LocalDate.of(2018, 5, 1));
+        child.setGender("male");
+        return child;
     }
 
     // --- the desk -------------------------------------------------------------
@@ -482,6 +530,6 @@ class AppointmentServiceTest {
     }
 
     private static BookingRequest booking(LocalDate date) {
-        return new BookingRequest(DOCTOR, date, "Check-up");
+        return new BookingRequest(null, DOCTOR, date, "Check-up");
     }
 }

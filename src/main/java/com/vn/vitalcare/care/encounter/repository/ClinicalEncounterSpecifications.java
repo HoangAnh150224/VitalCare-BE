@@ -54,7 +54,8 @@ public final class ClinicalEncounterSpecifications {
         params.search().ifPresent(term -> specs.add((root, query, cb) -> {
             Join<Object, Object> customer = root.join("customer", JoinType.LEFT);
             return cb.or(
-                    cb.like(cb.lower(customer.get("user").get("fullName")), ListParams.likePattern(term)),
+                    cb.like(cb.lower(customer.join("user", JoinType.LEFT).get("fullName")), ListParams.likePattern(term)),
+                    cb.like(cb.lower(customer.get("fullName")), ListParams.likePattern(term)),
                     cb.like(cb.lower(customer.get("customerCode")), ListParams.likePattern(term)));
         }));
 

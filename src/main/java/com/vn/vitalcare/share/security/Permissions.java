@@ -66,6 +66,9 @@ public final class Permissions {
     // handing out a device stays with customers:assign.
     public static final String CUSTOMERS_ASSIGN_STAFF = "customers:assign_staff";
     public static final String MY_PATIENTS_READ = "my_patients:read";
+    // Seeded by 028: a customer's own patient profile and their relatives'.
+    public static final String MY_PROFILES_READ = "my_profiles:read";
+    public static final String MY_PROFILES_WRITE = "my_profiles:write";
 
     // Seeded by 024. The visit and the record it adds to are the Doctor's and
     // Healthcare Staff's (SRS 3.1.3), not the clinic's or system's administrators'.

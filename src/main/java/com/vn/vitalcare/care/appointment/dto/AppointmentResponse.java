@@ -79,7 +79,6 @@ public record AppointmentResponse(
 
     public static AppointmentResponse from(Appointment appointment, RowLevelSecurity rowLevel) {
         var customer = appointment.getCustomer();
-        var user = customer.getUser();
         var clinic = appointment.getClinic();
         var doctor = appointment.getEmployee();
         return new AppointmentResponse(
@@ -88,8 +87,8 @@ public record AppointmentResponse(
                 new CustomerSummary(
                         customer.getId(),
                         customer.getCustomerCode(),
-                        user.getFullName(),
-                        user.getPhone(),
+                        customer.getFullName(),
+                        customer.getPhone(),
                         customer.getStatus()),
                 new ClinicSummary(clinic.getClinicId(), clinic.getClinicName()),
                 doctor == null ? null

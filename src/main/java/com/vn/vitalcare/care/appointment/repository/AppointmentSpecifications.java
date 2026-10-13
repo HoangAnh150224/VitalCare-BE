@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.appointment.repository;
 
 import com.vn.vitalcare.entity.Appointment;
+import jakarta.persistence.criteria.JoinType;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
@@ -44,10 +45,13 @@ public final class AppointmentSpecifications {
 
         params.search().ifPresent(term -> specs.add((root, query, cb) -> {
             var customer = root.join("customer");
-            var user = customer.join("user");
+            // Left: a dependent has no account, and carries a name and number of their own.
+            var user = customer.join("user", JoinType.LEFT);
             return cb.or(
                     cb.like(cb.lower(user.get("fullName")), ListParams.likePattern(term)),
                     cb.like(user.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
+                    cb.like(cb.lower(customer.get("fullName")), ListParams.likePattern(term)),
+                    cb.like(customer.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(customer.get("customerCode")), ListParams.likePattern(term)));
         }));
 
@@ -64,7 +68,20 @@ public final class AppointmentSpecifications {
         return (root, query, cb) -> cb.equal(root.get("bookingCode"), bookingCode);
     }
 
-    /** Pins a query to one customer's appointments — the customer-facing endpoints. */
+    /**
+     * Pins a query to one account's appointments — its owner's and those of
+     * the relatives the owner registers for. The customer-facing endpoints.
+     */
+    public static Specification<Appointment> ofAccount(Long ownerCustomerId) {
+        return (root, query, cb) -> {
+            var customer = root.join("customer");
+            return cb.or(
+                    cb.equal(customer.get("id"), ownerCustomerId),
+                    cb.equal(customer.join("guardian", JoinType.LEFT).get("id"), ownerCustomerId));
+        };
+    }
+
+    /** One profile's appointments. */
     public static Specification<Appointment> ofCustomer(Long customerId) {
         return (root, query, cb) -> cb.equal(root.get("customer").get("id"), customerId);
     }

@@ -36,7 +36,7 @@ public record AssignmentResponse(
         return new AssignmentResponse(
                 assignment.getId(),
                 assignment.getStatus(),
-                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getUser().getFullName()),
+                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getFullName()),
                 new StaffSummary(employee.getId(), employee.getEmployeeCode(), employee.getUser().getFullName(),
                         employee.getStaffType(), employee.getSpecialty()),
                 assignment.getAssignedAt(),

@@ -56,3 +56,5 @@ databaseChangeLog:
       file: db/changelog/changes/026-doctor-schedules-and-assignments.sql
   - include:
       file: db/changelog/changes/027-queue-registrations.sql
+  - include:
+      file: db/changelog/changes/028-dependents.sql

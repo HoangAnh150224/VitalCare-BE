@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
@@ -25,16 +26,41 @@ public class Customer extends BaseEntity {
     @Column(name = "id")
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    /**
+     * The account this profile is the owner's own. Null for a dependent — a
+     * relative the account's owner registers visits for — who has no sign-in
+     * and belongs to {@link #guardian} instead.
+     */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
     private User user;
+
+    /** The account owner's own profile, for a dependent; null on that profile itself. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "guardian_id")
+    private Customer guardian;
+
+    // A dependent's own name and number: there is no account to hold them.
+    // Null on an owner's profile, which reads both from the account.
+    @Column(name = "full_name")
+    private String fullName;
+
+    @Column(name = "phone")
+    private String phone;
+
+    /** What the dependent is to the account's owner: child, parent, spouse, sibling or other. */
+    @Column(name = "relationship")
+    private String relationship;
+
+    @Column(name = "national_id")
+    private String nationalId;
 
     @Column(name = "customer_code")
     private String customerCode;
 
-    // No phone of its own: users.phone is the sign-in identifier and owns it.
-    // A second copy here could disagree with the one login reads, and then
-    // changing your number on this screen would lock you out.
+    // An owner's profile keeps no phone of its own: users.phone is the sign-in
+    // identifier and owns it. A second copy could disagree with the one login
+    // reads, and then changing your number here would lock you out.
 
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
@@ -88,6 +114,58 @@ public class Customer extends BaseEntity {
 
     public User getUser() {
         return user;
+    }
+
+    public Customer getGuardian() {
+        return guardian;
+    }
+
+    public boolean isDependent() {
+        return guardian != null;
+    }
+
+    /** Makes this the profile of a relative of {@code guardian}'s account. */
+    public void setGuardian(Customer guardian) {
+        this.guardian = guardian;
+    }
+
+    /** The person's name: their own for a dependent, the account's for its owner. */
+    public String getFullName() {
+        return fullName != null || user == null ? fullName : user.getFullName();
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+    }
+
+    /** The number to reach them on: their own for a dependent, the sign-in number for an owner. */
+    public String getPhone() {
+        return phone != null || user == null ? phone : user.getPhone();
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
+    }
+
+    public String getRelationship() {
+        return relationship;
+    }
+
+    public void setRelationship(String relationship) {
+        this.relationship = relationship;
+    }
+
+    public String getNationalId() {
+        return nationalId;
+    }
+
+    public void setNationalId(String nationalId) {
+        this.nationalId = nationalId;
+    }
+
+    /** Whether the profile says enough to register a visit: a clinic needs an age and a sex. */
+    public boolean isCompleteForVisit() {
+        return dateOfBirth != null && gender != null;
     }
 
     public void setUser(User user) {

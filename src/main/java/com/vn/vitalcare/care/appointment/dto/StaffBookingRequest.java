@@ -27,6 +27,6 @@ public record StaffBookingRequest(
         String note) {
 
     public BookingRequest booking() {
-        return new BookingRequest(employeeId, appointmentDate, reason);
+        return new BookingRequest(null, employeeId, appointmentDate, reason);
     }
 }

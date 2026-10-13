@@ -42,6 +42,6 @@ public record DeviceAssignmentResponse(
                 assignment.getId(), assignment.getStatus(), assignment.getAssignedAt(),
                 assignment.getExpectedReturnAt(), assignment.getUnassignedAt(), assignment.getNote(),
                 null,
-                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getUser().getFullName()));
+                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getFullName()));
     }
 }

@@ -42,7 +42,7 @@ public record EncounterResponse(
         return new EncounterResponse(
                 encounter.getId(),
                 encounter.getStatus(),
-                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getUser().getFullName()),
+                new PatientSummary(customer.getId(), customer.getCustomerCode(), customer.getFullName()),
                 employee == null ? null
                         : new ClinicianSummary(employee.getId(), employee.getUser().getFullName(), employee.getStaffType()),
                 encounter.getClinicId(),

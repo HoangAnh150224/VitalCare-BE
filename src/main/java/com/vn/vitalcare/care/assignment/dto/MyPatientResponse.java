@@ -30,12 +30,11 @@ public record MyPatientResponse(
     public static MyPatientResponse from(MonitoringAssignment mine, DeviceAssignment device,
                                          List<MonitoringAssignment> careTeam) {
         Customer customer = mine.getCustomer();
-        var user = customer.getUser();
         return new MyPatientResponse(
                 customer.getId(),
                 customer.getCustomerCode(),
-                user.getFullName(),
-                user.getPhone(),
+                customer.getFullName(),
+                customer.getPhone(),
                 customer.getDateOfBirth(),
                 customer.getGender(),
                 customer.getEmergencyContactName(),

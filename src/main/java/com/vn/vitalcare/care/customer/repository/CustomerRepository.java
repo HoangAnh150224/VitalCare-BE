@@ -25,18 +25,23 @@ import org.springframework.data.repository.query.Param;
 public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSpecificationExecutor<Customer> {
 
     @Override
-    @EntityGraph(attributePaths = "user")
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     Page<Customer> findAll(Specification<Customer> spec, Pageable pageable);
 
     @Override
-    @EntityGraph(attributePaths = "user")
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     List<Customer> findAll(Specification<Customer> spec);
 
-    @EntityGraph(attributePaths = "user")
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     Optional<Customer> findByIdAndDeletedAtIsNull(Long id);
 
-    @EntityGraph(attributePaths = "user")
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     Optional<Customer> findByUserIdAndDeletedAtIsNull(Long userId);
+
+    /** The relatives an account's owner registers visits for, oldest first. */
+    List<Customer> findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(Long guardianId);
+
+    Optional<Customer> findByIdAndGuardianIdAndDeletedAtIsNull(Long id, Long guardianId);
 
     /**
      * The customer, locked until the transaction ends — taken before
@@ -45,6 +50,6 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
      * double click.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select c from Customer c join fetch c.user where c.id = :id and c.deletedAt is null")
+    @Query("select c from Customer c left join fetch c.user where c.id = :id and c.deletedAt is null")
     Optional<Customer> findForUpdate(@Param("id") Long id);
 }

@@ -155,6 +155,10 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         } catch (ResourceNotFoundException e) {
             throw new FieldValidationException("appointmentId", "That appointment is not this patient's");
         }
+        // getOwn reaches a whole account; the visit has to be this very person's.
+        if (!patient.getId().equals(appointment.getCustomer().getId())) {
+            throw new FieldValidationException("appointmentId", "That appointment is not this patient's");
+        }
         if (!clinician.getClinic().getClinicId().equals(appointment.getClinicId())) {
             throw new FieldValidationException("appointmentId", "That appointment is at another clinic");
         }
