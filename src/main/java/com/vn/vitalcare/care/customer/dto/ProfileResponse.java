@@ -17,6 +17,13 @@ public record ProfileResponse(
         /** What a relative is to the owner; null on the owner's own profile. */
         String relationship,
         String nationalId,
+        String nationalIdType,
+        LocalDate nationalIdIssuedOn,
+        String ethnicity,
+        String nationality,
+        String occupation,
+        String province,
+        String ward,
         String address,
         CustomerStatus status,
         /** Whether a visit can be registered for this profile yet. */
@@ -33,6 +40,13 @@ public record ProfileResponse(
                 profile.getGender(),
                 profile.getRelationship(),
                 profile.getNationalId(),
+                profile.getNationalIdType(),
+                profile.getNationalIdIssuedOn(),
+                profile.getEthnicity(),
+                profile.getNationality(),
+                profile.getOccupation(),
+                profile.getProvince(),
+                profile.getWard(),
                 profile.getAddress(),
                 profile.getStatus(),
                 profile.isCompleteForVisit());
