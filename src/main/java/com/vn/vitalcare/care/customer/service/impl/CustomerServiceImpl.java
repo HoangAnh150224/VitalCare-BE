@@ -195,9 +195,27 @@ public class CustomerServiceImpl implements CustomerService {
         }
         profile.setDateOfBirth(request.dateOfBirth());
         profile.setGender(request.gender());
-        // As in update: null leaves a text field alone, an empty string clears it.
-        if (request.nationalId() != null) {
-            profile.setNationalId(blankToNull(request.nationalId()));
+        profile.setNationalId(request.nationalId().trim());
+        profile.setNationalIdType(
+                request.nationalIdType() == null || request.nationalIdType().isBlank() ? "cccd" : request.nationalIdType());
+        if (request.province() != null) {
+            profile.setProvince(blankToNull(request.province()));
+        }
+        if (request.ward() != null) {
+            profile.setWard(blankToNull(request.ward()));
+        }
+        // As in update: null leaves a field alone, an empty string clears a text one.
+        if (request.nationalIdIssuedOn() != null) {
+            profile.setNationalIdIssuedOn(request.nationalIdIssuedOn());
+        }
+        if (request.ethnicity() != null) {
+            profile.setEthnicity(blankToNull(request.ethnicity()));
+        }
+        if (request.nationality() != null) {
+            profile.setNationality(blankToNull(request.nationality()));
+        }
+        if (request.occupation() != null) {
+            profile.setOccupation(blankToNull(request.occupation()));
         }
         if (request.address() != null) {
             profile.setAddress(blankToNull(request.address()));

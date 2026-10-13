@@ -52,8 +52,32 @@ public class Customer extends BaseEntity {
     @Column(name = "relationship")
     private String relationship;
 
+    /** Citizen id, passport, or a child's personal identification number. */
     @Column(name = "national_id")
     private String nationalId;
+
+    /** Which of those it is: cccd, personal_id (a child's) or passport. */
+    @Column(name = "national_id_type")
+    private String nationalIdType;
+
+    @Column(name = "national_id_issued_on")
+    private LocalDate nationalIdIssuedOn;
+
+    // The address in the three parts a registration form asks for; "address" is the street part.
+    @Column(name = "province")
+    private String province;
+
+    @Column(name = "ward")
+    private String ward;
+
+    @Column(name = "ethnicity")
+    private String ethnicity;
+
+    @Column(name = "nationality")
+    private String nationality;
+
+    @Column(name = "occupation")
+    private String occupation;
 
     @Column(name = "customer_code")
     private String customerCode;
@@ -161,6 +185,62 @@ public class Customer extends BaseEntity {
 
     public void setNationalId(String nationalId) {
         this.nationalId = nationalId;
+    }
+
+    public String getNationalIdType() {
+        return nationalIdType;
+    }
+
+    public void setNationalIdType(String nationalIdType) {
+        this.nationalIdType = nationalIdType;
+    }
+
+    public String getProvince() {
+        return province;
+    }
+
+    public void setProvince(String province) {
+        this.province = province;
+    }
+
+    public String getWard() {
+        return ward;
+    }
+
+    public void setWard(String ward) {
+        this.ward = ward;
+    }
+
+    public LocalDate getNationalIdIssuedOn() {
+        return nationalIdIssuedOn;
+    }
+
+    public void setNationalIdIssuedOn(LocalDate nationalIdIssuedOn) {
+        this.nationalIdIssuedOn = nationalIdIssuedOn;
+    }
+
+    public String getEthnicity() {
+        return ethnicity;
+    }
+
+    public void setEthnicity(String ethnicity) {
+        this.ethnicity = ethnicity;
+    }
+
+    public String getNationality() {
+        return nationality;
+    }
+
+    public void setNationality(String nationality) {
+        this.nationality = nationality;
+    }
+
+    public String getOccupation() {
+        return occupation;
+    }
+
+    public void setOccupation(String occupation) {
+        this.occupation = occupation;
     }
 
     /** Whether the profile says enough to register a visit: a clinic needs an age and a sex. */
