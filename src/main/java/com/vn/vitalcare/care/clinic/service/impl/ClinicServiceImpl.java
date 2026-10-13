@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.clinic.service.impl;
 
 import com.vn.vitalcare.care.clinic.ClinicProperties;
+import com.vn.vitalcare.care.clinic.dto.ClinicRequest;
 import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.entity.Clinic;
@@ -37,6 +38,29 @@ public class ClinicServiceImpl implements ClinicService {
     public Clinic get(UUID id) {
         return repository.findByClinicIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Clinic", id));
+    }
+
+    @Override
+    @Transactional
+    public Clinic create(ClinicRequest request) {
+        Clinic clinic = new Clinic();
+        clinic.setClinicId(UUID.randomUUID());
+        clinic.setOperatingStatus("OPERATING");
+        return repository.save(apply(clinic, request));
+    }
+
+    @Override
+    @Transactional
+    public Clinic update(UUID id, ClinicRequest request) {
+        return repository.save(apply(get(id), request));
+    }
+
+    private static Clinic apply(Clinic clinic, ClinicRequest request) {
+        clinic.setClinicName(request.name().trim());
+        clinic.setAddress(request.address() == null || request.address().isBlank() ? null : request.address().trim());
+        clinic.setContactPhone(
+                request.contactPhone() == null || request.contactPhone().isBlank() ? null : request.contactPhone().trim());
+        return clinic;
     }
 
     @Override
