@@ -1,10 +1,25 @@
 package com.vn.vitalcare;
 
+import com.vn.vitalcare.share.data.SecuredRepositoryImpl;
 import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
+/**
+ * The one explicit piece, as in the framework, is {@link EnableJpaRepositories},
+ * here only to name a base class: {@link SecuredRepositoryImpl} lends
+ * {@code save}, {@code delete} and {@code flush} back to
+ * {@link com.vn.vitalcare.share.data.SecuredRepository}, which deliberately
+ * inherits nothing. Registering it for every repository is harmless: Spring
+ * Data exposes only what a repository's own interface declares. Declaring
+ * {@code basePackages} is required once the annotation is present at all,
+ * because it replaces the default scan Boot would otherwise configure.
+ */
 @SpringBootApplication
+@EnableJpaRepositories(
+        basePackages = "com.vn.vitalcare",
+        repositoryBaseClass = SecuredRepositoryImpl.class)
 public class AppBeApplication {
 
     public static void main(String[] args) {
