@@ -42,3 +42,5 @@ databaseChangeLog:
       file: db/changelog/changes/019-front-desk-clinics.sql
   - include:
       file: db/changelog/changes/020-clinic-row-level-policies.sql
+  - include:
+      file: db/changelog/changes/021-clinic-admin-staff-type.sql

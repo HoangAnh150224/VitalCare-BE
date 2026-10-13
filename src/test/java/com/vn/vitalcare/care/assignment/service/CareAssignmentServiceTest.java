@@ -113,6 +113,19 @@ class CareAssignmentServiceTest {
     }
 
     @Test
+    @DisplayName("the clinic's administrator cannot be put on a care team either")
+    void clinicAdminIsRefused() {
+        when(customers.getForUpdate(1L)).thenReturn(patient(1));
+        Employee admin = staff(5, EmployeeStatus.ACTIVE);
+        admin.setStaffType(StaffType.CLINIC_ADMIN);
+        when(employees.lockForUpdate(5L)).thenReturn(admin);
+
+        FieldValidationException e = assertThrows(FieldValidationException.class,
+                () -> service.assignStaff(1L, new AssignmentRequests.AssignStaff(5L, null)));
+        assertEquals("employeeId", e.field());
+    }
+
+    @Test
     @DisplayName("the same person cannot be on one patient's team twice at once")
     void duplicateStaffIsRefused() {
         when(customers.getForUpdate(1L)).thenReturn(patient(1));
