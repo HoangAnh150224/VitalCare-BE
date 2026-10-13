@@ -13,6 +13,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.assignment.dto.AssignmentRequests;
 import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
 import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
@@ -59,7 +60,7 @@ class CareAssignmentServiceTest {
         when(deviceAssignments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service = new CareAssignmentServiceImpl(careTeams, deviceAssignments, customers, employees, devices,
-                Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+                ClinicRowLevel.unrestricted(), Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test

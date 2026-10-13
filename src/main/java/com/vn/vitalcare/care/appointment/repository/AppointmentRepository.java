@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.appointment.repository;
 
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.AppointmentStatus;
+import com.vn.vitalcare.share.data.SecuredRepository;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Collection;
@@ -14,14 +15,12 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 /**
  * Every read fetches what a response shows — the customer, their account and
  * the clinic — for the reason given on {@code CustomerRepository}.
  */
-public interface AppointmentRepository extends JpaRepository<Appointment, Long>, JpaSpecificationExecutor<Appointment> {
+public interface AppointmentRepository extends SecuredRepository<Appointment, Long> {
 
     @Override
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
@@ -31,9 +30,12 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
     List<Appointment> findAll(Specification<Appointment> spec);
 
+    /** What {@code byId} and the booking-code lookup read through, with what the response shows. */
+    @Override
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
-    Optional<Appointment> findByIdAndDeletedAtIsNull(Long id);
+    Optional<Appointment> findOne(Specification<Appointment> spec);
 
+    /** Not scoped: pinned to the customer, for their own appointments; they hold no row-level scope. */
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
     Optional<Appointment> findByIdAndCustomerIdAndDeletedAtIsNull(Long id, Long customerId);
 
@@ -56,9 +58,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
         long getBooked();
     }
 
-    @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
-    Optional<Appointment> findByBookingCodeAndDeletedAtIsNull(String bookingCode);
-
+    // Not scoped: a booking code is unique across every clinic.
     boolean existsByBookingCode(String bookingCode);
 
     /** The same customer already holding this slot, which a second booking would duplicate. */

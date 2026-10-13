@@ -51,7 +51,7 @@ public final class MedicalDeviceSpecifications {
         return Specification.allOf(specs);
     }
 
-    /** Only one clinic's devices: the front desk's {@code ClinicScope}. */
+    /** Only one clinic's devices: the {@code clinicId} filter. */
     public static Specification<MedicalDevice> atClinic(UUID clinicId) {
         return (root, query, cb) -> cb.equal(root.get("clinic").get("clinicId"), clinicId);
     }

@@ -7,12 +7,15 @@ import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.CustomerStatus;
+import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.PatientActivationSource;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.share.security.rowlevel.Action;
 import com.vn.vitalcare.share.web.ListParams;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -38,11 +41,20 @@ public class CustomerServiceImpl implements CustomerService {
 
     private final CustomerRepository repository;
     private final ClinicScope clinicScope;
+    // Customers are not under row-level management -- a customer belongs to a
+    // clinic only through its appointments and care team, which a policy
+    // cannot express -- but whether the caller is held to a clinic at all is
+    // read from it. See scope().
+    private final RowLevelSecurity rowLevel;
     private final Clock clock;
 
-    public CustomerServiceImpl(CustomerRepository repository, ClinicScope clinicScope, Clock clock) {
+    public CustomerServiceImpl(CustomerRepository repository,
+                               ClinicScope clinicScope,
+                               RowLevelSecurity rowLevel,
+                               Clock clock) {
         this.repository = repository;
         this.clinicScope = clinicScope;
+        this.rowLevel = rowLevel;
         this.clock = clock;
     }
 
@@ -71,10 +83,9 @@ public class CustomerServiceImpl implements CustomerService {
         Customer customer = repository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer", id));
         // Another clinic's customer answers as not found, never as forbidden.
-        Optional<UUID> clinic = clinicScope.currentClinicId();
-        if (clinic.isPresent() && !repository.exists(Specification.allOf(
-                (root, query, cb) -> cb.equal(root.get("id"), id),
-                CustomerSpecifications.visibleAtClinic(clinic.get())))) {
+        Optional<Specification<Customer>> scope = boundScope();
+        if (scope.isPresent() && !repository.exists(Specification.allOf(
+                (root, query, cb) -> cb.equal(root.get("id"), id), scope.get()))) {
             throw new ResourceNotFoundException("Customer", id);
         }
         return customer;
@@ -162,14 +173,31 @@ public class CustomerServiceImpl implements CustomerService {
         customer.activateAsPatient(source, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
     }
 
-    /**
-     * The caller's clinic as a filter: the customers it serves, plus everybody
-     * who has not booked anywhere yet. Unrestricted for somebody tied to no clinic.
-     */
+    /** The caller's customers as a filter; see {@link #boundScope()}. */
     private Specification<Customer> scope() {
-        return clinicScope.currentClinicId()
+        return boundScope().orElse((root, query, cb) -> cb.conjunction());
+    }
+
+    /**
+     * The caller's clinic as a filter — the customers it serves, plus everybody
+     * who has not booked anywhere yet — or empty when the caller is not held to
+     * a clinic.
+     *
+     * <p>Somebody with no clinic is unrestricted only if their staff scope
+     * reaches every clinic's staff too: an administrator. A clinic-bound role
+     * held by an account with no staff record sees no clinic's staff, and so
+     * no clinic's customers either, rather than every clinic's.
+     */
+    private Optional<Specification<Customer>> boundScope() {
+        // Asked of the staff policy first, so somebody it leaves unrestricted
+        // -- an administrator who also has a staff record -- sees every
+        // clinic's customers, as they see every clinic's appointments.
+        if (rowLevel.hasUnrestrictedScope(Employee.class, Action.READ)) {
+            return Optional.empty();
+        }
+        return Optional.of(clinicScope.currentClinicId()
                 .map(CustomerSpecifications::visibleAtClinic)
-                .orElse((root, query, cb) -> cb.conjunction());
+                .orElse((root, query, cb) -> cb.disjunction()));
     }
 
     private static String blankToNull(String value) {

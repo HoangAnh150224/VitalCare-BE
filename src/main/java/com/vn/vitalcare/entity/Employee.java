@@ -2,6 +2,7 @@ package com.vn.vitalcare.entity;
 
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.share.data.BaseEntity;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelResource;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,8 +15,10 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import java.util.UUID;
 
 @Entity
+@RowLevelResource("employees")
 @Table(name = "employee")
 public class Employee extends BaseEntity {
 
@@ -31,6 +34,16 @@ public class Employee extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "clinic_id")
     private Clinic clinic;
+
+    /**
+     * The same column as {@link #clinic}, as a plain value, for row-level
+     * policies: they compare scalar columns, and a clinic is keyed by a UUID
+     * the engine's references cannot address. Read-only here; {@link #setClinic}
+     * keeps it in step so a policy checking a row before it is saved sees the
+     * clinic it is about to have.
+     */
+    @Column(name = "clinic_id", insertable = false, updatable = false)
+    private UUID clinicId;
 
     @Column(name = "employee_code")
     private String employeeCode;
@@ -80,6 +93,11 @@ public class Employee extends BaseEntity {
 
     public void setClinic(Clinic clinic) {
         this.clinic = clinic;
+        this.clinicId = clinic == null ? null : clinic.getClinicId();
+    }
+
+    public UUID getClinicId() {
+        return clinicId;
     }
 
     public String getEmployeeCode() {

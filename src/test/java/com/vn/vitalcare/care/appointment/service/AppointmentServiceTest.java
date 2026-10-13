@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
@@ -27,6 +28,7 @@ import com.vn.vitalcare.identity.user.entity.UserStatus;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelViolationException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,6 +40,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Booking into a clinic's slots, and the check-in that turns a neutral
@@ -60,6 +63,7 @@ class AppointmentServiceTest {
     private Customer customer;
     /** The signed-in receptionist's clinic; null for somebody tied to none. */
     private UUID scopedTo;
+    private ClinicRowLevel rowLevel;
 
     @BeforeEach
     void setUp() {
@@ -69,22 +73,24 @@ class AppointmentServiceTest {
     private void setUp(Clock clock) {
         fixture = new ScheduleFixture(clock);
         repository = fixture.appointments;
-        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(repository.persist(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         CustomerRepository customers = Mockito.mock(CustomerRepository.class);
         when(customers.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         ClinicScope scope = () -> Optional.ofNullable(scopedTo);
+        rowLevel = new ClinicRowLevel(() -> scopedTo);
         service = new AppointmentServiceImpl(
                 repository,
-                new CustomerServiceImpl(customers, scope, clock),
+                new CustomerServiceImpl(customers, scope, rowLevel, clock),
                 fixture.clinicService,
                 fixture.schedule,
-                scope,
+                rowLevel,
                 clock);
 
         customer = new Customer();
         customer.setUser(new User("+84912345678", null, "hash", "Nguyen Van A", UserStatus.ACTIVE));
+        when(customers.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(customer));
     }
 
     @Test
@@ -137,7 +143,7 @@ class AppointmentServiceTest {
         fixture.booked.put(LocalTime.of(14, 0), 3L);
 
         assertThrows(ConflictException.class, () -> service.bookOwn(customer, booking(TODAY, "14:00")));
-        verify(repository, never()).save(any());
+        verify(repository, never()).persist(any());
     }
 
     @Test
@@ -155,14 +161,14 @@ class AppointmentServiceTest {
                 any(), any(), any(), any())).thenReturn(true);
 
         assertThrows(ConflictException.class, () -> service.bookOwn(customer, booking(TODAY, "14:00")));
-        verify(repository, never()).save(any());
+        verify(repository, never()).persist(any());
     }
 
     @Test
     @DisplayName("a code finds its appointment however it was typed")
     void lookupNormalisesTheCode() {
         Appointment appointment = appointmentOn(TODAY);
-        when(repository.findByBookingCodeAndDeletedAtIsNull("K7M29QXA")).thenReturn(Optional.of(appointment));
+        stored(appointment);
 
         assertEquals(appointment, service.getByCode(" k7m2-9qxa "));
     }
@@ -243,7 +249,7 @@ class AppointmentServiceTest {
     void ownClinicIsInScope() {
         scopedTo = ScheduleFixture.CLINIC_ID;
         Appointment appointment = stored(appointmentOn(TODAY));
-        when(repository.findByBookingCodeAndDeletedAtIsNull("K7M29QXA")).thenReturn(Optional.of(appointment));
+        stored(appointment);
 
         assertEquals(appointment, service.get(1L));
         assertEquals(appointment, service.getByCode("K7M29QXA"));
@@ -254,23 +260,42 @@ class AppointmentServiceTest {
     void otherClinicIsNotFound() {
         scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
         Appointment appointment = stored(appointmentOn(TODAY));
-        when(repository.findByBookingCodeAndDeletedAtIsNull("K7M29QXA")).thenReturn(Optional.of(appointment));
+        stored(appointment);
 
         assertThrows(ResourceNotFoundException.class, () -> service.get(1L));
         assertThrows(ResourceNotFoundException.class, () -> service.getByCode("K7M29QXA"));
         assertThrows(ResourceNotFoundException.class, () -> service.checkIn(1L));
         assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L));
         assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
-        verify(repository, never()).save(any());
+        verify(repository, never()).persist(any());
     }
 
     @Test
-    @DisplayName("a receptionist cannot book at another clinic")
+    @DisplayName("a receptionist cannot book at another clinic: the write policy refuses the saved row")
     void bookingAtAnotherClinicIsRefused() {
         scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
-        assertField("clinicId", () -> service.bookFor(new StaffBookingRequest(
-                1L, ScheduleFixture.CLINIC_ID, TODAY, LocalTime.of(14, 0), "Check-up", null)));
-        verify(repository, never()).save(any());
+        RowLevelViolationException e = assertThrows(RowLevelViolationException.class, () -> service.bookFor(
+                new StaffBookingRequest(1L, ScheduleFixture.CLINIC_ID, TODAY, LocalTime.of(14, 0), "Check-up", null)));
+        assertEquals("clinicId", e.field());
+        // Checked after the flush, as the framework does; the exception rolls
+        // the insert back with the transaction.
+        verify(repository).flush();
+    }
+
+    @Test
+    @DisplayName("a receptionist books at their own clinic")
+    void bookingAtOwnClinic() {
+        scopedTo = ScheduleFixture.CLINIC_ID;
+        Appointment booked = service.bookFor(new StaffBookingRequest(
+                1L, ScheduleFixture.CLINIC_ID, TODAY, LocalTime.of(14, 0), "Check-up", null));
+        assertEquals(ScheduleFixture.CLINIC_ID, booked.getClinicId());
+    }
+
+    @Test
+    @DisplayName("a customer books their own visit without holding any row-level scope")
+    void customerBookingIgnoresStaffScope() {
+        scopedTo = UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48");
+        assertEquals(ScheduleFixture.CLINIC_ID, service.bookOwn(customer, booking(TODAY, "14:00")).getClinicId());
     }
 
     private static void assertField(String field, org.junit.jupiter.api.function.Executable call) {
@@ -278,8 +303,15 @@ class AppointmentServiceTest {
         assertEquals(field, e.field());
     }
 
+    /**
+     * The one appointment the repository holds, found by id or by code through
+     * the caller's scope -- which a mock cannot run, so it is answered with the
+     * same rule in memory.
+     */
+    @SuppressWarnings("unchecked")
     private Appointment stored(Appointment appointment) {
-        when(repository.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(appointment));
+        when(repository.findOne(any(Specification.class)))
+                .thenAnswer(invocation -> Optional.of(appointment).filter(rowLevel::canRead));
         return appointment;
     }
 

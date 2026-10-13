@@ -15,6 +15,7 @@ import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
 import com.vn.vitalcare.entity.MedicalDevice;
 import com.vn.vitalcare.entity.MonitoringAssignment;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
@@ -36,6 +37,10 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
     private final CustomerService customerService;
     private final EmployeeService employeeService;
     private final DeviceService deviceService;
+    // Handing a device out and taking it back changes the device's status, so
+    // the "devices" write policy is checked on the state that leaves it in.
+    // DeviceService.lockForUpdate has already checked the other half.
+    private final RowLevelSecurity rowLevel;
     private final Clock clock;
 
     public CareAssignmentServiceImpl(MonitoringAssignmentRepository careTeams,
@@ -43,12 +48,14 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
                                      CustomerService customerService,
                                      EmployeeService employeeService,
                                      DeviceService deviceService,
+                                     RowLevelSecurity rowLevel,
                                      Clock clock) {
         this.careTeams = careTeams;
         this.deviceAssignments = deviceAssignments;
         this.customerService = customerService;
         this.employeeService = employeeService;
         this.deviceService = deviceService;
+        this.rowLevel = rowLevel;
         this.clock = clock;
     }
 
@@ -131,6 +138,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         assignment.setExpectedReturnAt(request.expectedReturnAt());
         assignment.setNote(blankToNull(request.note()));
         device.setStatus(DeviceStatus.ASSIGNED);
+        rowLevel.checkWritable(device);
         return deviceAssignments.save(assignment);
     }
 
@@ -148,6 +156,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         assignment.end(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         assignment.setNote(appendNote(assignment.getNote(), request == null ? null : request.note()));
         device.setStatus(DeviceStatus.AVAILABLE);
+        rowLevel.checkWritable(device);
         return deviceAssignments.save(assignment);
     }
 

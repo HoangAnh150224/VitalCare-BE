@@ -58,9 +58,9 @@ public final class AppointmentSpecifications {
         return Specification.allOf(specs);
     }
 
-    /** Only one clinic's appointments: the front desk's {@code ClinicScope}. */
-    public static Specification<Appointment> atClinic(UUID clinicId) {
-        return (root, query, cb) -> cb.equal(root.get("clinic").get("clinicId"), clinicId);
+    /** The appointment a slip's code names; the code is already normalised. */
+    public static Specification<Appointment> byBookingCode(String bookingCode) {
+        return (root, query, cb) -> cb.equal(root.get("bookingCode"), bookingCode);
     }
 
     /** Pins a query to one customer's appointments — the customer-facing endpoints. */
