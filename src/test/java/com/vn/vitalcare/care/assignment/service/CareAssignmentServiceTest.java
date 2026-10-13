@@ -60,7 +60,7 @@ class CareAssignmentServiceTest {
         when(deviceAssignments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service = new CareAssignmentServiceImpl(careTeams, deviceAssignments, customers, employees, devices,
-                ClinicRowLevel.unrestricted(), Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+                ClinicRowLevel.unrestricted(), Optional::empty, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test

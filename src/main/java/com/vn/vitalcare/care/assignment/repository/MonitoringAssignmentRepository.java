@@ -4,13 +4,27 @@ import com.vn.vitalcare.entity.MonitoringAssignment;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 /**
  * Care-team rows. "Open" means not yet ended ({@code unassignedAt} null) —
  * the same condition the partial unique index in 016 holds to.
  */
-public interface MonitoringAssignmentRepository extends JpaRepository<MonitoringAssignment, Long> {
+public interface MonitoringAssignmentRepository
+        extends JpaRepository<MonitoringAssignment, Long>, JpaSpecificationExecutor<MonitoringAssignment> {
+
+    /** The assignment list: both people a row names, fetched with it. */
+    @Override
+    @EntityGraph(attributePaths = {"customer", "customer.user", "employee", "employee.user"})
+    Page<MonitoringAssignment> findAll(Specification<MonitoringAssignment> spec, Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"customer", "customer.user", "employee", "employee.user"})
+    Optional<MonitoringAssignment> findOne(Specification<MonitoringAssignment> spec);
 
     /** A patient's care team, current and past, newest first. */
     @EntityGraph(attributePaths = {"employee", "employee.user"})
