@@ -4,6 +4,7 @@ import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
 import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.entity.Appointment;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
@@ -33,9 +34,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AppointmentController {
 
     private final AppointmentService service;
+    private final RowLevelSecurity rowLevel;
 
-    public AppointmentController(AppointmentService service) {
+    public AppointmentController(AppointmentService service, RowLevelSecurity rowLevel) {
         this.service = service;
+        this.rowLevel = rowLevel;
     }
 
     @GetMapping
@@ -46,13 +49,13 @@ public class AppointmentController {
         List<Long> ids = params.ids();
         if (!ids.isEmpty()) {
             List<AppointmentResponse> rows = service.getMany(ids).stream()
-                    .map(AppointmentResponse::from)
+                    .map(appointment -> AppointmentResponse.from(appointment, rowLevel))
                     .toList();
             return ListResponse.of(rows, rows.size());
         }
 
         Page<Appointment> page = service.list(params);
-        return ListResponse.of(page.map(AppointmentResponse::from).getContent(), page.getTotalElements());
+        return ListResponse.of(page.map(appointment -> AppointmentResponse.from(appointment, rowLevel)).getContent(), page.getTotalElements());
     }
 
     /**
@@ -62,13 +65,13 @@ public class AppointmentController {
     @GetMapping("/lookup")
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_READ + "')")
     public AppointmentResponse lookup(@RequestParam String code) {
-        return AppointmentResponse.from(service.getByCode(code));
+        return AppointmentResponse.from(service.getByCode(code), rowLevel);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_READ + "')")
     public AppointmentResponse get(@PathVariable Long id) {
-        return AppointmentResponse.from(service.get(id));
+        return AppointmentResponse.from(service.get(id), rowLevel);
     }
 
     @PostMapping
@@ -77,19 +80,19 @@ public class AppointmentController {
         Appointment created = service.bookFor(request);
         return ResponseEntity
                 .created(URI.create("/api/appointments/" + created.getId()))
-                .body(AppointmentResponse.from(created));
+                .body(AppointmentResponse.from(created, rowLevel));
     }
 
     /** Records the arrival; a neutral customer becomes a patient in the same step. */
     @PostMapping("/{id}/check-in")
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_CHECK_IN + "')")
     public AppointmentResponse checkIn(@PathVariable Long id) {
-        return AppointmentResponse.from(service.checkIn(id));
+        return AppointmentResponse.from(service.checkIn(id), rowLevel);
     }
 
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
     public AppointmentResponse cancel(@PathVariable Long id) {
-        return AppointmentResponse.from(service.cancel(id));
+        return AppointmentResponse.from(service.cancel(id), rowLevel);
     }
 }

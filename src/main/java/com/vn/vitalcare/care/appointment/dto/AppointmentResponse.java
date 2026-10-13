@@ -1,12 +1,15 @@
 package com.vn.vitalcare.care.appointment.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.entity.CustomerStatus;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -31,7 +34,15 @@ public record AppointmentResponse(
         String note,
         OffsetDateTime checkedInAt,
         OffsetDateTime cancelledAt,
-        Instant createdAt) {
+        Instant createdAt,
+        /**
+         * What the caller may do to this row, from the row-level write and
+         * delete policies — the framework's {@code _can}, read by the client's
+         * access control to hide buttons that would end in a 404 or 422. Empty
+         * when there is no scope to report against.
+         */
+        @JsonProperty("_can")
+        Map<String, Boolean> can) {
 
     public record CustomerSummary(Long id, String customerCode, String fullName, String phone, CustomerStatus status) {
     }
@@ -48,10 +59,15 @@ public record AppointmentResponse(
         return new AppointmentResponse(
                 full.id(), full.bookingCode(), full.customer(), full.clinic(), full.appointmentDate(), full.startTime(),
                 full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
-                full.cancelledAt(), full.createdAt());
+                full.cancelledAt(), full.createdAt(), Map.of());
     }
 
+    /** Without row flags — for a caller with no scope to report against. */
     public static AppointmentResponse from(Appointment appointment) {
+        return from(appointment, null);
+    }
+
+    public static AppointmentResponse from(Appointment appointment, RowLevelSecurity rowLevel) {
         var customer = appointment.getCustomer();
         var user = customer.getUser();
         var clinic = appointment.getClinic();
@@ -73,6 +89,7 @@ public record AppointmentResponse(
                 appointment.getNote(),
                 appointment.getCheckedInAt(),
                 appointment.getCancelledAt(),
-                appointment.getCreatedAt());
+                appointment.getCreatedAt(),
+                rowLevel == null ? Map.of() : rowLevel.capabilities(appointment));
     }
 }
