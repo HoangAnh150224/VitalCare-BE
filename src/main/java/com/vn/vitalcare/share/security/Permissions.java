@@ -62,6 +62,9 @@ public final class Permissions {
     public static final String DEVICES_READ = "devices:read";
     public static final String DEVICES_WRITE = "devices:write";
     public static final String CUSTOMERS_ASSIGN = "customers:assign";
+    // SRS 3.1.3: "Assign Patient to Healthcare Staff" is the clinic administrator's alone;
+    // handing out a device stays with customers:assign.
+    public static final String CUSTOMERS_ASSIGN_STAFF = "customers:assign_staff";
     public static final String MY_PATIENTS_READ = "my_patients:read";
 
     // Seeded by 018, ADMIN only: a customer's or a member of staff's own

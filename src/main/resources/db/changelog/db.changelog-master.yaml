@@ -44,3 +44,5 @@ databaseChangeLog:
       file: db/changelog/changes/020-clinic-row-level-policies.sql
   - include:
       file: db/changelog/changes/021-clinic-admin-staff-type.sql
+  - include:
+      file: db/changelog/changes/022-align-roles-with-srs.sql

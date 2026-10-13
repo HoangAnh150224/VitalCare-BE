@@ -40,14 +40,14 @@ public class CustomerCareController {
     }
 
     @PostMapping("/care-team")
-    @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_ASSIGN + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_ASSIGN_STAFF + "')")
     public CareTeamMemberResponse assignStaff(@PathVariable Long customerId,
                                               @Valid @RequestBody AssignmentRequests.AssignStaff request) {
         return CareTeamMemberResponse.from(service.assignStaff(customerId, request));
     }
 
     @PostMapping("/care-team/{assignmentId}/end")
-    @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_ASSIGN + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_ASSIGN_STAFF + "')")
     public CareTeamMemberResponse endStaff(@PathVariable Long customerId,
                                            @PathVariable Long assignmentId,
                                            @Valid @RequestBody(required = false) AssignmentRequests.End request) {
