@@ -92,6 +92,10 @@ public class SecurityConfig {
                         // definition; rejecting it would fail every
                         // cross-origin request before the real one is sent.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Railway's health check has no bearer token. The
+                        // actuator exposes health status only to anonymous
+                        // callers; detailed component data remains protected.
+                        .requestMatchers("/actuator/health").permitAll()
                         // Signing in, renewing and signing out are the three
                         // things you must be able to do without a valid access
                         // token. Everything else needs one.
