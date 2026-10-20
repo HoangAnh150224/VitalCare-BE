@@ -116,7 +116,13 @@ public final class CustomerSpecifications {
             anyVisit.select(encounter.get("id")).where(
                     cb.equal(encounter.get("customer"), root),
                     cb.isNull(encounter.get("deletedAt")));
-            return cb.and(cb.not(cb.exists(any)), cb.not(cb.exists(anyVisit)));
+            // Followed by somebody's care team, too: their monitoring notes are health data.
+            Subquery<Long> followed = query.subquery(Long.class);
+            Root<MonitoringAssignment> assignment = followed.from(MonitoringAssignment.class);
+            followed.select(assignment.get("id")).where(
+                    cb.equal(assignment.get("customer"), root),
+                    cb.isNull(assignment.get("deletedAt")));
+            return cb.and(cb.not(cb.exists(any)), cb.not(cb.exists(anyVisit)), cb.not(cb.exists(followed)));
         };
         return ofClinic(clinicId).or(unbooked);
     }
