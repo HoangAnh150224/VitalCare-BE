@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.clinic.service;
 
+import com.vn.vitalcare.care.clinic.dto.ClinicSummaryResponse;
 import com.vn.vitalcare.care.clinic.dto.ClinicRequest;
 import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
 import com.vn.vitalcare.entity.Clinic;
@@ -24,6 +25,12 @@ public interface ClinicService {
      * booking takes before counting a slot. See {@link ClinicRepository#findForUpdate}.
      */
     Clinic getForUpdate(UUID id);
+
+    /** Active staff working at the clinic, for its row in the list. */
+    long staffCount(UUID id);
+
+    /** SRS 3.18.3: staff, devices and patients. */
+    ClinicSummaryResponse summary(UUID id);
 
     ZoneId timeZone();
 

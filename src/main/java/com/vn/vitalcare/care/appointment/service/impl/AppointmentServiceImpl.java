@@ -377,6 +377,10 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .orElseThrow(() -> new ConflictException("That doctor has no turn left on that day"));
 
         appointment.setEmployee(doctor);
+        // SRS 3.18: a clinic that has stopped operating takes no new visits.
+        if ("INACTIVE".equals(clinicService.get(doctor.getClinicId()).getOperatingStatus())) {
+            throw new FieldValidationException("employeeId", "That doctor's clinic is not taking visits");
+        }
         // Loaded, not the doctor's lazy reference: the response names the clinic after the transaction ends.
         appointment.setClinic(clinicService.get(doctor.getClinicId()));
         appointment.setAppointmentDate(date);

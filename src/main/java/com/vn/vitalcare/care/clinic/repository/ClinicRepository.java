@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+// The three counts below are not scoped: figures about one clinic for the page
+// only somebody with clinics:read opens; no row comes back.
 public interface ClinicRepository extends JpaRepository<Clinic, UUID> {
 
     Optional<Clinic> findByClinicIdAndDeletedAtIsNull(UUID clinicId);
@@ -29,4 +31,16 @@ public interface ClinicRepository extends JpaRepository<Clinic, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from Clinic c where c.clinicId = :clinicId and c.deletedAt is null")
     Optional<Clinic> findForUpdate(@Param("clinicId") UUID clinicId);
+
+    @Query("select count(e) from Employee e where e.clinicId = :clinicId and e.deletedAt is null "
+            + "and e.status = com.vn.vitalcare.entity.EmployeeStatus.ACTIVE")
+    long countActiveStaff(@Param("clinicId") UUID clinicId);
+
+    @Query("select count(d) from MedicalDevice d where d.clinicId = :clinicId and d.deletedAt is null")
+    long countDevices(@Param("clinicId") UUID clinicId);
+
+    /** Patients who have registered a visit there; somebody only followed by its staff is not counted. */
+    @Query("select count(distinct a.customer.id) from Appointment a where a.clinicId = :clinicId "
+            + "and a.deletedAt is null and a.customer.status = com.vn.vitalcare.entity.CustomerStatus.PATIENT")
+    long countPatients(@Param("clinicId") UUID clinicId);
 }

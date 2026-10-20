@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.clinic.service.impl;
 
+import com.vn.vitalcare.care.clinic.dto.ClinicSummaryResponse;
 import com.vn.vitalcare.care.clinic.ClinicProperties;
 import com.vn.vitalcare.care.clinic.dto.ClinicRequest;
 import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
@@ -55,11 +56,29 @@ public class ClinicServiceImpl implements ClinicService {
         return repository.save(apply(get(id), request));
     }
 
+    @Override
+    public long staffCount(UUID id) {
+        return repository.countActiveStaff(id);
+    }
+
+    @Override
+    public ClinicSummaryResponse summary(UUID id) {
+        get(id);
+        return new ClinicSummaryResponse(
+                repository.countActiveStaff(id), repository.countDevices(id), repository.countPatients(id));
+    }
+
     private static Clinic apply(Clinic clinic, ClinicRequest request) {
         clinic.setClinicName(request.name().trim());
         clinic.setAddress(request.address() == null || request.address().isBlank() ? null : request.address().trim());
         clinic.setContactPhone(
                 request.contactPhone() == null || request.contactPhone().isBlank() ? null : request.contactPhone().trim());
+        clinic.setContactEmail(request.contactEmail().trim());
+        clinic.setContactPerson(
+                request.contactPerson() == null || request.contactPerson().isBlank() ? null : request.contactPerson().trim());
+        if (request.operatingStatus() != null && !request.operatingStatus().isBlank()) {
+            clinic.setOperatingStatus(request.operatingStatus());
+        }
         return clinic;
     }
 

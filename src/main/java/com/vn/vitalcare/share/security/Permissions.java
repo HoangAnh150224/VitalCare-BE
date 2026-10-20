@@ -44,6 +44,8 @@ public final class Permissions {
     public static final String CUSTOMERS_READ = "customers:read";
     public static final String CUSTOMERS_WRITE = "customers:write";
     public static final String CUSTOMERS_ACTIVATE = "customers:activate";
+    // Seeded by 030: whether the clinic is still looking after somebody (SRS 3.8.5).
+    public static final String CUSTOMERS_STATUS = "customers:status";
 
     public static final String APPOINTMENTS_READ = "appointments:read";
     public static final String APPOINTMENTS_WRITE = "appointments:write";

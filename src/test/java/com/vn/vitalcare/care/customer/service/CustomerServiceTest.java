@@ -84,4 +84,22 @@ class CustomerServiceTest {
     private static User user() {
         return new User("+84912345678", null, "hash", "Nguyen Van A", UserStatus.ACTIVE);
     }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("SRS 3.8.5: leaving 'active' needs a reason; the change says when, and the same status twice is refused")
+    void activityStatus() {
+        Customer customer = new Customer();
+        when(repository.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(customer));
+
+        org.junit.jupiter.api.Assertions.assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                () -> service.changeActivityStatus(5L, new com.vn.vitalcare.care.customer.dto.ActivityStatusRequest("paused", " ")));
+        service.changeActivityStatus(5L, new com.vn.vitalcare.care.customer.dto.ActivityStatusRequest("paused", "Đi công tác 2 tuần"));
+        org.junit.jupiter.api.Assertions.assertEquals("paused", customer.getActivityStatus());
+        org.junit.jupiter.api.Assertions.assertEquals("Đi công tác 2 tuần", customer.getActivityReason());
+        org.junit.jupiter.api.Assertions.assertNotNull(customer.getActivityChangedAt());
+        org.junit.jupiter.api.Assertions.assertThrows(com.vn.vitalcare.share.exception.ConflictException.class,
+                () -> service.changeActivityStatus(5L, new com.vn.vitalcare.care.customer.dto.ActivityStatusRequest("paused", "x")));
+        service.changeActivityStatus(5L, new com.vn.vitalcare.care.customer.dto.ActivityStatusRequest("active", null));
+        org.junit.jupiter.api.Assertions.assertEquals("active", customer.getActivityStatus());
+    }
 }

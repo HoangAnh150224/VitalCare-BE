@@ -105,6 +105,24 @@ public class Customer extends BaseEntity {
     @Column(name = "status", nullable = false)
     private CustomerStatus status = CustomerStatus.NEUTRAL;
 
+    /**
+     * Whether the clinic is still looking after this person: active, inactive
+     * or paused (monitoring on hold) — SRS 3.8.5. Separate from {@link #status},
+     * which only says whether they have become a patient at all.
+     */
+    @Column(name = "activity_status", nullable = false)
+    private String activityStatus = "active";
+
+    @Column(name = "activity_reason")
+    private String activityReason;
+
+    @Column(name = "activity_changed_at")
+    private OffsetDateTime activityChangedAt;
+
+    // Bare users.id, like the audit columns.
+    @Column(name = "activity_changed_by_id")
+    private Long activityChangedById;
+
     @Column(name = "patient_activated_at")
     private OffsetDateTime patientActivatedAt;
 
@@ -134,6 +152,30 @@ public class Customer extends BaseEntity {
 
     public Long getId() {
         return id;
+    }
+
+    /** Records an activity change: to what, why, by whom and when. */
+    public void changeActivity(String status, String reason, Long actorId, OffsetDateTime when) {
+        this.activityStatus = status;
+        this.activityReason = reason;
+        this.activityChangedById = actorId;
+        this.activityChangedAt = when;
+    }
+
+    public String getActivityStatus() {
+        return activityStatus;
+    }
+
+    public String getActivityReason() {
+        return activityReason;
+    }
+
+    public OffsetDateTime getActivityChangedAt() {
+        return activityChangedAt;
+    }
+
+    public Long getActivityChangedById() {
+        return activityChangedById;
     }
 
     public User getUser() {
