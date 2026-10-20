@@ -1,5 +1,8 @@
 package com.vn.vitalcare.care.customer.controller;
 
+import com.vn.vitalcare.identity.user.service.UserService;
+import com.vn.vitalcare.identity.user.entity.User;
+import com.vn.vitalcare.care.customer.dto.ActivityStatusRequest;
 import com.vn.vitalcare.care.customer.dto.CustomerPatchRequest;
 import com.vn.vitalcare.care.customer.dto.CustomerResponse;
 import com.vn.vitalcare.care.customer.service.CustomerService;
@@ -34,9 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerController {
 
     private final CustomerService service;
+    private final UserService users;
 
-    public CustomerController(CustomerService service) {
+    public CustomerController(CustomerService service, UserService users) {
         this.service = service;
+        this.users = users;
     }
 
     /** Serves both {@code getList} and {@code getMany}, as {@code UserController} does. */
@@ -60,7 +65,23 @@ public class CustomerController {
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_READ + "')")
     public CustomerResponse get(@PathVariable Long id) {
-        return CustomerResponse.from(service.get(id));
+        return withChanger(service.get(id));
+    }
+
+    /** SRS 3.8.5: whether the clinic is still looking after this person. */
+    @PostMapping("/{id}/activity-status")
+    @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_STATUS + "')")
+    public CustomerResponse changeActivityStatus(@PathVariable Long id,
+                                                 @Valid @RequestBody ActivityStatusRequest request) {
+        return withChanger(service.changeActivityStatus(id, request));
+    }
+
+    /** The customer with the name of whoever last changed their activity status. */
+    private CustomerResponse withChanger(Customer customer) {
+        Long changer = customer.getActivityChangedById();
+        String name = changer == null ? null
+                : users.getMany(List.of(changer)).stream().findFirst().map(User::getFullName).orElse(null);
+        return CustomerResponse.from(customer, name);
     }
 
     @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})

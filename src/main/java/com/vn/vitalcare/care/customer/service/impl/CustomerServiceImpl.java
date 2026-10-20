@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.customer.service.impl;
 
+import com.vn.vitalcare.care.customer.dto.ActivityStatusRequest;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import java.util.ArrayList;
 import com.vn.vitalcare.share.exception.FieldValidationException;
@@ -255,6 +256,21 @@ public class CustomerServiceImpl implements CustomerService {
         if (request.emergencyContactPhone() != null) {
             customer.setEmergencyContactPhone(blankToNull(request.emergencyContactPhone()));
         }
+        return repository.save(customer);
+    }
+
+    @Override
+    @Transactional
+    public Customer changeActivityStatus(Long id, ActivityStatusRequest request) {
+        Customer customer = get(id);
+        String reason = request.reason() == null ? null : blankToNull(request.reason());
+        if (!"active".equals(request.status()) && reason == null) {
+            throw new FieldValidationException("reason", "Say why this person is no longer active");
+        }
+        if (request.status().equals(customer.getActivityStatus())) {
+            throw new ConflictException("That is already the current status");
+        }
+        customer.changeActivity(request.status(), reason, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         return repository.save(customer);
     }
 

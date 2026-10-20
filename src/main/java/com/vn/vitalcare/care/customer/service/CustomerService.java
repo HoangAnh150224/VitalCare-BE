@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.customer.service;
 
+import com.vn.vitalcare.care.customer.dto.ActivityStatusRequest;
 import com.vn.vitalcare.care.customer.dto.CustomerPatchRequest;
 import com.vn.vitalcare.care.customer.dto.ProfileRequest;
 import com.vn.vitalcare.entity.Customer;
@@ -27,6 +28,12 @@ public interface CustomerService {
     Customer updateOwnProfile(Customer owner, Long id, ProfileRequest request);
 
     // --- the clinic's side -----------------------------------------------------
+
+    /**
+     * Changes whether the clinic is still looking after this person (SRS
+     * 3.8.5). Their measurements and records are kept whatever it says.
+     */
+    Customer changeActivityStatus(Long id, ActivityStatusRequest request);
 
     Page<Customer> list(ListParams params);
 

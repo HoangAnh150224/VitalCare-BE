@@ -264,6 +264,14 @@ class AppointmentServiceTest {
         verify(repository, never()).persist(any());
     }
 
+    @Test
+    @DisplayName("SRS 3.18: a clinic that has stopped operating takes no new visits")
+    void inactiveClinicTakesNoVisits() {
+        clinic.setOperatingStatus("INACTIVE");
+        assertField("employeeId", () -> service.bookOwn(customer, booking(TUESDAY)));
+        verify(repository, never()).persist(any());
+    }
+
     // --- relatives --------------------------------------------------------------
 
     @Test

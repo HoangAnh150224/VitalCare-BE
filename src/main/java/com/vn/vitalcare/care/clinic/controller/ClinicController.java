@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.clinic.controller;
 
+import com.vn.vitalcare.care.clinic.dto.ClinicSummaryResponse;
 import com.vn.vitalcare.care.clinic.dto.ClinicRequest;
 import com.vn.vitalcare.care.clinic.dto.ClinicResponse;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
@@ -41,13 +42,21 @@ public class ClinicController {
     /** Unpaged: the list is short and every caller wants all of it. */
     @GetMapping
     public ResponseEntity<List<ClinicResponse>> list() {
-        List<ClinicResponse> rows = service.listAll().stream().map(ClinicResponse::from).toList();
+        // ponytail: one count per clinic; a grouped query if the list ever grows long.
+        List<ClinicResponse> rows = service.listAll().stream()
+                .map(clinic -> ClinicResponse.from(clinic, service.staffCount(clinic.getClinicId()))).toList();
         return ListResponse.of(rows, rows.size());
     }
 
     @GetMapping("/{id}")
     public ClinicResponse get(@PathVariable UUID id) {
-        return ClinicResponse.from(service.get(id));
+        return ClinicResponse.from(service.get(id), service.staffCount(id));
+    }
+
+    @GetMapping("/{id}/summary")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICS_READ + "')")
+    public ClinicSummaryResponse summary(@PathVariable UUID id) {
+        return service.summary(id);
     }
 
     /** SRS 3.18.2 / 3.18.4: creating and editing a clinic is the System Administrator's (clinics:write). */

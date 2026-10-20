@@ -40,6 +40,12 @@ public record CustomerResponse(
         String address,
         String emergencyContactName,
         String emergencyContactPhone,
+        /** active, inactive or paused (SRS 3.8.5). */
+        String activityStatus,
+        String activityReason,
+        OffsetDateTime activityChangedAt,
+        /** Who made the last change; filled on a single customer's answer only. */
+        String activityChangedBy,
         OffsetDateTime patientActivatedAt,
         PatientActivationSource patientActivationSource,
         Instant createdAt) {
@@ -48,6 +54,11 @@ public record CustomerResponse(
     }
 
     public static CustomerResponse from(Customer customer) {
+        return from(customer, null);
+    }
+
+    /** @param activityChangedBy the name of whoever last changed the activity status */
+    public static CustomerResponse from(Customer customer, String activityChangedBy) {
         var user = customer.getUser();
         var guardian = customer.getGuardian();
         return new CustomerResponse(
@@ -74,6 +85,10 @@ public record CustomerResponse(
                 customer.getAddress(),
                 customer.getEmergencyContactName(),
                 customer.getEmergencyContactPhone(),
+                customer.getActivityStatus(),
+                customer.getActivityReason(),
+                customer.getActivityChangedAt(),
+                activityChangedBy,
                 customer.getPatientActivatedAt(),
                 customer.getPatientActivationSource(),
                 customer.getCreatedAt());

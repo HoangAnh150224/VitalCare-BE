@@ -14,14 +14,26 @@ public record ClinicResponse(
         String name,
         String address,
         String contactPhone,
-        String operatingStatus) {
+        String contactEmail,
+        String contactPerson,
+        /** OPERATING or INACTIVE. */
+        String operatingStatus,
+        /** Active staff working there; null where it was not counted. */
+        Long staffCount) {
 
     public static ClinicResponse from(Clinic clinic) {
+        return from(clinic, null);
+    }
+
+    public static ClinicResponse from(Clinic clinic, Long staffCount) {
         return new ClinicResponse(
                 clinic.getClinicId(),
                 clinic.getClinicName(),
                 clinic.getAddress(),
                 clinic.getContactPhone(),
-                clinic.getOperatingStatus());
+                clinic.getContactEmail(),
+                clinic.getContactPerson(),
+                clinic.getOperatingStatus(),
+                staffCount);
     }
 }

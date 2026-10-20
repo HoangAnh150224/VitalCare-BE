@@ -60,7 +60,10 @@ public class DoctorController {
     public List<DoctorAvailabilityResponse> doctors(
             @PathVariable UUID clinicId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        clinics.get(clinicId);
+        // An inactive clinic takes no new visits, so it offers no doctors to register with.
+        if ("INACTIVE".equals(clinics.get(clinicId).getOperatingStatus())) {
+            return List.of();
+        }
         return employees.doctorsOf(clinicId).stream()
                 .map(doctor -> DoctorAvailabilityResponse.from(
                         doctor,
