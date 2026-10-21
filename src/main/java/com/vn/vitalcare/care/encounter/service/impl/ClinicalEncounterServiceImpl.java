@@ -162,7 +162,9 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (!clinician.getClinic().getClinicId().equals(appointment.getClinicId())) {
             throw new FieldValidationException("appointmentId", "That appointment is at another clinic");
         }
-        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN) {
+        // Waiting for the doctor or already called into the room: either way, here.
+        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
+                && appointment.getStatus() != AppointmentStatus.IN_EXAM) {
             throw new FieldValidationException("appointmentId", "The patient has not checked in for that appointment");
         }
         return appointment;

@@ -29,6 +29,8 @@ import com.vn.vitalcare.care.schedule.repository.DoctorWorkingHoursRepository;
 import com.vn.vitalcare.care.schedule.service.impl.DoctorAvailabilityServiceImpl;
 import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
+import com.vn.vitalcare.care.examroom.repository.ExamRoomRepository;
+import com.vn.vitalcare.care.examroom.service.ExamRoomService;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.entity.Clinic;
@@ -56,6 +58,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.domain.Specification;
@@ -142,8 +145,11 @@ class AppointmentServiceTest {
                 new CustomerServiceImpl(customers, scope, rowLevel, clock),
                 clinicService,
                 employees,
-                new DoctorAvailabilityServiceImpl(hours, timeOff, repository, employees, clinicService, scope, clock),
+                new DoctorAvailabilityServiceImpl(hours, timeOff, repository, employees, clinicService, scope,
+                        mock(ExamRoomRepository.class), clock),
                 rowLevel,
+                mock(ExamRoomService.class),
+                mock(ApplicationEventPublisher.class),
                 clock);
 
         customer = new Customer();
