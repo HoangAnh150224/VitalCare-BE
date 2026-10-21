@@ -70,11 +70,11 @@ class RegistrationServiceTest {
         when(verifications.findLatestForUpdate(PHONE, VerificationPurpose.REGISTER))
                 .thenAnswer(invocation -> Optional.ofNullable(stored.get()));
 
-        OtpSender sender = (phone, code) -> sentCode.set(code);
-        service = new RegistrationServiceImpl(
-                verifications, userService, customerService, authService, sender,
+        OtpSender sender = (phone, code, purpose) -> sentCode.set(code);
+        PhoneCodes codes = new PhoneCodes(verifications, sender,
                 new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5),
                 clock);
+        service = new RegistrationServiceImpl(codes, userService, customerService, authService);
     }
 
     @Test

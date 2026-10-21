@@ -7,5 +7,8 @@ package com.vn.vitalcare.care.registration.entity;
 public enum VerificationPurpose {
 
     /** Self-registration of a new account on this number. */
-    REGISTER
+    REGISTER,
+
+    /** Setting a new password on the account that signs in with this number. */
+    RESET_PASSWORD
 }

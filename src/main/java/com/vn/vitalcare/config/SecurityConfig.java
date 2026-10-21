@@ -104,6 +104,9 @@ public class SecurityConfig {
                         // hold. Its own limits (one-time code, resend cooldown,
                         // per-hour cap) are what guard it instead.
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/otp").permitAll()
+                        // Recovering a forgotten password, for the same reason
+                        // and under the same one-time-code limits.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;
