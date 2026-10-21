@@ -10,6 +10,8 @@ import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.care.appointment.service.BookingCodes;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.customer.service.CustomerService;
+import com.vn.vitalcare.care.examroom.service.ExamRoomEvents;
+import com.vn.vitalcare.care.examroom.service.ExamRoomService;
 import com.vn.vitalcare.care.schedule.service.DoctorAvailabilityService;
 import com.vn.vitalcare.care.schedule.service.Turn;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
@@ -33,6 +35,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -66,6 +69,9 @@ public class AppointmentServiceImpl implements AppointmentService {
     // cancelOwn, rescheduleOwn) are pinned to the customer and do not go
     // through it: a customer holds no scope here, and the default is none.
     private final RowLevelSecurity rowLevel;
+    // A visit ending frees the room it was in; a check-in may fill one.
+    private final ExamRoomService examRooms;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public AppointmentServiceImpl(AppointmentRepository repository,
@@ -74,6 +80,8 @@ public class AppointmentServiceImpl implements AppointmentService {
                                   EmployeeService employeeService,
                                   DoctorAvailabilityService availability,
                                   RowLevelSecurity rowLevel,
+                                  ExamRoomService examRooms,
+                                  ApplicationEventPublisher events,
                                   Clock clock) {
         this.repository = repository;
         this.customerService = customerService;
@@ -81,6 +89,8 @@ public class AppointmentServiceImpl implements AppointmentService {
         this.employeeService = employeeService;
         this.availability = availability;
         this.rowLevel = rowLevel;
+        this.examRooms = examRooms;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -161,7 +171,8 @@ public class AppointmentServiceImpl implements AppointmentService {
     public Appointment update(Long id, AppointmentUpdateRequest request) {
         Appointment appointment = find(id, Action.WRITE);
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED
-                && appointment.getStatus() != AppointmentStatus.CHECKED_IN) {
+                && appointment.getStatus() != AppointmentStatus.CHECKED_IN
+                && appointment.getStatus() != AppointmentStatus.IN_EXAM) {
             throw new ConflictException("An appointment that is over can no longer be changed");
         }
         appointment.setReason(request.reason().trim());
@@ -186,16 +197,22 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.checkIn(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         rowLevel.checkWritable(appointment);
         customerService.activateIfNeutral(appointment.getCustomer(), PatientActivationSource.CHECK_IN);
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        // The doctor's room may be free and waiting for exactly this person.
+        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), saved.getEmployee().getId()));
+        return saved;
     }
 
     @Override
     @Transactional
     public Appointment complete(Long id) {
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN) {
+        if (!isUnderway(appointment)) {
             throw new ConflictException("Only a checked-in appointment can be completed");
         }
+        // The room first: its lock is taken before this row is written, the
+        // same order the dispatcher takes them in.
+        examRooms.releaseFor(appointment);
         appointment.complete();
         rowLevel.checkWritable(appointment);
         return repository.persist(appointment);
@@ -207,8 +224,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         repository.findOne(Specification.allOf(
                         BaseEntitySpecifications.notDeleted(),
                         (root, query, cb) -> cb.equal(root.get("id"), appointmentId)))
-                .filter(appointment -> appointment.getStatus() == AppointmentStatus.CHECKED_IN)
+                .filter(AppointmentServiceImpl::isUnderway)
                 .ifPresent(appointment -> {
+                    examRooms.releaseFor(appointment);
                     appointment.complete();
                     repository.persist(appointment);
                 });
@@ -397,6 +415,12 @@ public class AppointmentServiceImpl implements AppointmentService {
             }
         }
         throw new IllegalStateException("Could not generate an unused booking code");
+    }
+
+    /** Checked in and not yet over: waiting for the doctor, or in the room with them. */
+    private static boolean isUnderway(Appointment appointment) {
+        return appointment.getStatus() == AppointmentStatus.CHECKED_IN
+                || appointment.getStatus() == AppointmentStatus.IN_EXAM;
     }
 
     private LocalDate today() {

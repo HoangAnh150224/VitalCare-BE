@@ -24,10 +24,16 @@ public record WorkingHoursEntry(
         @NotNull(message = "Minutes per visit is required")
         @Min(value = 5, message = "A visit takes at least 5 minutes")
         @Max(value = 240, message = "A visit takes at most 240 minutes")
-        Integer visitMinutes) {
+        Integer visitMinutes,
+
+        /** The examination room the doctor sits in for the session; optional. */
+        Long examRoomId) {
 
     public static WorkingHoursEntry from(DoctorWorkingHours hours) {
         return new WorkingHoursEntry(hours.getDayOfWeek().getValue(), hours.getStartTime(), hours.getEndTime(),
-                hours.getVisitMinutes());
+                hours.getVisitMinutes(),
+                // A room since removed is no room: sent back on the next save, it would be refused.
+                hours.getExamRoom() == null || hours.getExamRoom().getDeletedAt() != null
+                        ? null : hours.getExamRoom().getId());
     }
 }

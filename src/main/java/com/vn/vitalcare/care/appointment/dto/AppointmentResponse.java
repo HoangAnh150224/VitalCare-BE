@@ -37,6 +37,9 @@ public record AppointmentResponse(
         AppointmentStatus status,
         String note,
         OffsetDateTime checkedInAt,
+        /** The examination room the visit is or was in; null until it is called in. */
+        RoomSummary examRoom,
+        OffsetDateTime calledAt,
         OffsetDateTime cancelledAt,
         /** Why the clinic cancelled it; the customer sees this too. */
         String cancelReason,
@@ -59,6 +62,9 @@ public record AppointmentResponse(
     public record DoctorSummary(Long id, String fullName, String specialty) {
     }
 
+    public record RoomSummary(Long id, String code, String name) {
+    }
+
     /**
      * The same appointment as its customer may see it: without the front
      * desk's internal note, which is written for staff and nobody else.
@@ -69,7 +75,7 @@ public record AppointmentResponse(
                 full.id(), full.bookingCode(), full.customer(), full.clinic(), full.doctor(), full.queueNumber(),
                 full.appointmentDate(), full.startTime(),
                 full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
-                full.cancelledAt(), full.cancelReason(), full.createdAt(), Map.of());
+                full.examRoom(), full.calledAt(), full.cancelledAt(), full.cancelReason(), full.createdAt(), Map.of());
     }
 
     /** Without row flags — for a caller with no scope to report against. */
@@ -81,6 +87,7 @@ public record AppointmentResponse(
         var customer = appointment.getCustomer();
         var clinic = appointment.getClinic();
         var doctor = appointment.getEmployee();
+        var room = appointment.getExamRoom();
         return new AppointmentResponse(
                 appointment.getId(),
                 appointment.getBookingCode(),
@@ -101,6 +108,8 @@ public record AppointmentResponse(
                 appointment.getStatus(),
                 appointment.getNote(),
                 appointment.getCheckedInAt(),
+                room == null ? null : new RoomSummary(room.getId(), room.getCode(), room.getName()),
+                appointment.getCalledAt(),
                 appointment.getCancelledAt(),
                 appointment.getCancelReason(),
                 appointment.getCreatedAt(),

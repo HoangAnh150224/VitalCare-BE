@@ -99,6 +99,21 @@ public class Appointment extends BaseEntity {
     @Column(name = "cancel_reason", length = 500)
     private String cancelReason;
 
+    /** The room the visit took place in; kept after it is over, as a record. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exam_room_id")
+    private ExamRoom examRoom;
+
+    @Column(name = "called_at")
+    private OffsetDateTime calledAt;
+
+    /**
+     * When the patient was last called and not there. Such visits queue behind
+     * everybody not yet called, so a no-show does not hold the room.
+     */
+    @Column(name = "skipped_at")
+    private OffsetDateTime skippedAt;
+
     public Appointment() {
     }
 
@@ -109,12 +124,30 @@ public class Appointment extends BaseEntity {
         this.checkedInAt = when;
     }
 
-    /** The visit happened. Only valid from {@link AppointmentStatus#CHECKED_IN}; the service checks. */
+    /** Called into a room. Only valid from {@link AppointmentStatus#CHECKED_IN}; the dispatcher checks. */
+    public void callInto(ExamRoom room, OffsetDateTime when) {
+        this.status = AppointmentStatus.IN_EXAM;
+        this.examRoom = room;
+        this.calledAt = when;
+    }
+
+    /** Called and not there: back to the queue, behind those not yet called. Only valid from {@link AppointmentStatus#IN_EXAM}. */
+    public void passOver(OffsetDateTime when) {
+        this.status = AppointmentStatus.CHECKED_IN;
+        this.examRoom = null;
+        this.calledAt = null;
+        this.skippedAt = when;
+    }
+
+    /** The visit happened. Only valid from {@link AppointmentStatus#CHECKED_IN} or {@link AppointmentStatus#IN_EXAM}; the service checks. */
     public void complete() {
         this.status = AppointmentStatus.COMPLETED;
     }
 
-    /** The patient never arrived. Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    /**
+     * The patient never arrived, or was called into the room and never came in.
+     * Only valid from {@link AppointmentStatus#SCHEDULED} or {@link AppointmentStatus#IN_EXAM}; the service checks.
+     */
     public void markNoShow() {
         this.status = AppointmentStatus.NO_SHOW;
     }
@@ -238,6 +271,18 @@ public class Appointment extends BaseEntity {
 
     public void setCheckedInAt(OffsetDateTime checkedInAt) {
         this.checkedInAt = checkedInAt;
+    }
+
+    public ExamRoom getExamRoom() {
+        return examRoom;
+    }
+
+    public OffsetDateTime getCalledAt() {
+        return calledAt;
+    }
+
+    public OffsetDateTime getSkippedAt() {
+        return skippedAt;
     }
 
     public OffsetDateTime getCancelledAt() {

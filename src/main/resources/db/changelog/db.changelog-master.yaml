@@ -62,3 +62,5 @@ databaseChangeLog:
       file: db/changelog/changes/029-profile-identity.sql
   - include:
       file: db/changelog/changes/030-notes-status-clinics.sql
+  - include:
+      file: db/changelog/changes/031-exam-rooms.sql

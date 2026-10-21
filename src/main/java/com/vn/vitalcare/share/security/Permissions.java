@@ -96,6 +96,12 @@ public final class Permissions {
     public static final String MY_APPOINTMENTS_READ = "my_appointments:read";
     public static final String MY_APPOINTMENTS_WRITE = "my_appointments:write";
 
+    // Seeded by 031. Clinic staff see the rooms; the clinic administrator
+    // sets them up; whoever works the floor calls patients in.
+    public static final String EXAM_ROOMS_READ = "exam_rooms:read";
+    public static final String EXAM_ROOMS_WRITE = "exam_rooms:write";
+    public static final String EXAM_ROOMS_OPERATE = "exam_rooms:operate";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.

@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.schedule.service.impl;
 
 import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
+import com.vn.vitalcare.care.examroom.repository.ExamRoomRepository;
 import com.vn.vitalcare.care.schedule.dto.DayAvailability;
 import com.vn.vitalcare.care.schedule.dto.WorkingHoursEntry;
 import com.vn.vitalcare.care.schedule.repository.DoctorScheduleRepository;
@@ -14,6 +15,7 @@ import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.entity.DoctorSchedule;
 import com.vn.vitalcare.entity.DoctorWorkingHours;
 import com.vn.vitalcare.entity.Employee;
+import com.vn.vitalcare.entity.ExamRoom;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import java.time.Clock;
@@ -24,6 +26,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +42,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
     private final EmployeeService employeeService;
     private final ClinicService clinicService;
     private final ClinicScope clinicScope;
+    private final ExamRoomRepository rooms;
     private final Clock clock;
 
     public DoctorAvailabilityServiceImpl(DoctorWorkingHoursRepository hours,
@@ -47,6 +51,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
                                          EmployeeService employeeService,
                                          ClinicService clinicService,
                                          ClinicScope clinicScope,
+                                         ExamRoomRepository rooms,
                                          Clock clock) {
         this.hours = hours;
         this.blocked = blocked;
@@ -54,6 +59,7 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
         this.employeeService = employeeService;
         this.clinicService = clinicService;
         this.clinicScope = clinicScope;
+        this.rooms = rooms;
         this.clock = clock;
     }
 
@@ -80,17 +86,46 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
         // The lock a registration takes: a number is never counted against a
         // week that is half replaced, and two saves cannot both insert.
         employeeService.lockDoctor(doctor.getId());
+        // The rooms the week names, locked in id order: two saves naming the
+        // same room queue on it, so two doctors cannot both take it for the
+        // same hours; saves naming other rooms do not wait.
+        sessions.stream()
+                .map(WorkingHoursEntry::examRoomId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .forEach(rooms::findForUpdate);
         hours.deleteWeek(doctor.getId());
         hours.flush();
 
         List<DoctorWorkingHours> saved = new ArrayList<>();
         for (WorkingHoursEntry entry : sessions) {
+            ExamRoom room = entry.examRoomId() == null ? null : roomFor(doctor, entry);
             saved.add(hours.save(new DoctorWorkingHours(doctor, DayOfWeek.of(entry.dayOfWeek()), entry.startTime(),
-                    entry.endTime(), entry.visitMinutes())));
+                    entry.endTime(), entry.visitMinutes(), room)));
         }
         saved.sort(Comparator.comparing(DoctorWorkingHours::getDayOfWeek)
                 .thenComparing(DoctorWorkingHours::getStartTime));
         return saved;
+    }
+
+    /**
+     * The room a session names: one of the doctor's own clinic, and not
+     * another doctor's for any part of those hours.
+     */
+    private ExamRoom roomFor(Employee doctor, WorkingHoursEntry entry) {
+        ExamRoom room = rooms.findLive(entry.examRoomId())
+                .filter(found -> found.getClinicId().equals(doctor.getClinicId()))
+                .orElseThrow(() -> new FieldValidationException("sessions", "Pick one of the clinic's rooms"));
+        hours.findClashes(room.getId(), entry.dayOfWeek().shortValue(), entry.startTime(), entry.endTime(),
+                        doctor.getId()).stream()
+                .findFirst()
+                .ifPresent(clash -> {
+                    throw new FieldValidationException("sessions", "Room %s is taken by %s from %s to %s on that day"
+                            .formatted(room.getCode(), clash.getEmployee().getUser().getFullName(),
+                                    clash.getStartTime(), clash.getEndTime()));
+                });
+        return room;
     }
 
     @Override

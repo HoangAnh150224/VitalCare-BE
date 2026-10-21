@@ -48,12 +48,24 @@ public class DoctorWorkingHours extends BaseEntity {
     @Column(name = "visit_minutes", nullable = false)
     private int visitMinutes;
 
+    /** The room the doctor sits in for this session; null when none is set. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exam_room_id")
+    private ExamRoom examRoom;
+
     public DoctorWorkingHours() {
     }
 
+    /** A session with no room set. */
     public DoctorWorkingHours(Employee employee, DayOfWeek day, LocalTime startTime, LocalTime endTime,
                               int visitMinutes) {
+        this(employee, day, startTime, endTime, visitMinutes, null);
+    }
+
+    public DoctorWorkingHours(Employee employee, DayOfWeek day, LocalTime startTime, LocalTime endTime,
+                              int visitMinutes, ExamRoom examRoom) {
         this.employee = employee;
+        this.examRoom = examRoom;
         this.dayOfWeek = (short) day.getValue();
         this.startTime = startTime;
         this.endTime = endTime;
@@ -82,5 +94,9 @@ public class DoctorWorkingHours extends BaseEntity {
 
     public int getVisitMinutes() {
         return visitMinutes;
+    }
+
+    public ExamRoom getExamRoom() {
+        return examRoom;
     }
 }
