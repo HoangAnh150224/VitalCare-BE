@@ -11,8 +11,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
-import java.util.Objects;
 
+/** One line of a bill: the examination, or one service, at the price it was ordered at. */
 @Entity
 @Table(name = "invoice_item")
 public class InvoiceItem extends BaseEntity {
@@ -28,7 +28,7 @@ public class InvoiceItem extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "clinic_service_id")
-    private ClinicService clinicService;
+    private MedicalService service;
 
     @Column(name = "description")
     private String description;
@@ -36,13 +36,22 @@ public class InvoiceItem extends BaseEntity {
     @Column(name = "quantity")
     private Integer quantity;
 
-    @Column(name = "unit_price")
+    @Column(name = "unit_price", precision = 19, scale = 4)
     private BigDecimal unitPrice;
 
-    @Column(name = "amount")
+    @Column(name = "amount", precision = 19, scale = 4)
     private BigDecimal amount;
 
-    public InvoiceItem() {
+    protected InvoiceItem() {
+        // for JPA
+    }
+
+    public InvoiceItem(MedicalService service, String description, int quantity, BigDecimal unitPrice) {
+        this.service = service;
+        this.description = description;
+        this.quantity = quantity;
+        this.unitPrice = unitPrice;
+        this.amount = unitPrice.multiply(BigDecimal.valueOf(quantity));
     }
 
     public Long getId() {
@@ -53,65 +62,27 @@ public class InvoiceItem extends BaseEntity {
         return invoice;
     }
 
-    public void setInvoice(Invoice invoice) {
+    void setInvoice(Invoice invoice) {
         this.invoice = invoice;
     }
 
-    public ClinicService getClinicService() {
-        return clinicService;
-    }
-
-    public void setClinicService(ClinicService clinicService) {
-        this.clinicService = clinicService;
+    public MedicalService getService() {
+        return service;
     }
 
     public String getDescription() {
         return description;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
     public Integer getQuantity() {
         return quantity;
-    }
-
-    public void setQuantity(Integer quantity) {
-        this.quantity = quantity;
     }
 
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }
 
-    public void setUnitPrice(BigDecimal unitPrice) {
-        this.unitPrice = unitPrice;
-    }
-
     public BigDecimal getAmount() {
         return amount;
-    }
-
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
-
-    // Identity by primary key, because Invoice.removeItem() goes through
-    // List.remove() and would otherwise miss an item loaded in another session.
-    @Override
-    public boolean equals(Object other) {
-        if (this == other) {
-            return true;
-        }
-        if (!(other instanceof InvoiceItem item)) {
-            return false;
-        }
-        return id != null && id.equals(item.getId());
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hashCode(id);
     }
 }

@@ -1,9 +1,12 @@
 package com.vn.vitalcare.entity;
 
 import com.vn.vitalcare.share.data.BaseEntity;
+import com.vn.vitalcare.share.security.rowlevel.RowLevelResource;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -11,13 +14,21 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
+/**
+ * The bill for one encounter (Report 1 FE-23): the examination fee and every
+ * service ordered that was not cancelled, issued when the doctor concludes
+ * the visit and paid once, at the counter or online.
+ */
 @Entity
+@RowLevelResource("invoices")
 @Table(name = "invoice")
 public class Invoice extends BaseEntity {
 
@@ -32,22 +43,35 @@ public class Invoice extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "clinical_encounter_id")
-    private ClinicalEncounter clinicalEncounter;
+    private ClinicalEncounter encounter;
 
-    @Column(name = "invoice_number")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "appointment_id")
+    private Appointment appointment;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "clinic_id")
+    private Clinic clinic;
+
+    /** The same column as {@link #clinic}, for row-level policies; see {@code Appointment.clinicId}. */
+    @Column(name = "clinic_id", insertable = false, updatable = false)
+    private UUID clinicId;
+
+    @Column(name = "invoice_number", length = 64, unique = true)
     private String invoiceNumber;
 
-    @Column(name = "subtotal")
-    private BigDecimal subtotal;
+    @Column(name = "subtotal", precision = 19, scale = 4)
+    private BigDecimal subtotal = BigDecimal.ZERO;
 
-    @Column(name = "discount_amount")
-    private BigDecimal discountAmount;
+    @Column(name = "discount_amount", precision = 19, scale = 4)
+    private BigDecimal discountAmount = BigDecimal.ZERO;
 
-    @Column(name = "total_amount")
-    private BigDecimal totalAmount;
+    @Column(name = "total_amount", precision = 19, scale = 4)
+    private BigDecimal totalAmount = BigDecimal.ZERO;
 
-    @Column(name = "status")
-    private String status;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 32)
+    private InvoiceStatus status = InvoiceStatus.UNPAID;
 
     @Column(name = "issued_at")
     private OffsetDateTime issuedAt;
@@ -55,20 +79,32 @@ public class Invoice extends BaseEntity {
     @Column(name = "due_at")
     private OffsetDateTime dueAt;
 
+    @Column(name = "paid_at")
+    private OffsetDateTime paidAt;
+
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id asc")
     private List<InvoiceItem> items = new ArrayList<>();
+
+    @OneToMany(mappedBy = "invoice")
+    @OrderBy("createdAt asc")
+    private List<Payment> payments = new ArrayList<>();
 
     public Invoice() {
     }
 
+    /** Adds a line and keeps the totals in step. */
     public void addItem(InvoiceItem item) {
-        items.add(item);
         item.setInvoice(this);
+        items.add(item);
+        subtotal = items.stream().map(InvoiceItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalAmount = subtotal.subtract(discountAmount == null ? BigDecimal.ZERO : discountAmount);
     }
 
-    public void removeItem(InvoiceItem item) {
-        items.remove(item);
-        item.setInvoice(null);
+    /** Settled. Only from {@link InvoiceStatus#UNPAID}; the service checks. */
+    public void markPaid(OffsetDateTime when) {
+        this.status = InvoiceStatus.PAID;
+        this.paidAt = when;
     }
 
     public Long getId() {
@@ -83,12 +119,33 @@ public class Invoice extends BaseEntity {
         this.customer = customer;
     }
 
-    public ClinicalEncounter getClinicalEncounter() {
-        return clinicalEncounter;
+    public ClinicalEncounter getEncounter() {
+        return encounter;
     }
 
-    public void setClinicalEncounter(ClinicalEncounter clinicalEncounter) {
-        this.clinicalEncounter = clinicalEncounter;
+    public void setEncounter(ClinicalEncounter encounter) {
+        this.encounter = encounter;
+    }
+
+    public Appointment getAppointment() {
+        return appointment;
+    }
+
+    public void setAppointment(Appointment appointment) {
+        this.appointment = appointment;
+    }
+
+    public Clinic getClinic() {
+        return clinic;
+    }
+
+    public void setClinic(Clinic clinic) {
+        this.clinic = clinic;
+        this.clinicId = clinic == null ? null : clinic.getClinicId();
+    }
+
+    public UUID getClinicId() {
+        return clinicId;
     }
 
     public String getInvoiceNumber() {
@@ -103,32 +160,16 @@ public class Invoice extends BaseEntity {
         return subtotal;
     }
 
-    public void setSubtotal(BigDecimal subtotal) {
-        this.subtotal = subtotal;
-    }
-
     public BigDecimal getDiscountAmount() {
         return discountAmount;
-    }
-
-    public void setDiscountAmount(BigDecimal discountAmount) {
-        this.discountAmount = discountAmount;
     }
 
     public BigDecimal getTotalAmount() {
         return totalAmount;
     }
 
-    public void setTotalAmount(BigDecimal totalAmount) {
-        this.totalAmount = totalAmount;
-    }
-
-    public String getStatus() {
+    public InvoiceStatus getStatus() {
         return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
     }
 
     public OffsetDateTime getIssuedAt() {
@@ -143,11 +184,15 @@ public class Invoice extends BaseEntity {
         return dueAt;
     }
 
-    public void setDueAt(OffsetDateTime dueAt) {
-        this.dueAt = dueAt;
+    public OffsetDateTime getPaidAt() {
+        return paidAt;
     }
 
     public List<InvoiceItem> getItems() {
         return items;
+    }
+
+    public List<Payment> getPayments() {
+        return payments;
     }
 }

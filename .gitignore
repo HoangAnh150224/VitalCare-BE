@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Uploaded files (service results) — patient data, never committed ###
+data/uploads/

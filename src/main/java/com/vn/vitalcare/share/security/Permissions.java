@@ -102,6 +102,17 @@ public final class Permissions {
     public static final String EXAM_ROOMS_WRITE = "exam_rooms:write";
     public static final String EXAM_ROOMS_OPERATE = "exam_rooms:operate";
 
+    // Seeded by 032. The catalogue is the system administrator's; every member
+    // of staff reads it. Orders are worked by clinical staff; bills by the desk,
+    // and the revenue report is the clinic administrator's.
+    public static final String MEDICAL_SERVICES_READ = "medical_services:read";
+    public static final String MEDICAL_SERVICES_WRITE = "medical_services:write";
+    public static final String SERVICE_ORDERS_READ = "service_orders:read";
+    public static final String SERVICE_ORDERS_WRITE = "service_orders:write";
+    public static final String INVOICES_READ = "invoices:read";
+    public static final String INVOICES_WRITE = "invoices:write";
+    public static final String INVOICES_REPORT = "invoices:report";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.

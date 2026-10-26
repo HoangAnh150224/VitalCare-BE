@@ -107,6 +107,10 @@ public class SecurityConfig {
                         // Recovering a forgotten password, for the same reason
                         // and under the same one-time-code limits.
                         .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp").permitAll()
+                        // VNPay's answers: the customer's browser coming back,
+                        // and VNPay's own server. Neither holds a token; the
+                        // signature on the parameters is checked instead.
+                        .requestMatchers(HttpMethod.GET, "/api/payments/vnpay/return", "/api/payments/vnpay/ipn").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;

@@ -1,6 +1,9 @@
 package com.vn.vitalcare.care.encounter.service.impl;
 
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.care.billing.invoice.Invoices;
+import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
+import com.vn.vitalcare.entity.ServiceOrder;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.encounter.dto.EncounterRequest;
 import com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository;
@@ -44,6 +47,9 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     private final CustomerService customerService;
     private final EmployeeService employeeService;
     private final AppointmentService appointmentService;
+    // Concluding a visit waits for the results it ordered, and bills it.
+    private final ServiceOrderRepository serviceOrders;
+    private final Invoices invoices;
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
 
@@ -51,12 +57,16 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
                                         CustomerService customerService,
                                         EmployeeService employeeService,
                                         AppointmentService appointmentService,
+                                        ServiceOrderRepository serviceOrders,
+                                        Invoices invoices,
                                         RowLevelSecurity rowLevel,
                                         Clock clock) {
         this.repository = repository;
         this.customerService = customerService;
         this.employeeService = employeeService;
         this.appointmentService = appointmentService;
+        this.serviceOrders = serviceOrders;
+        this.invoices = invoices;
         this.rowLevel = rowLevel;
         this.clock = clock;
     }
@@ -133,9 +143,16 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     @Override
     @Transactional
     public ClinicalEncounter complete(Long id) {
+        repository.lockRow(id);
         ClinicalEncounter encounter = find(id, Action.WRITE);
         if (encounter.getStatus() == EncounterStatus.COMPLETED) {
             throw new ConflictException("This encounter is already completed");
+        }
+        // Report 1 FE-22: the doctor concludes having seen every result.
+        long outstanding = serviceOrders.findByEncounter(id).stream().filter(ServiceOrder::isOutstanding).count();
+        if (outstanding > 0) {
+            throw new ConflictException(
+                    "%d ordered service(s) still have no reviewed result; review or cancel them first".formatted(outstanding));
         }
         encounter.setStatus(EncounterStatus.COMPLETED);
         encounter.setEndedAt(OffsetDateTime.now(clock));
@@ -144,7 +161,10 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (encounter.getAppointment() != null) {
             appointmentService.completeForEncounter(encounter.getAppointment().getId());
         }
-        return repository.persist(encounter);
+        ClinicalEncounter saved = repository.persist(encounter);
+        // FE-23: one bill for the visit, the examination and its services.
+        invoices.issueFor(saved);
+        return saved;
     }
 
     /** The patient's own appointment, at the clinician's clinic; anything else is not this visit's. */

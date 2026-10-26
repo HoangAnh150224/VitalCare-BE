@@ -5,10 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.care.billing.invoice.Invoices;
+import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.encounter.dto.EncounterRequest;
 import com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository;
@@ -20,11 +24,13 @@ import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EncounterStatus;
 import com.vn.vitalcare.entity.PatientActivationSource;
+import com.vn.vitalcare.entity.ServiceOrder;
 import com.vn.vitalcare.share.exception.ConflictException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +45,8 @@ class ClinicalEncounterServiceTest {
     private static final UUID CLINIC = UUID.fromString("5b1f8c2e-6a3d-4f7e-9c41-2d8e0a7b3c19");
 
     private ClinicalEncounterRepository repository;
+    private ServiceOrderRepository serviceOrders;
+    private Invoices invoices;
     private ClinicalEncounterService service;
     private Employee doctor;
     private Customer patient;
@@ -61,8 +69,10 @@ class ClinicalEncounterServiceTest {
         CustomerService customers = mock(CustomerService.class);
         when(customers.get(7L)).thenReturn(patient);
 
+        serviceOrders = mock(ServiceOrderRepository.class);
+        invoices = mock(Invoices.class);
         service = new ClinicalEncounterServiceImpl(repository, customers, employees, mock(AppointmentService.class),
-                new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC));
+                serviceOrders, invoices, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -106,6 +116,21 @@ class ClinicalEncounterServiceTest {
 
         assertEquals(EncounterStatus.COMPLETED, service.complete(1L).getStatus());
         assertEquals(NOW, encounter.getEndedAt().toInstant());
+        verify(invoices).issueFor(encounter);
         assertThrows(ConflictException.class, () -> service.complete(1L));
+    }
+
+    @Test
+    @DisplayName("FE-22: an encounter with an ordered service not yet reviewed cannot be concluded, nor billed")
+    @SuppressWarnings("unchecked")
+    void completeWaitsForResults() {
+        ClinicalEncounter encounter = new ClinicalEncounter();
+        encounter.setClinic(doctor.getClinic());
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
+        when(serviceOrders.findByEncounter(any())).thenReturn(List.of(new ServiceOrder()));
+
+        assertThrows(ConflictException.class, () -> service.complete(1L));
+        assertEquals(EncounterStatus.IN_PROGRESS, encounter.getStatus());
+        verify(invoices, never()).issueFor(any());
     }
 }

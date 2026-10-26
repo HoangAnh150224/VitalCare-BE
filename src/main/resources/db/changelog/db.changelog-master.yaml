@@ -64,3 +64,5 @@ databaseChangeLog:
       file: db/changelog/changes/030-notes-status-clinics.sql
   - include:
       file: db/changelog/changes/031-exam-rooms.sql
+  - include:
+      file: db/changelog/changes/032-services-billing.sql
