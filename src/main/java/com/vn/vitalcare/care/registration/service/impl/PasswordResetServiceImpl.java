@@ -46,7 +46,7 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             throw new FieldValidationException("newPassword", "Password is too long; use fewer accented letters");
         }
 
-        codes.verify(phone, VerificationPurpose.RESET_PASSWORD, request.otp());
+        codes.prove(phone, VerificationPurpose.RESET_PASSWORD, request.otp(), request.firebaseToken());
 
         // A code is only ever sent to a number with such an account, so this
         // misses only if the account was disabled or deleted since; that

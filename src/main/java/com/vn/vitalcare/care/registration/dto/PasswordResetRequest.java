@@ -15,9 +15,13 @@ public record PasswordResetRequest(
                 message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
         String phone,
 
-        @NotBlank(message = "The code is required")
+        // One of otp / firebaseToken proves the number: our code, or Firebase's
+        // token once Firebase sent the code (OtpResponse.channel says which).
         @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the message")
         String otp,
+
+        @Size(max = 4096, message = "The verification token is too long")
+        String firebaseToken,
 
         // 72 is BCrypt's limit in bytes, which the service also checks.
         @NotBlank(message = "New password is required")

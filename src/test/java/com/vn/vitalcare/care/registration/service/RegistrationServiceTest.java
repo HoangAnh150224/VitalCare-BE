@@ -175,7 +175,7 @@ class RegistrationServiceTest {
     }
 
     private static RegisterRequest request(String otp) {
-        return new RegisterRequest("0912345678", otp, "Nguyen Van A", "Passw0rd!");
+        return new RegisterRequest("0912345678", otp, null, "Nguyen Van A", "Passw0rd!");
     }
 
     /** A code guaranteed to differ from {@code code} in its last digit. */

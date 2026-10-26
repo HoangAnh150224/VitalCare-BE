@@ -147,6 +147,6 @@ class PasswordResetServiceTest {
     }
 
     private static PasswordResetRequest request(String otp) {
-        return new PasswordResetRequest("0912345678", otp, "NewPassw0rd!");
+        return new PasswordResetRequest("0912345678", otp, null, "NewPassw0rd!");
     }
 }

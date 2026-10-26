@@ -63,7 +63,7 @@ public class RegistrationServiceImpl implements RegistrationService {
             throw new FieldValidationException("password", "Password is too long; use fewer accented letters");
         }
 
-        codes.verify(phone, VerificationPurpose.REGISTER, request.otp());
+        codes.prove(phone, VerificationPurpose.REGISTER, request.otp(), request.firebaseToken());
 
         User user = userService.createSelfRegistered(phone, request.password(), request.fullName(), CUSTOMER_ROLE);
         customerService.createNeutral(user);
