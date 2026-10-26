@@ -13,14 +13,16 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
-import com.vn.vitalcare.share.exception.FieldValidationException;
 import java.util.Optional;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
- * One-time codes sent to a phone number, for whichever flow needs the number
- * proved: self-registration, and recovering a forgotten password.
+ * One-time codes for the phone number an account signs in with, sent to the
+ * account's email: recovering a forgotten password.
+ *
+ * <p>A code belongs to the number — that is what the person types and what
+ * the limits count — and travels by email, the channel that reaches people
+ * here without an SMS brandname.
  *
  * <p>Holds no transaction of its own; it runs inside the caller's, so the
  * newest code row stays locked until that flow is done with it. See
@@ -34,61 +36,31 @@ public class PhoneCodes {
     private final OtpSender sender;
     private final OtpProperties properties;
     private final Clock clock;
-    /** Present when Firebase sends the codes; then {@link #prove} takes its token, never a code of ours. */
-    private final Optional<FirebasePhoneTokens> firebase;
     private final SecureRandom random = new SecureRandom();
 
     public PhoneCodes(PhoneVerificationRepository verifications,
                       OtpSender sender,
                       OtpProperties properties,
                       Clock clock) {
-        this(verifications, sender, properties, clock, Optional.empty());
-    }
-
-    @Autowired
-    public PhoneCodes(PhoneVerificationRepository verifications,
-                      Optional<OtpSender> sender,
-                      OtpProperties properties,
-                      Clock clock,
-                      Optional<FirebasePhoneTokens> firebase) {
-        this(verifications, sender.orElse(null), properties, clock, firebase);
-    }
-
-    private PhoneCodes(PhoneVerificationRepository verifications,
-                       OtpSender sender,
-                       OtpProperties properties,
-                       Clock clock,
-                       Optional<FirebasePhoneTokens> firebase) {
-        if (sender == null && firebase.isEmpty()) {
-            // Production with neither route configured: refuse to start rather
-            // than issue codes nobody receives (LoggingOtpSender is off there).
-            throw new IllegalStateException(
-                    "No way to send one-time codes: set APP_FIREBASE_PROJECT_ID or an SMS sender");
-        }
         this.verifications = verifications;
         this.sender = sender;
         this.properties = properties;
         this.clock = clock;
-        this.firebase = firebase;
-    }
-
-    /** Test seam: as Spring builds it with Firebase switched on. */
-    static PhoneCodes withFirebase(PhoneVerificationRepository verifications, OtpProperties properties, Clock clock,
-                                   FirebasePhoneTokens firebase) {
-        return new PhoneCodes(verifications, (OtpSender) null, properties, clock, Optional.of(firebase));
     }
 
     /**
-     * Records a new code for a number and, if {@code deliver}, sends it.
+     * Records a new code for a number and, if there is an address, sends it
+     * there.
      *
-     * <p>Not delivering still records the code and still applies both limits.
-     * That is what lets password recovery answer a number with no account
-     * exactly as it answers one with an account: same cooldown, same cap, same
-     * reply — only no message goes out.
+     * <p>No address still records the code and still applies both limits.
+     * That is what lets password recovery answer a number with no account —
+     * or an account with no email — exactly as it answers one that gets the
+     * code: same cooldown, same cap, same reply; only no message goes out.
      *
-     * @param phone the number, already normalised to E.164
+     * @param phone     the number, already normalised to E.164
+     * @param deliverTo the email to send the code to, or {@code null} for none
      */
-    public OtpResponse issue(String phone, VerificationPurpose purpose, boolean deliver) {
+    public OtpResponse issue(String phone, VerificationPurpose purpose, String deliverTo) {
         Instant now = clock.instant();
         Optional<PhoneVerification> latest = verifications.findLatestForUpdate(phone, purpose);
         if (latest.isPresent()) {
@@ -107,51 +79,11 @@ public class PhoneCodes {
         String code = generateCode();
         verifications.save(new PhoneVerification(
                 phone, purpose, hash(phone, code), now, now.plus(properties.codeTtl())));
-        // With Firebase the screen has Google send the SMS; the row above still
-        // counts towards the cooldown and the hourly cap.
-        if (deliver && firebase.isEmpty()) {
-            // ponytail: sent inline, which is free with LoggingOtpSender. A
-            // real SMS provider would make a number with an account answer
-            // slower — and fail where a stranger's succeeds — which tells the
-            // two apart; send after commit, asynchronously, when one is wired.
-            sender.send(phone, code, purpose);
+        if (deliverTo != null) {
+            sender.send(deliverTo, code, purpose);
         }
 
-        return new OtpResponse(properties.codeTtl().toSeconds(), properties.resendCooldown().toSeconds(),
-                firebase.isPresent() ? "firebase" : "sms");
-    }
-
-    /**
-     * Proves the person holds the number: Firebase's token when Firebase sends
-     * the codes, otherwise our code. The two never stand in for each other — a
-     * code of ours is sent nowhere while Firebase is on.
-     *
-     * @throws InvalidVerificationCodeException wrong, expired or for another number
-     * @throws FieldValidationException         the proof this mode needs is missing
-     */
-    public void prove(String phone, VerificationPurpose purpose, String otp, String firebaseToken) {
-        if (firebase.isPresent()) {
-            if (firebaseToken == null || firebaseToken.isBlank()) {
-                throw new FieldValidationException("otp", "The code is required");
-            }
-            if (!phone.equals(firebase.get().verifiedPhone(firebaseToken))) {
-                throw new InvalidVerificationCodeException();
-            }
-            // The token stays valid for minutes; the request it answers is
-            // spent here, so one token makes one account or one reset — and a
-            // flow that skipped the request (and its limits) gets nowhere.
-            Instant now = clock.instant();
-            PhoneVerification request = verifications.findLatestForUpdate(phone, purpose)
-                    .filter(candidate -> candidate.isUsable(now, properties.maxAttempts()))
-                    .orElseThrow(InvalidVerificationCodeException::new);
-            request.consume(now);
-            verifications.save(request);
-            return;
-        }
-        if (otp == null || otp.isBlank()) {
-            throw new FieldValidationException("otp", "The code is required");
-        }
-        verify(phone, purpose, otp);
+        return new OtpResponse(properties.codeTtl().toSeconds(), properties.resendCooldown().toSeconds());
     }
 
     /**

@@ -1,7 +1,5 @@
 package com.vn.vitalcare.care.registration.controller;
 
-import com.vn.vitalcare.care.registration.dto.OtpRequest;
-import com.vn.vitalcare.care.registration.dto.OtpResponse;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
 import com.vn.vitalcare.care.registration.service.RegistrationService;
 import com.vn.vitalcare.identity.auth.dto.TokenResponse;
@@ -25,11 +23,6 @@ public class RegistrationController {
 
     public RegistrationController(RegistrationService service) {
         this.service = service;
-    }
-
-    @PostMapping("/otp")
-    public OtpResponse requestCode(@Valid @RequestBody OtpRequest request) {
-        return service.requestCode(request.phone());
     }
 
     /** Answers like a sign-in: the new account is signed in straight away. */

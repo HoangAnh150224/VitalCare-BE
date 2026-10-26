@@ -35,7 +35,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Transactional
     public OtpResponse requestCode(String rawPhone) {
         String phone = normalize(rawPhone);
-        return codes.issue(phone, VerificationPurpose.RESET_PASSWORD, account(phone).isPresent());
+        String email = account(phone).map(User::getEmail).filter(address -> !address.isBlank()).orElse(null);
+        return codes.issue(phone, VerificationPurpose.RESET_PASSWORD, email);
     }
 
     @Override
@@ -46,9 +47,9 @@ public class PasswordResetServiceImpl implements PasswordResetService {
             throw new FieldValidationException("newPassword", "Password is too long; use fewer accented letters");
         }
 
-        codes.prove(phone, VerificationPurpose.RESET_PASSWORD, request.otp(), request.firebaseToken());
+        codes.verify(phone, VerificationPurpose.RESET_PASSWORD, request.otp());
 
-        // A code is only ever sent to a number with such an account, so this
+        // A code is only ever sent for a number with such an account, so this
         // misses only if the account was disabled or deleted since; that
         // answers like a bad code rather than saying which.
         User user = account(phone).orElseThrow(InvalidVerificationCodeException::new);

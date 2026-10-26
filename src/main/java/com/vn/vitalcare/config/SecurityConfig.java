@@ -101,11 +101,11 @@ public class SecurityConfig {
                         // token. Everything else needs one.
                         .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         // Self-registration happens before there is a token to
-                        // hold. Its own limits (one-time code, resend cooldown,
-                        // per-hour cap) are what guard it instead.
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/otp").permitAll()
-                        // Recovering a forgotten password, for the same reason
-                        // and under the same one-time-code limits.
+                        // hold.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
+                        // Recovering a forgotten password, for the same reason;
+                        // its one-time-code limits (resend cooldown, per-hour
+                        // cap) are what guard it instead.
                         .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp").permitAll()
                         // VNPay's answers: the customer's browser coming back,
                         // and VNPay's own server. Neither holds a token; the

@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * {@code /api/auth/password-reset} — a forgotten password, recovered with a
- * code sent to the number the account signs in with.
+ * code emailed to the account that signs in with the number.
  *
  * <p>Open in {@code SecurityConfig}, like registration: somebody who has
  * forgotten their password holds no token.

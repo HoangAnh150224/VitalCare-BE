@@ -1,14 +1,14 @@
 package com.vn.vitalcare.care.registration.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * {@code POST /auth/register}: the code just received, and the account to
- * create with it. One request rather than "verify" then "create", so there is
- * no half-registered state — a verified number with no account — to expire,
- * resume or abuse.
+ * {@code POST /auth/register}: the account to create. The phone number is
+ * what it signs in with; the email is where a password-recovery code goes,
+ * so it is required.
  */
 public record RegisterRequest(
         @NotBlank(message = "Phone number is required")
@@ -16,13 +16,10 @@ public record RegisterRequest(
                 message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
         String phone,
 
-        // One of otp / firebaseToken proves the number: our code, or Firebase's
-        // token once Firebase sent the code (OtpResponse.channel says which).
-        @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the message")
-        String otp,
-
-        @Size(max = 4096, message = "The verification token is too long")
-        String firebaseToken,
+        @NotBlank(message = "Email is required")
+        @Email(message = "Email must be a valid address")
+        @Size(max = 255, message = "Email must be at most 255 characters")
+        String email,
 
         @NotBlank(message = "Full name is required")
         @Size(max = 255, message = "Full name must be at most 255 characters")

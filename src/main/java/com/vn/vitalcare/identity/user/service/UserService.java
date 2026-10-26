@@ -118,16 +118,18 @@ public class UserService {
      * Creates the account behind a self-registration.
      *
      * <p>Separate from {@link #create} because nothing about it is the
-     * caller's choice: the role is fixed by the flow, the account is active
-     * from the start, and there is no email — the person proved a phone
-     * number, nothing else.
+     * caller's choice: the role is fixed by the flow and the account is
+     * active from the start. The email is where a forgotten password is
+     * recovered through, and like the number it may not belong to another
+     * account.
      *
      * @param roleCode the system role the flow assigns; see
      *                 {@link RoleService#getByCode}
      */
     @Transactional
-    public User createSelfRegistered(String phone, String rawPassword, String fullName, String roleCode) {
-        return createWithSystemRole(phone, rawPassword, fullName, roleCode);
+    public User createSelfRegistered(String phone, String email, String rawPassword, String fullName,
+                                     String roleCode) {
+        return createWithSystemRole(phone, email, rawPassword, fullName, roleCode);
     }
 
     /**
@@ -137,7 +139,7 @@ public class UserService {
      */
     @Transactional
     public User createStaffAccount(String phone, String rawPassword, String fullName, String roleCode) {
-        return createWithSystemRole(phone, rawPassword, fullName, roleCode);
+        return createWithSystemRole(phone, null, rawPassword, fullName, roleCode);
     }
 
     /**
@@ -175,13 +177,16 @@ public class UserService {
         return saved;
     }
 
-    private User createWithSystemRole(String phone, String rawPassword, String fullName, String roleCode) {
+    private User createWithSystemRole(String phone, String rawEmail, String rawPassword, String fullName,
+                                      String roleCode) {
         String normalized = requireNormalizedPhone(phone);
+        String email = normalizeEmail(rawEmail);
         requirePhoneAvailable(normalized, null);
+        requireEmailAvailable(email, null);
 
         User user = new User(
                 normalized,
-                null,
+                email,
                 passwordEncoder.encode(rawPassword),
                 fullName.trim(),
                 UserStatus.ACTIVE);
