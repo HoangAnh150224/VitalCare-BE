@@ -3,6 +3,7 @@ package com.vn.vitalcare.entity;
 import com.vn.vitalcare.share.data.BaseEntity;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelResource;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -59,6 +60,15 @@ public class ClinicalEncounter extends BaseEntity {
     @Column(name = "chief_complaint", columnDefinition = "text")
     private String chiefComplaint;
 
+    /** What was found on examination, apart from what the patient reported (SRS 3.19 "Thông tin khám"). */
+    @Column(name = "examination_findings", columnDefinition = "text")
+    private String examinationFindings;
+
+    /** Measured at the visit; null when none were taken. */
+    @Embedded
+    private VisitVitals vitals;
+
+    /** The doctor's; see {@code clinical_encounters:conclude}. */
     @Column(name = "diagnosis", columnDefinition = "text")
     private String diagnosis;
 
@@ -171,6 +181,22 @@ public class ClinicalEncounter extends BaseEntity {
 
     public void setFollowUp(String followUp) {
         this.followUp = followUp;
+    }
+
+    public String getExaminationFindings() {
+        return examinationFindings;
+    }
+
+    public void setExaminationFindings(String examinationFindings) {
+        this.examinationFindings = examinationFindings;
+    }
+
+    public VisitVitals getVitals() {
+        return vitals;
+    }
+
+    public void setVitals(VisitVitals vitals) {
+        this.vitals = vitals;
     }
 
     public EncounterStatus getStatus() {

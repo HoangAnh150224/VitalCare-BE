@@ -78,7 +78,7 @@ public class ClinicalEncounterController {
     }
 
     @PostMapping("/{id}/complete")
-    @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_CONCLUDE + "')")
     public EncounterResponse complete(@PathVariable Long id) {
         return response(service.complete(id));
     }

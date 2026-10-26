@@ -1,5 +1,7 @@
 package com.vn.vitalcare.care.encounter.dto;
 
+import com.vn.vitalcare.entity.VisitVitals;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -18,10 +20,16 @@ public record EncounterRequest(
         @Size(max = 5000, message = "Symptoms must be at most 5000 characters")
         String chiefComplaint,
 
+        @Size(max = 10000, message = "Examination findings must be at most 10000 characters")
+        String examinationFindings,
+
+        @Valid
+        VisitVitals vitals,
+
         @Size(max = 10000, message = "Clinical notes must be at most 10000 characters")
         String clinicalNote,
 
-        @Size(max = 5000, message = "Conclusion must be at most 5000 characters")
+        @Size(max = 5000, message = "Diagnosis must be at most 5000 characters")
         String diagnosis,
 
         @Size(max = 5000, message = "Follow-up instructions must be at most 5000 characters")

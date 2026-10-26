@@ -1,6 +1,11 @@
 package com.vn.vitalcare.care.encounter.service.impl;
 
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import java.util.stream.Stream;
+import java.util.Objects;
+import com.vn.vitalcare.share.security.Permissions;
+import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.entity.VisitVitals;
 import com.vn.vitalcare.care.billing.invoice.Invoices;
 import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
 import com.vn.vitalcare.entity.ServiceOrder;
@@ -148,6 +153,10 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (encounter.getStatus() == EncounterStatus.COMPLETED) {
             throw new ConflictException("This encounter is already completed");
         }
+        // Concluding is the doctor signing the visit off: there has to be something to sign.
+        if (encounter.getDiagnosis() == null) {
+            throw new ConflictException("Write the diagnosis before concluding the visit");
+        }
         // Report 1 FE-22: the doctor concludes having seen every result.
         long outstanding = serviceOrders.findByEncounter(id).stream().filter(ServiceOrder::isOutstanding).count();
         if (outstanding > 0) {
@@ -155,6 +164,8 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
                     "%d ordered service(s) still have no reviewed result; review or cancel them first".formatted(outstanding));
         }
         encounter.setStatus(EncounterStatus.COMPLETED);
+        // A nurse may have opened the form; the visit is the concluding doctor's.
+        encounter.setEmployee(employeeService.getForCurrentUser());
         encounter.setEndedAt(OffsetDateTime.now(clock));
         rowLevel.checkWritable(encounter);
         // The visit this encounter documents is over too.
@@ -192,9 +203,23 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
 
     private static void apply(ClinicalEncounter encounter, EncounterRequest request) {
         encounter.setChiefComplaint(request.chiefComplaint().trim());
+        encounter.setExaminationFindings(blankToNull(request.examinationFindings()));
+        encounter.setVitals(noneMeasured(request.vitals()) ? null : request.vitals());
         encounter.setClinicalNote(blankToNull(request.clinicalNote()));
-        encounter.setDiagnosis(blankToNull(request.diagnosis()));
         encounter.setFollowUp(blankToNull(request.followUp()));
+        // The diagnosis is the doctor's. Anyone else's value is ignored rather
+        // than refused: a nurse's form opened before the doctor wrote one still
+        // carries the old value, and refusing it would throw away the vitals
+        // and findings saved with it. Their screen shows the field read-only.
+        if (CurrentUser.has(Permissions.CLINICAL_ENCOUNTERS_CONCLUDE)) {
+            encounter.setDiagnosis(blankToNull(request.diagnosis()));
+        }
+    }
+
+    private static boolean noneMeasured(VisitVitals vitals) {
+        return vitals == null || Stream.of(vitals.temperature(), vitals.pulse(), vitals.respiratoryRate(),
+                vitals.systolicBp(), vitals.diastolicBp(), vitals.spo2(), vitals.weightKg(), vitals.heightCm())
+                .allMatch(Objects::isNull);
     }
 
     /** One row through the caller's scope for {@code action}; outside it is a 404. See DeviceServiceImpl. */

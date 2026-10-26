@@ -5,6 +5,7 @@ import com.vn.vitalcare.care.encounter.service.ClinicalEncounterService;
 import com.vn.vitalcare.entity.ClinicalEncounter;
 import com.vn.vitalcare.entity.EncounterStatus;
 import com.vn.vitalcare.entity.StaffType;
+import com.vn.vitalcare.entity.VisitVitals;
 import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -23,6 +24,9 @@ public record EncounterResponse(
         /** Until when a completed encounter can still be edited (BR-27); null while in progress. */
         OffsetDateTime editableUntil,
         String chiefComplaint,
+        String examinationFindings,
+        /** Null when none were measured at the visit. */
+        VisitVitals vitals,
         String clinicalNote,
         String diagnosis,
         String followUp,
@@ -52,6 +56,8 @@ public record EncounterResponse(
                 encounter.getEndedAt(),
                 encounter.getEndedAt() == null ? null : encounter.getEndedAt().plus(ClinicalEncounterService.EDIT_WINDOW),
                 encounter.getChiefComplaint(),
+                encounter.getExaminationFindings(),
+                encounter.getVitals(),
                 encounter.getClinicalNote(),
                 encounter.getDiagnosis(),
                 encounter.getFollowUp(),

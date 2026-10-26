@@ -25,6 +25,9 @@ import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EncounterStatus;
 import com.vn.vitalcare.entity.PatientActivationSource;
 import com.vn.vitalcare.entity.ServiceOrder;
+import com.vn.vitalcare.entity.VisitVitals;
+import com.vn.vitalcare.share.security.Permissions;
+import java.math.BigDecimal;
 import com.vn.vitalcare.share.exception.ConflictException;
 import java.time.Clock;
 import java.time.Instant;
@@ -33,10 +36,14 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /** Recording a visit: whose it is, and the 24 hours after completion in which it can still change (BR-27). */
 class ClinicalEncounterServiceTest {
@@ -71,14 +78,30 @@ class ClinicalEncounterServiceTest {
 
         serviceOrders = mock(ServiceOrderRepository.class);
         invoices = mock(Invoices.class);
+        signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE, Permissions.CLINICAL_ENCOUNTERS_CONCLUDE);
         service = new ClinicalEncounterServiceImpl(repository, customers, employees, mock(AppointmentService.class),
                 serviceOrders, invoices, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC));
+    }
+
+    @AfterEach
+    void signOut() {
+        SecurityContextHolder.clearContext();
+    }
+
+    /** The permission codes the request carries, as the JWT converter would grant them. */
+    private static void signedInAs(String... permissions) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "1", null, AuthorityUtils.createAuthorityList(permissions)));
+    }
+
+    private static EncounterRequest form(String diagnosis, String note) {
+        return new EncounterRequest(null, null, "Đau ngực", null, null, note, diagnosis, null);
     }
 
     @Test
     @DisplayName("a new encounter is the signed-in clinician's, at their clinic, in progress from now")
     void createIsTheCliniciansAtTheirClinic() {
-        ClinicalEncounter created = service.create(new EncounterRequest(7L, null, "  Đau ngực  ", " ", null, null));
+        ClinicalEncounter created = service.create(new EncounterRequest(7L, null, "  Đau ngực  ", null, null, " ", null, null));
 
         assertEquals(doctor, created.getEmployee());
         assertEquals(patient, created.getCustomer());
@@ -97,7 +120,7 @@ class ClinicalEncounterServiceTest {
         encounter.setClinic(doctor.getClinic());
         encounter.setStatus(EncounterStatus.COMPLETED);
         when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
-        EncounterRequest edit = new EncounterRequest(null, null, "Đau ngực", null, "Theo dõi thêm", null);
+        EncounterRequest edit = form("Theo dõi thêm", null);
 
         encounter.setEndedAt(OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).minusHours(23));
         assertEquals("Theo dõi thêm", service.update(1L, edit).getDiagnosis());
@@ -112,10 +135,12 @@ class ClinicalEncounterServiceTest {
     void completeOnce() {
         ClinicalEncounter encounter = new ClinicalEncounter();
         encounter.setClinic(doctor.getClinic());
+        encounter.setDiagnosis("Viêm họng cấp");
         when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
 
         assertEquals(EncounterStatus.COMPLETED, service.complete(1L).getStatus());
         assertEquals(NOW, encounter.getEndedAt().toInstant());
+        assertEquals(doctor, encounter.getEmployee(), "the concluding doctor is the visit's clinician");
         verify(invoices).issueFor(encounter);
         assertThrows(ConflictException.class, () -> service.complete(1L));
     }
@@ -126,11 +151,61 @@ class ClinicalEncounterServiceTest {
     void completeWaitsForResults() {
         ClinicalEncounter encounter = new ClinicalEncounter();
         encounter.setClinic(doctor.getClinic());
+        encounter.setDiagnosis("Viêm họng cấp");
         when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
         when(serviceOrders.findByEncounter(any())).thenReturn(List.of(new ServiceOrder()));
 
         assertThrows(ConflictException.class, () -> service.complete(1L));
         assertEquals(EncounterStatus.IN_PROGRESS, encounter.getStatus());
         verify(invoices, never()).issueFor(any());
+    }
+
+    @Test
+    @DisplayName("concluding is signing the visit off: not without a diagnosis")
+    @SuppressWarnings("unchecked")
+    void completeNeedsADiagnosis() {
+        ClinicalEncounter encounter = new ClinicalEncounter();
+        encounter.setClinic(doctor.getClinic());
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
+
+        assertThrows(ConflictException.class, () -> service.complete(1L));
+        assertEquals(EncounterStatus.IN_PROGRESS, encounter.getStatus());
+        verify(invoices, never()).issueFor(any());
+    }
+
+    @Test
+    @DisplayName("a nurse writes the form but not the diagnosis: theirs is ignored, the doctor's kept, the rest saved")
+    @SuppressWarnings("unchecked")
+    void onlyTheDoctorWritesTheDiagnosis() {
+        ClinicalEncounter encounter = new ClinicalEncounter();
+        encounter.setClinic(doctor.getClinic());
+        encounter.setDiagnosis("Viêm họng cấp");
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
+        signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE);
+
+        assertEquals("Họng đỏ", service.update(1L, form("Viêm phổi", "Họng đỏ")).getClinicalNote());
+        assertEquals("Viêm họng cấp", encounter.getDiagnosis());
+        service.update(1L, form(null, "Họng đỏ"));
+        assertEquals("Viêm họng cấp", encounter.getDiagnosis(), "a stale empty form does not clear it either");
+
+        signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE, Permissions.CLINICAL_ENCOUNTERS_CONCLUDE);
+        assertEquals("Viêm phổi", service.update(1L, form("Viêm phổi", null)).getDiagnosis());
+    }
+
+    @Test
+    @DisplayName("vitals are kept as measured, and none measured is stored as none")
+    @SuppressWarnings("unchecked")
+    void vitalsAsMeasured() {
+        ClinicalEncounter encounter = new ClinicalEncounter();
+        encounter.setClinic(doctor.getClinic());
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
+        VisitVitals measured = new VisitVitals(new BigDecimal("38.5"), 96, 20, 120, 80, 97, null, null);
+
+        assertEquals(measured, service.update(1L, new EncounterRequest(null, null, "Sốt", "Họng đỏ", measured,
+                null, null, null)).getVitals());
+        assertEquals("Họng đỏ", encounter.getExaminationFindings());
+        VisitVitals none = new VisitVitals(null, null, null, null, null, null, null, null);
+        assertEquals(null, service.update(1L, new EncounterRequest(null, null, "Sốt", null, none, null, null, null))
+                .getVitals());
     }
 }

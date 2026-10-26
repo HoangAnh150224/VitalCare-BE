@@ -76,6 +76,8 @@ public final class Permissions {
     // Healthcare Staff's (SRS 3.1.3), not the clinic's or system's administrators'.
     public static final String CLINICAL_ENCOUNTERS_READ = "clinical_encounters:read";
     public static final String CLINICAL_ENCOUNTERS_WRITE = "clinical_encounters:write";
+    /** Recording the diagnosis and completing the encounter: the doctor's sign-off. */
+    public static final String CLINICAL_ENCOUNTERS_CONCLUDE = "clinical_encounters:conclude";
     public static final String MEDICAL_RECORDS_READ = "medical_records:read";
     public static final String MEDICAL_RECORDS_WRITE = "medical_records:write";
 
