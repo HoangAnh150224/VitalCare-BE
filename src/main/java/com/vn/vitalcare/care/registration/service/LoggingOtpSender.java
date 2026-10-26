@@ -5,6 +5,7 @@ import com.vn.vitalcare.share.phone.PhoneNumbers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,6 +23,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile("!prod")
+// Stands aside as soon as a real sender is configured (SpeedSmsOtpSender).
+@ConditionalOnExpression("'${app.sms.speedsms.token:}'.isBlank()")
 public class LoggingOtpSender implements OtpSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingOtpSender.class);
