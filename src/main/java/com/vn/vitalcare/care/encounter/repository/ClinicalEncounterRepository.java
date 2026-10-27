@@ -26,6 +26,16 @@ public interface ClinicalEncounterRepository extends SecuredRepository<ClinicalE
     @Query("select e.id from ClinicalEncounter e where e.id = :id")
     Optional<Long> lockRow(@Param("id") Long id);
 
+    /**
+     * The encounters of one appointment, newest first — unscoped. Only for a
+     * caller that has already proved the appointment is the signed-in
+     * customer's own (MyVisitResults); never reachable from a staff path.
+     */
+    @Query("select e from ClinicalEncounter e join fetch e.customer c left join fetch c.user "
+            + "left join fetch e.employee emp left join fetch emp.user "
+            + "where e.appointment.id = :appointmentId and e.deletedAt is null order by e.id desc")
+    List<ClinicalEncounter> findOfOwnAppointment(@Param("appointmentId") Long appointmentId);
+
     @Override
     @EntityGraph(attributePaths = {"customer", "customer.user", "employee", "employee.user"})
     Page<ClinicalEncounter> findAll(Specification<ClinicalEncounter> spec, Pageable pageable);
