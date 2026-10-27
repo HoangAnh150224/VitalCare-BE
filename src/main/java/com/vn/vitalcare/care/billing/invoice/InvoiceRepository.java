@@ -30,6 +30,15 @@ public interface InvoiceRepository extends SecuredRepository<Invoice, Long> {
     @EntityGraph(attributePaths = {"customer", "customer.user", "clinic"})
     Optional<Invoice> findOne(Specification<Invoice> spec);
 
+    /**
+     * Every bill of one account: the owner's and their relatives', newest first.
+     * Not scoped: pinned to the caller's own profile, as {@code AppointmentRepository.findOwn}.
+     */
+    @EntityGraph(attributePaths = {"customer", "clinic"})
+    @Query("select i from Invoice i join i.customer c left join c.guardian g "
+            + "where (c.id = :ownerId or g.id = :ownerId) and i.deletedAt is null order by i.issuedAt desc, i.id desc")
+    List<Invoice> findOwn(@Param("ownerId") Long ownerCustomerId);
+
     @Query("select i from Invoice i where i.encounter.id = :encounterId and i.deletedAt is null")
     Optional<Invoice> findByEncounter(@Param("encounterId") Long encounterId);
 

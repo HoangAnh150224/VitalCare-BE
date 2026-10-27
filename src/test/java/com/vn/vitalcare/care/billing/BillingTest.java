@@ -6,12 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.care.billing.catalog.MedicalServiceCatalog;
 import com.vn.vitalcare.care.billing.invoice.InvoiceRepository;
+import com.vn.vitalcare.care.billing.invoice.InvoiceResponse;
 import com.vn.vitalcare.care.billing.invoice.Invoices;
 import com.vn.vitalcare.care.billing.invoice.Invoices.Settlement.Outcome;
 import com.vn.vitalcare.care.billing.invoice.PaymentRepository;
@@ -70,6 +72,7 @@ class BillingTest {
     private PaymentRepository payments;
     private ServiceOrderRepository orders;
     private VnpayClient vnpay;
+    private CustomerService customers;
     private Invoices service;
     private final Map<String, Payment> byRef = new HashMap<>();
 
@@ -108,8 +111,9 @@ class BillingTest {
 
         vnpay = new VnpayClient("TESTTMN1", SECRET, "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
                 "http://localhost:8080/api/payments/vnpay/return", clock);
+        customers = mock(CustomerService.class);
         service = new Invoices(invoices, payments, orders, catalog, mock(AppointmentService.class),
-                mock(CustomerService.class), clinicService, () -> Optional.of(CLINIC), vnpay,
+                customers, clinicService, () -> Optional.of(CLINIC), vnpay,
                 new ClinicRowLevel(() -> CLINIC), mock(EntityManager.class), clock);
 
         clinic = new Clinic();
@@ -145,6 +149,27 @@ class BillingTest {
         assertEquals(InvoiceStatus.PAID, service.payAtCounter(42L, PaymentMethod.CASH).status());
         assertThrows(ConflictException.class, () -> service.payAtCounter(42L, PaymentMethod.CASH));
         assertEquals(1, byRef.size());
+    }
+
+    @Test
+    @DisplayName("payment history: the caller's account's bills, each with how it was paid")
+    @SuppressWarnings("unchecked")
+    void ownHistory() {
+        Customer me = new Customer();
+        ReflectionTestUtils.setField(me, "id", 37L);
+        when(customers.getForCurrentUser()).thenReturn(me);
+        Invoice invoice = issued();
+        when(invoices.findOne(any(Specification.class))).thenReturn(Optional.of(invoice));
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+        service.payAtCounter(42L, PaymentMethod.CASH);
+        when(invoices.findOwn(37L)).thenReturn(List.of(invoice));
+
+        List<InvoiceResponse> history = service.ownAll();
+
+        assertEquals(1, history.size());
+        assertEquals(InvoiceStatus.PAID, history.get(0).status());
+        assertEquals(1, history.get(0).payments().size(), "the cash payment is listed");
+        verify(invoices).findOwn(37L);
     }
 
     @Test

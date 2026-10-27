@@ -246,6 +246,18 @@ public class Invoices {
         return InvoiceResponse.from(invoice, Map.of());
     }
 
+    /**
+     * Every bill of the caller's account, the relatives' included, each with
+     * its payments: the portal's payment history.
+     * ponytail: unpaged, an account holds tens of bills; page it if that grows.
+     */
+    public List<InvoiceResponse> ownAll() {
+        Customer customer = customerService.getForCurrentUser();
+        return invoices.findOwn(customer.getId()).stream()
+                .map(invoice -> InvoiceResponse.from(invoice, Map.of()))
+                .toList();
+    }
+
     public boolean onlinePaymentEnabled() {
         return vnpay.enabled();
     }
