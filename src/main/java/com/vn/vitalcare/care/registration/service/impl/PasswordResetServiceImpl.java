@@ -35,8 +35,8 @@ public class PasswordResetServiceImpl implements PasswordResetService {
     @Transactional
     public OtpResponse requestCode(String rawPhone) {
         String phone = normalize(rawPhone);
-        String email = account(phone).map(User::getEmail).filter(address -> !address.isBlank()).orElse(null);
-        return codes.issue(phone, VerificationPurpose.RESET_PASSWORD, email);
+        // The code goes by SMS to the number itself, and only if it has an account.
+        return codes.issue(phone, VerificationPurpose.RESET_PASSWORD, account(phone).isPresent() ? phone : null);
     }
 
     @Override

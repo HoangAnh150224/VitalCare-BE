@@ -36,7 +36,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The guarantees password recovery rests on: only whoever reads the code
- * emailed to the account can set a new password, the code cannot be walked,
+ * texted to the number can set a new password, the code cannot be walked,
  * and the form says nothing about which numbers have accounts.
  */
 class PasswordResetServiceTest {
@@ -81,8 +81,8 @@ class PasswordResetServiceTest {
         when(userService.findForAuthentication(NO_EMAIL)).thenReturn(Optional.of(withoutEmail));
         when(userService.findForAuthentication(STRANGER)).thenReturn(Optional.empty());
 
-        OtpSender sender = (email, code, purpose) -> {
-            sentTo.set(email);
+        OtpSender sender = (to, code, purpose) -> {
+            sentTo.set(to);
             sentCode.set(code);
         };
         codes = new PhoneCodes(verifications, sender,
@@ -100,12 +100,12 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    @DisplayName("an account's code goes to its email, and only the code's hash is stored")
+    @DisplayName("an account's code goes by SMS to its number, and only the code's hash is stored")
     void accountGetsACode() {
         service.requestCode("0912 345 678");
 
         String code = sentCode.get();
-        assertEquals(EMAIL, sentTo.get());
+        assertEquals(PHONE, sentTo.get());
         assertTrue(code.matches("\\d{6}"), "code: " + code);
         PhoneVerification row = stored.get(VerificationPurpose.RESET_PASSWORD);
         assertEquals(PHONE, row.getPhone());
@@ -113,18 +113,25 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    @DisplayName("no account, or an account without email: answered the same, sent nothing")
-    void othersAreAnsweredTheSame() {
-        OtpResponse forAccount = service.requestCode(PHONE);
-        for (String phone : new String[] {STRANGER, NO_EMAIL}) {
-            sentCode.set(null);
-            stored.clear();
+    @DisplayName("an account without an email still gets its code: the email plays no part")
+    void accountWithoutEmailGetsACode() {
+        service.requestCode(NO_EMAIL);
 
-            assertEquals(forAccount, service.requestCode(phone));
-            assertNull(sentCode.get());
-            // Recorded anyway, so the cooldown answers them exactly as it answers an account.
-            assertNotNull(stored.get(VerificationPurpose.RESET_PASSWORD));
-        }
+        assertEquals(NO_EMAIL, sentTo.get());
+        assertNotNull(sentCode.get());
+    }
+
+    @Test
+    @DisplayName("a number with no account is answered the same and sent nothing")
+    void strangerIsAnsweredTheSame() {
+        OtpResponse forAccount = service.requestCode(PHONE);
+        sentCode.set(null);
+        stored.clear();
+
+        assertEquals(forAccount, service.requestCode(STRANGER));
+        assertNull(sentCode.get());
+        // Recorded anyway, so the cooldown answers it exactly as it answers an account.
+        assertNotNull(stored.get(VerificationPurpose.RESET_PASSWORD));
     }
 
     @Test
@@ -187,7 +194,7 @@ class PasswordResetServiceTest {
     @Test
     @DisplayName("a code issued for another purpose does not reset a password")
     void otherPurposeIsNotAccepted() {
-        codes.issue(PHONE, VerificationPurpose.REGISTER, EMAIL);
+        codes.issue(PHONE, VerificationPurpose.REGISTER, PHONE);
 
         assertThrows(InvalidVerificationCodeException.class, () -> service.reset(request(sentCode.get())));
         verify(userService, never()).setPassword(anyLong(), anyString());

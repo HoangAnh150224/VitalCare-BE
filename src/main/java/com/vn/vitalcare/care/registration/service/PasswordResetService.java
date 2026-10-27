@@ -5,14 +5,14 @@ import com.vn.vitalcare.care.registration.dto.PasswordResetRequest;
 
 /**
  * Recovering a forgotten password: the person types the phone number the
- * account signs in with, receives a code at the account's email, and chooses
+ * account signs in with, receives a code on it by SMS, and chooses
  * a new password with it.
  */
 public interface PasswordResetService {
 
     /**
-     * Emails a recovery code, if an account that may sign in uses the number
-     * and has an email.
+     * Texts a recovery code to the number, if an account that may sign in
+     * uses it.
      *
      * <p>Answers the same either way — same reply, same cooldown, same hourly
      * cap — so the form cannot be used to learn which numbers have accounts.

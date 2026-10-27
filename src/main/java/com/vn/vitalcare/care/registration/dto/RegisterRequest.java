@@ -7,8 +7,8 @@ import jakarta.validation.constraints.Size;
 
 /**
  * {@code POST /auth/register}: the account to create. The phone number is
- * what it signs in with; the email is where a password-recovery code goes,
- * so it is required.
+ * what it signs in with and where a password-recovery code is sent by SMS.
+ * The email is optional; when given it must be valid and not another account's.
  */
 public record RegisterRequest(
         @NotBlank(message = "Phone number is required")
@@ -16,7 +16,6 @@ public record RegisterRequest(
                 message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
         String phone,
 
-        @NotBlank(message = "Email is required")
         @Email(message = "Email must be a valid address")
         @Size(max = 255, message = "Email must be at most 255 characters")
         String email,

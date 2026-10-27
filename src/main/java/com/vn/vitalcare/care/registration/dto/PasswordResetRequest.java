@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * {@code POST /auth/password-reset}: the code emailed for the number, and the
+ * {@code POST /auth/password-reset}: the code texted to the number, and the
  * password to set with it. One request, so there is no "verified, password
  * not yet chosen" state to expire or abuse.
  */
@@ -16,7 +16,7 @@ public record PasswordResetRequest(
         String phone,
 
         @NotBlank(message = "The code is required")
-        @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the email")
+        @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the SMS")
         String otp,
 
         // 72 is BCrypt's limit in bytes, which the service also checks.

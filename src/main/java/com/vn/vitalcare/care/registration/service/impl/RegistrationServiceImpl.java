@@ -42,7 +42,7 @@ public class RegistrationServiceImpl implements RegistrationService {
             throw new FieldValidationException("password", "Password is too long; use fewer accented letters");
         }
 
-        // UserService normalises the number and email, and refuses either if
+        // UserService normalises the number and any email, and refuses either if
         // another account already holds it.
         User user = userService.createSelfRegistered(
                 request.phone(), request.email(), request.password(), request.fullName(), CUSTOMER_ROLE);

@@ -17,12 +17,11 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
- * One-time codes for the phone number an account signs in with, sent to the
- * account's email: recovering a forgotten password.
+ * One-time codes for the phone number an account signs in with, sent to that
+ * number by SMS: recovering a forgotten password.
  *
  * <p>A code belongs to the number — that is what the person types and what
- * the limits count — and travels by email, the channel that reaches people
- * here without an SMS brandname.
+ * the limits count.
  *
  * <p>Holds no transaction of its own; it runs inside the caller's, so the
  * newest code row stays locked until that flow is done with it. See
@@ -49,16 +48,15 @@ public class PhoneCodes {
     }
 
     /**
-     * Records a new code for a number and, if there is an address, sends it
-     * there.
+     * Records a new code for a number and, if asked, sends it.
      *
-     * <p>No address still records the code and still applies both limits.
-     * That is what lets password recovery answer a number with no account —
-     * or an account with no email — exactly as it answers one that gets the
-     * code: same cooldown, same cap, same reply; only no message goes out.
+     * <p>Not sending still records the code and still applies both limits.
+     * That is what lets password recovery answer a number with no account
+     * exactly as it answers one that gets the code: same cooldown, same cap,
+     * same reply; only no message goes out.
      *
      * @param phone     the number, already normalised to E.164
-     * @param deliverTo the email to send the code to, or {@code null} for none
+     * @param deliverTo the number to send the code to, or {@code null} for none
      */
     public OtpResponse issue(String phone, VerificationPurpose purpose, String deliverTo) {
         Instant now = clock.instant();

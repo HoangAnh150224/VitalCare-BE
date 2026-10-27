@@ -49,6 +49,15 @@ class SelfRegisteredAccountTest {
     }
 
     @Test
+    @DisplayName("no email is fine: the account is created without one")
+    void emailIsOptional() {
+        User user = service.createSelfRegistered("0912345678", null, "Passw0rd!", "An", "CUSTOMER");
+
+        assertEquals(null, user.getEmail());
+        verify(repository, never()).findByEmailIgnoreCase(any());
+    }
+
+    @Test
     @DisplayName("an email another account holds is refused, nothing saved")
     void takenEmailIsRefused() {
         User other = mock(User.class);

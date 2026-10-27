@@ -3,7 +3,7 @@ package com.vn.vitalcare.care.registration.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 
-/** {@code POST /auth/password-reset/otp}: email a code for the account on this number. */
+/** {@code POST /auth/password-reset/otp}: text a code to this number, if it has an account. */
 public record OtpRequest(
         @NotBlank(message = "Phone number is required")
         // Same pattern as UserRequest, so whatever can be registered can also
