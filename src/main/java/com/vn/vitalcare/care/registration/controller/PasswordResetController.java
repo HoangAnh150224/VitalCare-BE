@@ -3,7 +3,9 @@ package com.vn.vitalcare.care.registration.controller;
 import com.vn.vitalcare.care.registration.dto.OtpRequest;
 import com.vn.vitalcare.care.registration.dto.OtpResponse;
 import com.vn.vitalcare.care.registration.dto.PasswordResetRequest;
+import com.vn.vitalcare.care.registration.service.OtpIpLimiter;
 import com.vn.vitalcare.care.registration.service.PasswordResetService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,14 +25,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class PasswordResetController {
 
     private final PasswordResetService service;
+    private final OtpIpLimiter ipLimiter;
 
-    public PasswordResetController(PasswordResetService service) {
+    public PasswordResetController(PasswordResetService service, OtpIpLimiter ipLimiter) {
         this.service = service;
+        this.ipLimiter = ipLimiter;
     }
 
-    /** The same answer whether or not the number has an account. */
+    /** The same answer whether or not the number has an account; capped per client address. */
     @PostMapping("/otp")
-    public OtpResponse requestCode(@Valid @RequestBody OtpRequest request) {
+    public OtpResponse requestCode(@Valid @RequestBody OtpRequest request, HttpServletRequest http) {
+        ipLimiter.check(OtpIpLimiter.clientIp(http));
         return service.requestCode(request.phone());
     }
 
