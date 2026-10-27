@@ -155,6 +155,32 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    @DisplayName("checking the right code does not spend it: the reset that follows still works")
+    void checkLeavesTheCodeUsable() {
+        service.requestCode(PHONE);
+        String code = sentCode.get();
+
+        service.checkCode("0912345678", code);
+        assertNull(stored.get(VerificationPurpose.RESET_PASSWORD).getConsumedAt());
+
+        service.reset(request(code));
+        verify(userService).setPassword(42L, "NewPassw0rd!");
+    }
+
+    @Test
+    @DisplayName("a wrong check counts like a wrong reset, and enough of them burn the code")
+    void wrongChecksBurnTheCode() {
+        service.requestCode(PHONE);
+        String code = sentCode.get();
+
+        for (int i = 0; i < 5; i++) {
+            assertThrows(InvalidVerificationCodeException.class, () -> service.checkCode(PHONE, wrong(code)));
+        }
+        assertEquals(5, stored.get(VerificationPurpose.RESET_PASSWORD).getAttempts());
+        assertThrows(InvalidVerificationCodeException.class, () -> service.checkCode(PHONE, code));
+    }
+
+    @Test
     @DisplayName("the right code sets the new password, once")
     void rightCodeResets() {
         service.requestCode(PHONE);

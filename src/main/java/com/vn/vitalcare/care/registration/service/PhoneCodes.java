@@ -96,6 +96,26 @@ public class PhoneCodes {
      *                                          — one answer for all four
      */
     public void verify(String phone, VerificationPurpose purpose, String code) {
+        PhoneVerification verification = match(phone, purpose, code);
+        verification.consume(clock.instant());
+        verifications.save(verification);
+    }
+
+    /**
+     * Like {@link #verify} but leaves the code usable: for a form that checks
+     * the code before asking for the new password, then sends both.
+     *
+     * <p>A wrong guess counts exactly as it does in {@link #verify}, so
+     * checking is no cheaper a way to walk the code; the same no-rollback
+     * rule applies to the caller's transaction.
+     *
+     * @throws InvalidVerificationCodeException wrong, expired, spent or burned
+     */
+    public void check(String phone, VerificationPurpose purpose, String code) {
+        match(phone, purpose, code);
+    }
+
+    private PhoneVerification match(String phone, VerificationPurpose purpose, String code) {
         Instant now = clock.instant();
         PhoneVerification verification = verifications.findLatestForUpdate(phone, purpose)
                 .filter(candidate -> candidate.isUsable(now, properties.maxAttempts()))
@@ -108,8 +128,7 @@ public class PhoneCodes {
             verifications.save(verification);
             throw new InvalidVerificationCodeException();
         }
-        verification.consume(now);
-        verifications.save(verification);
+        return verification;
     }
 
     private String generateCode() {

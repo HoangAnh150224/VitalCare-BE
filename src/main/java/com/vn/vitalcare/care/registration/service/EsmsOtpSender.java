@@ -53,6 +53,10 @@ public class EsmsOtpSender implements OtpSender {
     private final String secretKey;
     private final String brandname;
     private final String smsType;
+    /** The registered content template, {@code {code}} for the code; blank for the default text. */
+    private final String template;
+    /** eSMS's test mode: answered like a real send, but not delivered and not charged. */
+    private final boolean sandbox;
     private final long ttlMinutes;
 
     public EsmsOtpSender(@Value("${app.sms.esms.api-key}") String apiKey,
@@ -60,6 +64,8 @@ public class EsmsOtpSender implements OtpSender {
                          @Value("${app.sms.esms.brandname:}") String brandname,
                          @Value("${app.sms.esms.sms-type:2}") String smsType,
                          @Value("${app.sms.esms.base-url:https://rest.esms.vn}") String baseUrl,
+                         @Value("${app.sms.esms.template:}") String template,
+                         @Value("${app.sms.esms.sandbox:false}") boolean sandbox,
                          OtpProperties properties) {
         // Fail at start-up, not on the first forgotten password: eSMS refuses
         // every message without these, and only the background log would say so.
@@ -80,6 +86,11 @@ public class EsmsOtpSender implements OtpSender {
         this.secretKey = secretKey.trim();
         this.brandname = brandname.trim();
         this.smsType = smsType.trim();
+        this.template = template.trim();
+        this.sandbox = sandbox;
+        if (!this.template.isEmpty() && !this.template.contains("{code}")) {
+            throw new IllegalStateException("app.sms.esms.template must contain {code}");
+        }
         this.ttlMinutes = Math.max(1, properties.codeTtl().toMinutes());
     }
 
@@ -88,7 +99,11 @@ public class EsmsOtpSender implements OtpSender {
         Thread.ofVirtual().name("otp-sms").start(() -> {
             try {
                 String error = deliver(phone, message(code, purpose));
-                if (error == null) {
+                if (error == null && sandbox) {
+                    // Nothing reaches the phone in sandbox mode, so the log is the only way to the code.
+                    log.info("{} code for {}: {} (eSMS sandbox accepted it; not delivered)",
+                            purpose, PhoneNumbers.mask(phone), code);
+                } else if (error == null) {
                     log.info("{} code sent by SMS to {}", purpose, PhoneNumbers.mask(phone));
                 } else {
                     log.error("eSMS refused {} code to {}: {}", purpose, PhoneNumbers.mask(phone), error);
@@ -118,6 +133,9 @@ public class EsmsOtpSender implements OtpSender {
             body.put("Brandname", brandname);
         }
         body.put("SmsType", smsType);
+        if (sandbox) {
+            body.put("Sandbox", "1");
+        }
 
         // Read as text and parsed here: eSMS does not always label its JSON as
         // application/json, and a redirect (POST is not followed) has none.
@@ -141,6 +159,11 @@ public class EsmsOtpSender implements OtpSender {
     }
 
     String message(String code, VerificationPurpose purpose) {
+        // A brandname only carries the text it was registered with (eSMS's
+        // trial one included), so a configured template wins over our own.
+        if (!template.isEmpty()) {
+            return template.replace("{code}", code);
+        }
         return switch (purpose) {
             case REGISTER -> "VitalCare: ma xac thuc cua ban la %s, het han sau %d phut. Khong chia se ma nay."
                     .formatted(code, ttlMinutes);

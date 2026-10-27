@@ -34,3 +34,6 @@ build/
 
 ### Uploaded files (service results) — patient data, never committed ###
 data/uploads/
+
+### Local secrets (eSMS keys) — never committed ###
+/config/

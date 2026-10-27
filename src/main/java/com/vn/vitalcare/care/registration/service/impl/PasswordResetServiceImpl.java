@@ -41,6 +41,12 @@ public class PasswordResetServiceImpl implements PasswordResetService {
 
     @Override
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
+    public void checkCode(String rawPhone, String otp) {
+        codes.check(normalize(rawPhone), VerificationPurpose.RESET_PASSWORD, otp);
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public void reset(PasswordResetRequest request) {
         String phone = normalize(request.phone());
         if (request.newPassword().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {

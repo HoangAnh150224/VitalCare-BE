@@ -106,7 +106,8 @@ public class SecurityConfig {
                         // Recovering a forgotten password, for the same reason;
                         // its one-time-code limits (resend cooldown, per-hour
                         // cap) are what guard it instead.
-                        .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp",
+                                "/api/auth/password-reset/otp/check").permitAll()
                         // VNPay's answers: the customer's browser coming back,
                         // and VNPay's own server. Neither holds a token; the
                         // signature on the parameters is checked instead.

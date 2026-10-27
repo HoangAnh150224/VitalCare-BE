@@ -21,6 +21,15 @@ public interface PasswordResetService {
     OtpResponse requestCode(String rawPhone);
 
     /**
+     * Checks the code without spending it, so the form can confirm it before
+     * asking for the new password. A wrong guess still counts toward burning
+     * the code.
+     *
+     * @throws InvalidVerificationCodeException wrong, expired, spent or burned
+     */
+    void checkCode(String rawPhone, String otp);
+
+    /**
      * Checks the code and, if it holds, sets the new password and ends every
      * session open under the account. Does not sign in: the person signs in
      * with the password they just chose.

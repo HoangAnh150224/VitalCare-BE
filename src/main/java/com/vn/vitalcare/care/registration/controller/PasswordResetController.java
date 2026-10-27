@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.registration.controller;
 
+import com.vn.vitalcare.care.registration.dto.OtpCheckRequest;
 import com.vn.vitalcare.care.registration.dto.OtpRequest;
 import com.vn.vitalcare.care.registration.dto.OtpResponse;
 import com.vn.vitalcare.care.registration.dto.PasswordResetRequest;
@@ -37,6 +38,13 @@ public class PasswordResetController {
     public OtpResponse requestCode(@Valid @RequestBody OtpRequest request, HttpServletRequest http) {
         ipLimiter.check(OtpIpLimiter.clientIp(http));
         return service.requestCode(request.phone());
+    }
+
+    /** Whether the code is right, without spending it: a wrong one is a 422 on {@code otp}. */
+    @PostMapping("/otp/check")
+    public Map<String, Object> checkCode(@Valid @RequestBody OtpCheckRequest request) {
+        service.checkCode(request.phone(), request.otp());
+        return Map.of("valid", true);
     }
 
     /** A body rather than {@code 204}, for the same reason as {@code /auth/logout}. */

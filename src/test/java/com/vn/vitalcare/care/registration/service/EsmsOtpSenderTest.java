@@ -50,7 +50,7 @@ class EsmsOtpSenderTest {
     private EsmsOtpSender sender(String brandname) {
         return new EsmsOtpSender("KEY", "SECRET", brandname, "2",
                 "http://127.0.0.1:" + server.getAddress().getPort() + "/",
-                new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5));
+                "", false, new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5));
     }
 
     @Test
@@ -94,10 +94,37 @@ class EsmsOtpSenderTest {
         answer = "{\"CodeResult\":\"100\"}";
         EsmsOtpSender noBrand = new EsmsOtpSender("KEY", "SECRET", "", "8",
                 "http://127.0.0.1:" + server.getAddress().getPort(),
-                new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5));
+                "", false, new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5));
         noBrand.deliver("+84912345678", "x");
 
         assertFalse(body.get().contains("Brandname"), body.get());
         assertThrows(IllegalStateException.class, () -> sender(""));
+    }
+
+    @Test
+    @DisplayName("a configured template is the whole text, the code put in place of {code}")
+    void template() {
+        OtpProperties otp = new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5);
+        EsmsOtpSender sender = new EsmsOtpSender("KEY", "SECRET", "Baotrixemay", "2", "http://localhost",
+                "{code} la ma xac minh dang ky Baotrixemay cua ban", false, otp);
+
+        assertEquals("123456 la ma xac minh dang ky Baotrixemay cua ban",
+                sender.message("123456", VerificationPurpose.RESET_PASSWORD));
+        assertThrows(IllegalStateException.class, () -> new EsmsOtpSender(
+                "KEY", "SECRET", "B", "2", "http://localhost", "no placeholder", false, otp));
+    }
+
+    @Test
+    @DisplayName("sandbox mode asks eSMS for a test send; off, the flag is not sent at all")
+    void sandbox() {
+        answer = "{\"CodeResult\":\"100\"}";
+        OtpProperties otp = new OtpProperties(6, Duration.ofMinutes(5), 5, Duration.ofSeconds(60), 5);
+        String url = "http://127.0.0.1:" + server.getAddress().getPort();
+
+        new EsmsOtpSender("KEY", "SECRET", "B", "2", url, "", true, otp).deliver("+84912345678", "x");
+        assertTrue(body.get().contains("\"Sandbox\":\"1\""), body.get());
+
+        new EsmsOtpSender("KEY", "SECRET", "B", "2", url, "", false, otp).deliver("+84912345678", "x");
+        assertFalse(body.get().contains("Sandbox"), body.get());
     }
 }
