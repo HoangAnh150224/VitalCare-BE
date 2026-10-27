@@ -44,6 +44,12 @@ public interface AppointmentService {
     Appointment getOwn(Customer customer, Long id);
 
     /**
+     * How many people the doctor will call before this visit: its place in the
+     * same order the rooms call in. Null unless it is checked in for today.
+     */
+    Integer queueAhead(Appointment appointment);
+
+    /**
      * The front desk registering a visit for a customer. Registering never
      * activates anybody.
      *

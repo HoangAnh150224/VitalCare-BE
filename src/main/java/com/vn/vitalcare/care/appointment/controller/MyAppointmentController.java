@@ -13,6 +13,7 @@ import com.vn.vitalcare.share.web.ListResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -56,6 +57,23 @@ public class MyAppointmentController {
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
     public AppointmentResponse get(@PathVariable Long id) {
         return AppointmentResponse.forCustomer(service.getOwn(customerService.getForCurrentUser(), id));
+    }
+
+    /**
+     * Where the visit stands in the doctor's queue: {@code ahead} people before
+     * it, or null when it is not waiting today, and whether it was passed over. The portal re-reads this when
+     * {@code /user/queue/my_appointments} says the clinic's queue moved.
+     */
+    @GetMapping("/{id}/queue")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
+    public Map<String, Object> queue(@PathVariable Long id) {
+        Appointment appointment = service.getOwn(customerService.getForCurrentUser(), id);
+        // A HashMap, not Map.of: ahead is null when the visit is not waiting.
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("ahead", service.queueAhead(appointment));
+        // Called while away: it waits again, behind those never called, until the recall time.
+        body.put("skipped", appointment.getSkippedAt() != null);
+        return body;
     }
 
     @PostMapping

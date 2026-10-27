@@ -138,6 +138,26 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    public Integer queueAhead(Appointment appointment) {
+        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
+                || !appointment.getAppointmentDate().equals(today())) {
+            return null;
+        }
+        Long doctorId = appointment.getEmployee().getId();
+        // ponytail: reads the clinic's whole waiting list for the day (tens of
+        // rows) and finds this one in it; a positional count query if it grows.
+        List<Appointment> line = repository.findWaitingAt(appointment.getClinicId(), today()).stream()
+                .filter(waiting -> doctorId.equals(waiting.getEmployee().getId()))
+                .toList();
+        for (int i = 0; i < line.size(); i++) {
+            if (line.get(i).getId().equals(appointment.getId())) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    @Override
     @Transactional
     public Appointment bookFor(StaffBookingRequest request) {
         Customer customer = customerService.getForBooking(request.customerId());

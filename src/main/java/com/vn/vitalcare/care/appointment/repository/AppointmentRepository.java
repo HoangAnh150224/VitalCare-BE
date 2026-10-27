@@ -108,6 +108,19 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "order by e.id, a.skippedAt asc nulls first, a.queueNumber asc nulls last, a.checkedInAt")
     List<Appointment> findWaitingAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 
+    /**
+     * The accounts with a visit at this clinic today that is waiting, being
+     * seen or just over: whom a change in the clinic's queue concerns. The
+     * account is the profile's own, or its guardian's for a relative. Not
+     * scoped: it only names whom to nudge, and says nothing to anyone.
+     */
+    @Query(nativeQuery = true, value = "select distinct coalesce(c.user_id, g.user_id) from appointment a "
+            + "join customer c on c.id = a.customer_id left join customer g on g.id = c.guardian_id "
+            + "where a.clinic_id = :clinicId and a.appointment_date = :date and a.deleted_at is null "
+            + "and a.status in ('CHECKED_IN', 'IN_EXAM', 'COMPLETED', 'NO_SHOW') "
+            + "and coalesce(c.user_id, g.user_id) is not null")
+    List<Long> findQueueUserIds(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
+
     // Not scoped: a booking code is unique across every clinic.
     boolean existsByBookingCode(String bookingCode);
 

@@ -511,6 +511,56 @@ class AppointmentServiceTest {
         assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
     }
 
+    @Test
+    @DisplayName("queue: the people the doctor calls first, in the rooms' order, and nobody else's")
+    void queueAhead() {
+        Employee otherDoctor = mock(Employee.class);
+        when(otherDoctor.getId()).thenReturn(12L);
+        Appointment first = waiting(1L, doctor);
+        Appointment second = waiting(2L, doctor);
+        Appointment elsewhere = waiting(3L, otherDoctor);
+        Appointment me = waiting(4L, doctor);
+        // Already in the order findWaitingAt returns: the query sorts, this only counts.
+        when(repository.findWaitingAt(CLINIC, TODAY)).thenReturn(List.of(first, second, elsewhere, me));
+
+        assertEquals(2, service.queueAhead(me));
+        assertEquals(0, service.queueAhead(first));
+        assertEquals(0, service.queueAhead(elsewhere));
+    }
+
+    @Test
+    @DisplayName("queue: a patient passed over waits behind everyone never called")
+    void queueAheadAfterPassOver() {
+        Appointment fresh = waiting(1L, doctor);
+        Appointment passedOver = waiting(2L, doctor);
+        passedOver.passOver(java.time.OffsetDateTime.now());
+        // findWaitingAt sorts skippedAt nulls first, as the rooms call.
+        when(repository.findWaitingAt(CLINIC, TODAY)).thenReturn(List.of(fresh, passedOver));
+
+        assertEquals(1, service.queueAhead(passedOver));
+    }
+
+    @Test
+    @DisplayName("queue: nothing to count unless the visit is checked in for today")
+    void queueAheadOnlyWhileWaitingToday() {
+        Appointment registered = appointmentOn(TODAY);
+        org.springframework.test.util.ReflectionTestUtils.setField(registered, "id", 5L);
+        assertEquals(null, service.queueAhead(registered));
+
+        Appointment tomorrow = appointmentOn(TUESDAY);
+        tomorrow.checkIn(null, null);
+        assertEquals(null, service.queueAhead(tomorrow));
+        verify(repository, never()).findWaitingAt(any(), any());
+    }
+
+    private Appointment waiting(long id, Employee with) {
+        Appointment appointment = appointmentOn(TODAY);
+        org.springframework.test.util.ReflectionTestUtils.setField(appointment, "id", id);
+        appointment.setEmployee(with);
+        appointment.checkIn(null, null);
+        return appointment;
+    }
+
     private static void assertField(String field, org.junit.jupiter.api.function.Executable call) {
         FieldValidationException e = assertThrows(FieldValidationException.class, call);
         assertEquals(field, e.field());
