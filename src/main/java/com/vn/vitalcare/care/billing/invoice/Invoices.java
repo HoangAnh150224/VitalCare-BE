@@ -386,6 +386,11 @@ public class Invoices {
                             specs.add((root, query, cb) -> cb.equal(root.get("status"), status));
                         }
                     }
+                    // The bill of one visit: what the front desk opens on the visit's page to take the money.
+                    case "appointmentId", "appointment.id" -> {
+                        Long appointmentId = Long.valueOf(criterion.value().trim());
+                        specs.add((root, query, cb) -> cb.equal(root.get("appointment").get("id"), appointmentId));
+                    }
                     // issuedAt_gte / issuedAt_lte: whole days in the clinic's zone.
                     case "issuedAt" -> {
                         LocalDate day = LocalDate.parse(criterion.value().trim().substring(0, 10));
