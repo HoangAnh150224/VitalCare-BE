@@ -10,19 +10,31 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Paying a bill by bank transfer to the clinic's account: the account a
  * VietQR code points at, the code that ties a transfer to its bill, and the
  * signature SePay's webhook must carry when it reports money coming in.
  *
- * <p>All from the environment ({@code APP_TRANSFER_*}, {@code APP_SEPAY_SECRET});
- * with the account unset there is no transfer to offer, and with the secret
- * unset every webhook is refused.
+ * <p>The account is set by {@code APP_TRANSFER_*}, or, with those empty and
+ * {@code APP_SEPAY_API_TOKEN} set, read from SePay itself: its bank account
+ * list, the first active one, or the one {@code APP_TRANSFER_ACCOUNT_NUMBER}
+ * names. With no account there is no transfer to offer; with no
+ * {@code APP_SEPAY_SECRET} every webhook is refused.
  */
 @Component
 public class BankTransfer {
@@ -35,24 +47,105 @@ public class BankTransfer {
     /** How far a signed timestamp may be from now: SePay's own advice, against replays. */
     private static final Duration SKEW = Duration.ofMinutes(5);
 
-    private final String bank;
-    private final String accountNumber;
-    private final String accountName;
+    /** After SePay could not be asked, how long before asking again. */
+    private static final Duration RETRY_AFTER = Duration.ofMinutes(1);
+    private static final Logger log = LoggerFactory.getLogger(BankTransfer.class);
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /**
+     * The account money is sent to: bank as VietQR knows it (short name or BIN),
+     * the bank's name to show, number, holder.
+     */
+    public record Account(String bank, String bankName, String number, String holder) {
+    }
+
+    private final Account configured;
+    private final String wantedNumber;
+    private final String apiToken;
+    private final RestClient sepay;
     private final byte[] secret;
+    /** What SePay said, once it said it; asked again only after a failure. */
+    private final AtomicReference<Account> fromSepay = new AtomicReference<>();
+    private volatile Instant nextAttempt = Instant.MIN;
 
     public BankTransfer(@Value("${app.transfer.bank:}") String bank,
                         @Value("${app.transfer.account-number:}") String accountNumber,
                         @Value("${app.transfer.account-name:}") String accountName,
-                        @Value("${app.sepay.secret:}") String secret) {
-        this.bank = bank.trim();
-        this.accountNumber = accountNumber.trim();
-        this.accountName = accountName.trim().toUpperCase(Locale.ROOT);
+                        @Value("${app.sepay.secret:}") String secret,
+                        @Value("${app.sepay.api-token:}") String apiToken,
+                        @Value("${app.sepay.api-url:https://my.sepay.vn}") String apiUrl) {
+        String number = accountNumber.trim();
+        this.configured = bank.isBlank() || number.isEmpty()
+                ? null
+                : new Account(bank.trim(), bank.trim(), number, accountName.trim().toUpperCase(Locale.ROOT));
+        this.wantedNumber = number;
+        this.apiToken = apiToken.trim();
         this.secret = secret.trim().getBytes(StandardCharsets.UTF_8);
+        SimpleClientHttpRequestFactory timeouts = new SimpleClientHttpRequestFactory();
+        timeouts.setConnectTimeout(Duration.ofSeconds(5));
+        timeouts.setReadTimeout(Duration.ofSeconds(10));
+        this.sepay = RestClient.builder().baseUrl(apiUrl.replaceAll("/+$", "")).requestFactory(timeouts).build();
     }
 
     /** Whether there is an account to send the money to. */
     public boolean enabled() {
-        return !bank.isEmpty() && !accountNumber.isEmpty();
+        return account().isPresent();
+    }
+
+    /**
+     * The account to pay into: the configured one, else SePay's, asked once
+     * and remembered; after a failure asked again a minute later at most.
+     */
+    public Optional<Account> account() {
+        if (configured != null) {
+            return Optional.of(configured);
+        }
+        Account known = fromSepay.get();
+        if (known != null || apiToken.isEmpty() || Instant.now().isBefore(nextAttempt)) {
+            return Optional.ofNullable(known);
+        }
+        Optional<Account> asked = askSepay();
+        asked.ifPresentOrElse(fromSepay::set, () -> nextAttempt = Instant.now().plus(RETRY_AFTER));
+        return asked;
+    }
+
+    /** {@code GET /userapi/bankaccounts/list}: the first active account, or the one asked for by number. */
+    private Optional<Account> askSepay() {
+        String body;
+        try {
+            body = sepay.get()
+                    .uri("/userapi/bankaccounts/list")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiToken)
+                    .retrieve()
+                    .body(String.class);
+        } catch (RestClientException e) {
+            // Never the token: only what went wrong.
+            log.warn("Could not read the bank accounts from SePay: {}", e.getMessage());
+            return Optional.empty();
+        }
+        try {
+            JsonNode accounts = JSON.readTree(body == null ? "{}" : body).path("bankaccounts");
+            for (JsonNode candidate : accounts) {
+                String number = candidate.path("account_number").asString("").trim();
+                boolean active = "1".equals(candidate.path("active").asString(""));
+                if (!active || number.isEmpty() || (!wantedNumber.isEmpty() && !wantedNumber.equals(number))) {
+                    continue;
+                }
+                String bank = candidate.path("bank_bin").asString("").trim();
+                if (bank.isEmpty()) {
+                    bank = candidate.path("bank_short_name").asString("").trim();
+                }
+                String holder = candidate.path("account_holder_name").asString("").trim().toUpperCase(Locale.ROOT);
+                String name = candidate.path("bank_short_name").asString(bank).trim();
+                log.info("Bank transfers go to the {} account ending {} (from SePay)",
+                        name, number.substring(Math.max(0, number.length() - 3)));
+                return Optional.of(new Account(bank, name.isEmpty() ? bank : name, number, holder));
+            }
+            log.warn("SePay lists no active bank account{}", wantedNumber.isEmpty() ? "" : " with the configured number");
+        } catch (JacksonException e) {
+            log.warn("SePay's bank account list was not JSON: {}", e.getOriginalMessage());
+        }
+        return Optional.empty();
     }
 
     /** What the patient writes in the transfer: {@code VC000017} for bill 17. */
@@ -135,10 +228,14 @@ public class BankTransfer {
     }
 
     /** Where to send the money for one bill, for the VietQR code and the details beside it. */
-    public record Instructions(String bank, String accountNumber, String accountName, long amount, String content) {
+    public record Instructions(String bank, String bankName, String accountNumber, String accountName,
+                               long amount, String content) {
     }
 
+    /** Call only when {@link #enabled()}. */
     public Instructions instructionsFor(Long invoiceId, long amount) {
-        return new Instructions(bank, accountNumber, accountName, amount, codeFor(invoiceId));
+        Account account = account().orElseThrow(() -> new IllegalStateException("No account to transfer to"));
+        return new Instructions(account.bank(), account.bankName(), account.number(), account.holder(), amount,
+                codeFor(invoiceId));
     }
 }

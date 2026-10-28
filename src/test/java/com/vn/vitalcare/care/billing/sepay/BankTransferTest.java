@@ -16,7 +16,7 @@ class BankTransferTest {
     private static final Instant NOW = Instant.parse("2026-10-28T02:00:00Z");
     private static final String BODY = "{\"id\":1,\"transferType\":\"in\",\"transferAmount\":150000,\"code\":\"VC000017\"}";
 
-    private final BankTransfer transfer = new BankTransfer("MB", "0123456789", "Nguyen Van A", "whsec_test");
+    private final BankTransfer transfer = new BankTransfer("MB", "0123456789", "Nguyen Van A", "whsec_test", "", "http://localhost");
 
     private String sign(String timestamp, String body) {
         return "sha256=" + HexFormat.of().formatHex(transfer.hmac(timestamp + "." + body));
@@ -34,13 +34,13 @@ class BankTransferTest {
     void forgeries() {
         String ts = String.valueOf(NOW.getEpochSecond());
         assertFalse(transfer.signedBySepay(ts, sign(ts, BODY), BODY.replace("150000", "1"), NOW), "body changed");
-        BankTransfer other = new BankTransfer("MB", "0123456789", "A", "whsec_other");
+        BankTransfer other = new BankTransfer("MB", "0123456789", "A", "whsec_other", "", "http://localhost");
         assertFalse(other.signedBySepay(ts, sign(ts, BODY), BODY, NOW), "another secret");
         String old = String.valueOf(NOW.minusSeconds(600).getEpochSecond());
         assertFalse(transfer.signedBySepay(old, sign(old, BODY), BODY, NOW), "replayed ten minutes later");
         assertFalse(transfer.signedBySepay(ts, null, BODY, NOW), "no signature");
         assertFalse(transfer.signedBySepay(ts, "sha256=zz", BODY, NOW), "not hex");
-        BankTransfer unset = new BankTransfer("MB", "0123456789", "A", "");
+        BankTransfer unset = new BankTransfer("MB", "0123456789", "A", "", "", "http://localhost");
         assertFalse(unset.signedBySepay(ts, sign(ts, BODY), BODY, NOW), "no secret configured: nothing passes");
     }
 
