@@ -1,6 +1,9 @@
 package com.vn.vitalcare.care.billing.invoice;
 
 import com.vn.vitalcare.entity.PaymentMethod;
+import com.vn.vitalcare.care.billing.Vnd;
+import com.vn.vitalcare.care.billing.sepay.BankTransfer;
+import com.vn.vitalcare.entity.InvoiceStatus;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
@@ -27,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvoiceController {
 
     private final Invoices service;
+    private final BankTransfer transfer;
 
-    public InvoiceController(Invoices service) {
+    public InvoiceController(Invoices service, BankTransfer transfer) {
         this.service = service;
+        this.transfer = transfer;
     }
 
     @GetMapping
@@ -51,6 +56,21 @@ public class InvoiceController {
     @PreAuthorize("hasAuthority('" + Permissions.INVOICES_READ + "')")
     public InvoiceResponse get(@PathVariable Long id) {
         return service.get(id);
+    }
+
+    /**
+     * Where the patient at the counter transfers the money for this bill: the
+     * VietQR details the desk shows. 404 for a bill the caller may not see;
+     * {@code null} body (204) when it is settled or no account is set up.
+     */
+    @GetMapping("/{id}/transfer")
+    @PreAuthorize("hasAuthority('" + Permissions.INVOICES_READ + "')")
+    public ResponseEntity<BankTransfer.Instructions> transferInstructions(@PathVariable Long id) {
+        InvoiceResponse invoice = service.get(id);
+        if (!transfer.enabled() || invoice.status() != InvoiceStatus.UNPAID) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(transfer.instructionsFor(invoice.id(), Vnd.of(invoice.totalAmount()).longValueExact()));
     }
 
     @PostMapping("/{id}/payments")
