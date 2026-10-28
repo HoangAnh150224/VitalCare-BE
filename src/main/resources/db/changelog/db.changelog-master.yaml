@@ -70,3 +70,5 @@ databaseChangeLog:
       file: db/changelog/changes/033-encounter-findings-vitals.sql
   - include:
       file: db/changelog/changes/034-seed-portal-demo.sql
+  - include:
+      file: db/changelog/changes/035-seed-transfer-test-bills.sql
