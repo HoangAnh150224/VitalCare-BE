@@ -46,9 +46,11 @@ public class SepayController {
             @RequestHeader(value = "X-SePay-Timestamp", required = false) String timestamp,
             @RequestHeader(value = "X-SePay-Signature", required = false) String signature,
             @RequestBody String rawBody) {
-        if (!transfer.signedBySepay(timestamp, signature, rawBody, clock.instant())) {
-            log.warn("SePay webhook refused: missing or invalid signature");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("success", false));
+        String rejection = transfer.rejection(timestamp, signature, rawBody, clock.instant());
+        if (rejection != null) {
+            log.warn("SePay webhook refused: {}", rejection);
+            // Which check failed, never the secret: shows in SePay's delivery log, where it is needed.
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("success", false, "error", rejection));
         }
         SepayTransfer body;
         try {

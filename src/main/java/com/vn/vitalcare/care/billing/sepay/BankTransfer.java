@@ -81,27 +81,46 @@ public class BankTransfer {
      * Compared in constant time; with no secret configured nothing passes.
      */
     public boolean signedBySepay(String timestamp, String signature, String rawBody, Instant now) {
-        if (secret.length == 0 || timestamp == null || signature == null || rawBody == null
-                || !signature.regionMatches(true, 0, "sha256=", 0, 7)) {
-            return false;
+        return rejection(timestamp, signature, rawBody, now) == null;
+    }
+
+    /**
+     * Why a webhook is not SePay's, for the log, or null when it is. Says which
+     * check failed, never the secret or the expected signature.
+     */
+    public String rejection(String timestamp, String signature, String rawBody, Instant now) {
+        if (secret.length == 0) {
+            return "no secret configured (APP_SEPAY_SECRET is empty)";
+        }
+        if (timestamp == null || signature == null) {
+            return "missing X-SePay-Timestamp or X-SePay-Signature header";
+        }
+        if (rawBody == null) {
+            return "empty body";
+        }
+        if (!signature.regionMatches(true, 0, "sha256=", 0, 7)) {
+            return "signature is not in the form sha256=<hex>";
         }
         long seconds;
         try {
             seconds = Long.parseLong(timestamp.trim());
         } catch (NumberFormatException e) {
-            return false;
+            return "timestamp is not Unix seconds";
         }
-        if (Duration.between(Instant.ofEpochSecond(seconds), now).abs().compareTo(SKEW) > 0) {
-            return false;
+        Duration skew = Duration.between(Instant.ofEpochSecond(seconds), now).abs();
+        if (skew.compareTo(SKEW) > 0) {
+            return "timestamp is " + skew.toSeconds() + "s from the server clock (more than 5 minutes)";
         }
-        byte[] expected = hmac(timestamp.trim() + "." + rawBody);
         byte[] given;
         try {
             given = HexFormat.of().parseHex(signature.substring(7).trim().toLowerCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            return false;
+            return "signature is not hex";
         }
-        return MessageDigest.isEqual(expected, given);
+        if (!MessageDigest.isEqual(hmac(timestamp.trim() + "." + rawBody), given)) {
+            return "signature does not match: the secret differs from SePay's, or the body was changed";
+        }
+        return null;
     }
 
     /** HMAC-SHA256 under the shared secret; public so a test can sign as SePay would. */
