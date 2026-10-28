@@ -1,5 +1,8 @@
 package com.vn.vitalcare.care.billing.invoice;
 
+import com.vn.vitalcare.care.billing.Vnd;
+import com.vn.vitalcare.care.billing.sepay.BankTransfer;
+import com.vn.vitalcare.entity.InvoiceStatus;
 import com.vn.vitalcare.share.security.Permissions;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
@@ -19,16 +22,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class MyInvoiceController {
 
     private final Invoices service;
+    private final BankTransfer transfer;
 
-    public MyInvoiceController(Invoices service) {
+    public MyInvoiceController(Invoices service, BankTransfer transfer) {
         this.service = service;
+        this.transfer = transfer;
     }
 
     /** The bill, and whether it can be paid online here. 404 until the visit is concluded. */
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
     public OwnInvoice get(@PathVariable Long appointmentId) {
-        return new OwnInvoice(service.ownForAppointment(appointmentId), service.onlinePaymentEnabled());
+        InvoiceResponse invoice = service.ownForAppointment(appointmentId);
+        // Where to transfer the money: only while there is something to pay and an account to pay into.
+        BankTransfer.Instructions instructions = transfer.enabled() && invoice.status() == InvoiceStatus.UNPAID
+                ? transfer.instructionsFor(invoice.id(), Vnd.of(invoice.totalAmount()).longValueExact())
+                : null;
+        return new OwnInvoice(invoice, service.onlinePaymentEnabled(), instructions);
     }
 
     /** Starts a VNPay payment: the URL to send the customer to. */
@@ -38,7 +48,7 @@ public class MyInvoiceController {
         return Map.of("url", service.startVnpay(appointmentId, clientIp(request)));
     }
 
-    public record OwnInvoice(InvoiceResponse invoice, boolean onlinePayment) {
+    public record OwnInvoice(InvoiceResponse invoice, boolean onlinePayment, BankTransfer.Instructions transfer) {
     }
 
     /** The first hop of X-Forwarded-For behind a proxy (Railway), else the connection's own address. */

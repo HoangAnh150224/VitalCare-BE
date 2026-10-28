@@ -12,6 +12,8 @@ import static org.mockito.Mockito.when;
 import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.care.billing.catalog.MedicalServiceCatalog;
+import com.vn.vitalcare.care.billing.sepay.SepayTransfer;
+import com.vn.vitalcare.entity.PaymentStatus;
 import com.vn.vitalcare.care.billing.invoice.InvoiceRepository;
 import com.vn.vitalcare.care.billing.invoice.InvoiceResponse;
 import com.vn.vitalcare.care.billing.invoice.Invoices;
@@ -170,6 +172,65 @@ class BillingTest {
         assertEquals(InvoiceStatus.PAID, history.get(0).status());
         assertEquals(1, history.get(0).payments().size(), "the cash payment is listed");
         verify(invoices).findOwn(37L);
+    }
+
+    private static SepayTransfer transferIn(long sepayId, long amount, String code, String content) {
+        return new SepayTransfer(sepayId, "MBBank", "2026-10-26 10:00:00", "0123456789", code, content, "in",
+                BigDecimal.valueOf(amount), "FT26300" + sepayId);
+    }
+
+    @Test
+    @DisplayName("bank transfer: enough money with the bill's code settles it, once, however often SePay re-sends")
+    void transferSettlesOnce() {
+        Invoice invoice = issued();
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+
+        service.settleTransfer(transferIn(901, 250_000, "VC000042", "VC000042 kham benh"));
+        service.settleTransfer(transferIn(901, 250_000, "VC000042", "VC000042 kham benh"));
+
+        assertEquals(InvoiceStatus.PAID, invoice.getStatus());
+        assertEquals(1, byRef.size(), "the re-sent webhook adds nothing");
+        Payment payment = byRef.get("SEPAY-901");
+        assertEquals(PaymentMethod.BANK_TRANSFER, payment.getMethod());
+        assertEquals(PaymentStatus.PAID, payment.getStatus());
+        assertEquals("FT26300901", payment.getProviderRef());
+    }
+
+    @Test
+    @DisplayName("bank transfer: short of the total is kept as a failed payment and the bill stays unpaid")
+    void shortTransfer() {
+        Invoice invoice = issued();
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+
+        service.settleTransfer(transferIn(902, 100_000, "VC000042", "VC000042"));
+
+        assertEquals(InvoiceStatus.UNPAID, invoice.getStatus());
+        assertEquals(PaymentStatus.FAILED, byRef.get("SEPAY-902").getStatus());
+        assertEquals("SHORT", byRef.get("SEPAY-902").getResponseCode());
+    }
+
+    @Test
+    @DisplayName("bank transfer: the code is found in the content when SePay did not recognise one")
+    void codeInContent() {
+        Invoice invoice = issued();
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+
+        service.settleTransfer(transferIn(903, 250_000, null, "NGUYEN VAN A chuyen tien vc000042"));
+
+        assertEquals(InvoiceStatus.PAID, invoice.getStatus());
+    }
+
+    @Test
+    @DisplayName("bank transfer: money out, no code, or a bill that does not exist changes nothing")
+    void ignoredTransfers() {
+        when(invoices.findForUpdate(any())).thenReturn(Optional.empty());
+
+        service.settleTransfer(new SepayTransfer(904L, "MBBank", null, null, "VC000042", null, "out",
+                BigDecimal.valueOf(250_000), null));
+        service.settleTransfer(transferIn(905, 250_000, null, "an sang"));
+        service.settleTransfer(transferIn(906, 250_000, "VC999999", null));
+
+        assertTrue(byRef.isEmpty());
     }
 
     @Test

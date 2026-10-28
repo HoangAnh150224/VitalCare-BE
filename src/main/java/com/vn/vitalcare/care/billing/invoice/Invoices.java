@@ -340,6 +340,63 @@ public class Invoices {
         return Settlement.of(Settlement.Outcome.PAID, appointmentId);
     }
 
+    /**
+     * A transfer SePay saw arrive on the clinic's account. The bill is the one
+     * its {@code VC…} code names; it is settled when the money covers it. Not
+     * scoped: the webhook's signature is the authority, as VNPay's is.
+     *
+     * <p>Every transfer that names a bill is kept as a payment, under
+     * {@code SEPAY-<SePay id>} (unique, so a re-sent webhook changes nothing):
+     * short of the total it is recorded as failed for the desk to sort out,
+     * and on a bill already paid it is recorded and flagged for a refund.
+     */
+    @Transactional
+    public void settleTransfer(com.vn.vitalcare.care.billing.sepay.SepayTransfer transfer) {
+        if (transfer.id() == null || transfer.transferAmount() == null
+                || !"in".equalsIgnoreCase(transfer.transferType())) {
+            return;
+        }
+        var invoiceId = com.vn.vitalcare.care.billing.sepay.BankTransfer.invoiceIdIn(transfer.code(), transfer.content());
+        if (invoiceId.isEmpty()) {
+            log.info("SePay transfer {} names no bill; left to the desk", transfer.id());
+            log.debug("SePay transfer {} content: {}", transfer.id(), transfer.content());
+            return;
+        }
+        String reference = "SEPAY-" + transfer.id();
+        if (payments.findByTransactionCodeForUpdate(reference).isPresent()) {
+            return;
+        }
+        Invoice invoice;
+        try {
+            invoice = lock(invoiceId.get());
+        } catch (ResourceNotFoundException e) {
+            log.warn("SePay transfer {} names bill {} which does not exist", transfer.id(), invoiceId.get());
+            return;
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        Payment payment = new Payment(invoice, transfer.transferAmount(), PaymentMethod.BANK_TRANSFER, reference);
+        if (Vnd.of(transfer.transferAmount()).compareTo(Vnd.of(invoice.getTotalAmount())) < 0) {
+            payment.fail("SHORT", transfer.referenceCode());
+            invoice.getPayments().add(payments.save(payment));
+            log.warn("SePay transfer {} of {} is short of bill {} ({}); not settled",
+                    transfer.id(), transfer.transferAmount(), invoice.getInvoiceNumber(), invoice.getTotalAmount());
+            return;
+        }
+        payment.succeed(now, null, transfer.referenceCode());
+        invoice.getPayments().add(payments.save(payment));
+        if (Vnd.of(transfer.transferAmount()).compareTo(Vnd.of(invoice.getTotalAmount())) > 0) {
+            log.warn("SePay transfer {} of {} is more than bill {} ({}): refund the difference",
+                    transfer.id(), transfer.transferAmount(), invoice.getInvoiceNumber(), invoice.getTotalAmount());
+        }
+        if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+            invoice.markPaid(now);
+            invoices.persist(invoice);
+        } else {
+            log.warn("SePay transfer {} paid bill {} that was already {}: refund needed",
+                    transfer.id(), invoice.getInvoiceNumber(), invoice.getStatus());
+        }
+    }
+
     /** What a gateway answer came to, and the appointment to send the customer back to. */
     public record Settlement(Outcome outcome, Long appointmentId) {
 

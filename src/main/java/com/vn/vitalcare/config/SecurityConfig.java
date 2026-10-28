@@ -112,6 +112,8 @@ public class SecurityConfig {
                         // and VNPay's own server. Neither holds a token; the
                         // signature on the parameters is checked instead.
                         .requestMatchers(HttpMethod.GET, "/api/payments/vnpay/return", "/api/payments/vnpay/ipn").permitAll()
+                        // SePay's webhook: proven by its HMAC signature, checked in SepayController.
+                        .requestMatchers(HttpMethod.POST, "/api/payments/sepay/webhook").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;
