@@ -114,6 +114,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/payments/vnpay/return", "/api/payments/vnpay/ipn").permitAll()
                         // SePay's webhook: proven by its HMAC signature, checked in SepayController.
                         .requestMatchers(HttpMethod.POST, "/api/payments/sepay/webhook").permitAll()
+                        // The public site: what a visitor reads before signing
+                        // in (clinics, prices, first aid) and the guest chat.
+                        // Every endpoint under it answers public DTOs only;
+                        // the guest chat proves itself with its own token.
+                        .requestMatchers("/api/public/**").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;

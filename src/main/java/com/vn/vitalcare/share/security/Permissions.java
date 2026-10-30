@@ -115,6 +115,13 @@ public final class Permissions {
     public static final String INVOICES_WRITE = "invoices:write";
     public static final String INVOICES_REPORT = "invoices:report";
 
+    // Seeded by 037. Clinical staff draft first-aid guidance; doctors and
+    // administrators review, publish and archive it (BR-31). What is published
+    // is read by everybody, signed in or not, through /api/public.
+    public static final String FIRST_AID_ARTICLES_READ = "first_aid_articles:read";
+    public static final String FIRST_AID_ARTICLES_WRITE = "first_aid_articles:write";
+    public static final String FIRST_AID_ARTICLES_REVIEW = "first_aid_articles:review";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.
