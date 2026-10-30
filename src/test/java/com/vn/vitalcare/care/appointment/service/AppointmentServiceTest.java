@@ -608,6 +608,16 @@ class AppointmentServiceTest {
     }
 
     @Test
+    @DisplayName("a second referral to a doctor the patient is already waiting for is refused")
+    void duplicateReferral() {
+        Appointment origin = inRoomWith(otherDoctor());
+        Appointment first = service.referFrom(origin, DOCTOR, "Khám tai mũi họng");
+        when(repository.findReferralsOf(50L)).thenReturn(List.of(first));
+
+        assertThrows(ConflictException.class, () -> service.referFrom(origin, DOCTOR, "Lần nữa"));
+    }
+
+    @Test
     @DisplayName("a referral to the same doctor, or from a visit not under way, is refused")
     void referralRefused() {
         assertField("employeeId", () -> service.referFrom(inRoomWith(doctor), DOCTOR, "x"));

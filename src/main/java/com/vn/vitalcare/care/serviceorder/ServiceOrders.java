@@ -155,7 +155,9 @@ public class ServiceOrders {
             throw new ConflictException("Only an order not yet started can be started");
         }
         order.start(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
-        return orders.persist(order);
+        ServiceOrder saved = orders.persist(order);
+        events.publishEvent(new ExamRoomEvents.BoardChanged(saved.getClinicId()));
+        return saved;
     }
 
     /** The result as text. Recording it again before the doctor has reviewed corrects it. */

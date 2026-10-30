@@ -191,9 +191,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public Appointment update(Long id, AppointmentUpdateRequest request) {
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED
-                && appointment.getStatus() != AppointmentStatus.CHECKED_IN
-                && appointment.getStatus() != AppointmentStatus.IN_EXAM) {
+        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !isUnderway(appointment)) {
             throw new ConflictException("An appointment that is over can no longer be changed");
         }
         appointment.setReason(request.reason().trim());
@@ -263,6 +261,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         if (doctorId != null && origin.getEmployee() != null && doctorId.equals(origin.getEmployee().getId())) {
             throw new FieldValidationException("employeeId", "Pick another doctor");
+        }
+        boolean alreadySent = repository.findReferralsOf(origin.getId()).stream()
+                .anyMatch(open -> open.getEmployee().getId().equals(doctorId) && isUnderwayOrRegistered(open));
+        if (alreadySent) {
+            throw new ConflictException("The patient is already referred to that doctor today");
         }
         Appointment referral = new Appointment();
         referral.setCustomer(origin.getCustomer());
@@ -491,6 +494,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         return appointment.getStatus() == AppointmentStatus.CHECKED_IN
                 || appointment.getStatus() == AppointmentStatus.IN_EXAM
                 || appointment.getStatus() == AppointmentStatus.AWAITING_RESULTS;
+    }
+
+    private static boolean isUnderwayOrRegistered(Appointment appointment) {
+        return appointment.getStatus() == AppointmentStatus.SCHEDULED || isUnderway(appointment);
     }
 
     private LocalDate today() {

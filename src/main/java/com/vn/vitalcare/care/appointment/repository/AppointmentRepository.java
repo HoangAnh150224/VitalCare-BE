@@ -120,6 +120,16 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "order by e.id, a.queueNumber asc nulls last")
     List<Appointment> findAwayAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 
+    /** The visit, locked: what deciding it may return takes first, so two results recorded at once are seen one after the other. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Appointment a where a.id = :id and a.deletedAt is null")
+    Optional<Appointment> lockById(@Param("id") Long id);
+
+    /** Visits left out of the room on an earlier day: nobody brought them back or concluded them. Not scoped: the sweep's. */
+    @Query("select a from Appointment a where a.status = com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS "
+            + "and a.appointmentDate < :today and a.deletedAt is null")
+    List<Appointment> findAwayBefore(@Param("today") LocalDate today);
+
     /** The same-day visits a doctor sent this patient to from this visit. Not scoped: read for that visit's state. */
     @Query("select a from Appointment a join fetch a.employee e join fetch e.user "
             + "where a.referredFrom.id = :appointmentId and a.deletedAt is null order by a.id")

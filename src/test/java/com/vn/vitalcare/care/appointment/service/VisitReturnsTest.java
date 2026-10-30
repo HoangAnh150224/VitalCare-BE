@@ -75,8 +75,10 @@ class VisitReturnsTest {
         when(appointments.findOne(any(Specification.class))).thenReturn(Optional.of(away));
         when(appointments.persist(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
+        when(appointments.lockById(50L)).thenReturn(Optional.of(away));
         returns = new VisitReturns(appointments, encounters, orders, events,
-                Clock.fixed(Instant.parse("2026-10-28T03:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-10-28T03:00:00Z"), ZoneOffset.UTC),
+                mock(jakarta.persistence.EntityManager.class));
     }
 
     private ServiceOrder order(String name, ServiceOrderStatus status) {
@@ -134,8 +136,8 @@ class VisitReturnsTest {
         referral.setReferredFrom(away);
         ReflectionTestUtils.setField(referral, "id", 60L);
         Appointment originLookup = away;
-        // The ended visit is looked up first, then its origin.
-        when(appointments.findOne(any(Specification.class))).thenReturn(Optional.of(referral), Optional.of(originLookup));
+        when(appointments.findOne(any(Specification.class))).thenReturn(Optional.of(referral));
+        when(appointments.lockById(50L)).thenReturn(Optional.of(originLookup));
 
         returns.onVisitEnded(new VisitEvents.VisitEnded(60L));
 

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import jakarta.persistence.EntityManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.jpa.domain.Specification;
@@ -55,14 +56,17 @@ public class VisitReturns {
     private final ServiceOrderRepository orders;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final EntityManager entityManager;
 
     public VisitReturns(AppointmentRepository appointments, ClinicalEncounterRepository encounters,
-                        ServiceOrderRepository orders, ApplicationEventPublisher events, Clock clock) {
+                        ServiceOrderRepository orders, ApplicationEventPublisher events, Clock clock,
+                        EntityManager entityManager) {
         this.appointments = appointments;
         this.encounters = encounters;
         this.orders = orders;
         this.events = events;
         this.clock = clock;
+        this.entityManager = entityManager;
     }
 
     @EventListener
@@ -106,9 +110,18 @@ public class VisitReturns {
     /**
      * Back to its doctor's queue, first in line, if it is away and nothing it
      * went out for is left; the doctor's room is nudged to call it.
+     *
+     * <p>The visit's row is locked first and re-read: two results recorded at
+     * once for the same visit then decide one after the other, and the second
+     * sees the first's committed result, so the visit is not left away for
+     * good with each thinking the other is still to come.
      */
     public void returnIfDone(Long appointmentId) {
-        load(appointmentId)
+        appointments.lockById(appointmentId)
+                .map(locked -> {
+                    entityManager.refresh(locked);
+                    return locked;
+                })
                 .filter(appointment -> appointment.getStatus() == AppointmentStatus.AWAITING_RESULTS)
                 .filter(appointment -> !hasOpenTasks(appointment))
                 .ifPresent(appointment -> {

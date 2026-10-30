@@ -69,6 +69,13 @@ public class AutoDispatch {
                 }
             });
         }
+        executor.execute(() -> {
+            try {
+                dispatcher.closeStaleAway();
+            } catch (RuntimeException e) {
+                log.warn("Closing an earlier day's visits out of the room failed; the next sweep retries it", e);
+            }
+        });
         for (Long roomId : rooms.findAvailableIds()) {
             executor.execute(() -> dispatchQuietly(roomId));
         }

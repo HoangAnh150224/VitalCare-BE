@@ -9,5 +9,6 @@ import java.util.List;
  * (in the room, out for services or another doctor, back in line) and what
  * it went out for. Null status for an encounter recorded without a visit.
  */
-public record VisitState(Long appointmentId, AppointmentStatus status, boolean returned, List<VisitReturns.Task> tasks) {
+public record VisitState(Long appointmentId, AppointmentStatus status, Long doctorId, boolean returned,
+                         List<VisitReturns.Task> tasks) {
 }

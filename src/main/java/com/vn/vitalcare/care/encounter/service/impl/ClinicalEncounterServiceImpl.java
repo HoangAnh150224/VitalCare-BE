@@ -274,9 +274,11 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     private VisitState stateOf(ClinicalEncounter encounter) {
         Appointment appointment = encounter.getAppointment();
         if (appointment == null) {
-            return new VisitState(null, null, false, List.of());
+            return new VisitState(null, null, null, false, List.of());
         }
-        return new VisitState(appointment.getId(), appointment.getStatus(), appointment.getReturnedAt() != null
+        return new VisitState(appointment.getId(), appointment.getStatus(),
+                appointment.getEmployee() == null ? null : appointment.getEmployee().getId(),
+                appointment.getReturnedAt() != null
                 && appointment.getStatus() == AppointmentStatus.CHECKED_IN, visitReturns.tasksOf(appointment));
     }
 

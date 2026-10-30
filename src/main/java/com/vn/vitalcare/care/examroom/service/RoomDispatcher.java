@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -143,6 +144,24 @@ public class RoomDispatcher {
         rooms.persist(room);
         events.publishEvent(new ExamRoomEvents.RoomFreed(room.getClinicId(), room.getId()));
         return true;
+    }
+
+    /**
+     * Closes out visits left out of the room on an earlier day (sent for
+     * services or to another doctor, and never brought back or concluded).
+     * Counted as completed, as a stale visit in a room is: the patient was
+     * seen. What the sweep does each morning, alongside {@link #closeStale}.
+     *
+     * @return how many were closed
+     */
+    @Transactional
+    public int closeStaleAway() {
+        List<Appointment> stale = appointments.findAwayBefore(now().toLocalDate());
+        for (Appointment visit : stale) {
+            visit.complete();
+            appointments.persist(visit);
+        }
+        return stale.size();
     }
 
     /**
