@@ -80,7 +80,8 @@ class ClinicalEncounterServiceTest {
         invoices = mock(Invoices.class);
         signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE, Permissions.CLINICAL_ENCOUNTERS_CONCLUDE);
         service = new ClinicalEncounterServiceImpl(repository, customers, employees, mock(AppointmentService.class),
-                serviceOrders, invoices, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC));
+                serviceOrders, invoices, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC),
+                mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class));
     }
 
     @AfterEach

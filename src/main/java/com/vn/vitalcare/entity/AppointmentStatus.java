@@ -20,6 +20,13 @@ public enum AppointmentStatus {
     /** Called into an examination room and being seen; see {@code ExamRoom}. */
     IN_EXAM("in_exam"),
 
+    /**
+     * Out of the room for what the doctor asked for: ordered services, or
+     * another doctor the same day. The encounter stays open; once nothing is
+     * left to do the visit returns to its doctor's queue, at the front.
+     */
+    AWAITING_RESULTS("awaiting_results"),
+
     COMPLETED("completed"),
 
     CANCELLED("cancelled"),

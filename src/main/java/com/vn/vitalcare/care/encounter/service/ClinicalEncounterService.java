@@ -27,4 +27,13 @@ public interface ClinicalEncounterService {
 
     /** Closes the visit, which starts the edit window. */
     ClinicalEncounter complete(Long id);
+
+    /** Where the encounter's visit stands and what it went out for. */
+    com.vn.vitalcare.care.encounter.dto.VisitState visit(Long id);
+
+    /** The patient leaves the room for the services ordered and comes back when their results are in. */
+    com.vn.vitalcare.care.encounter.dto.VisitState sendOut(Long id);
+
+    /** The patient sees another doctor of the clinic today, then comes back. */
+    com.vn.vitalcare.care.encounter.dto.VisitState refer(Long id, com.vn.vitalcare.care.encounter.dto.ReferRequest request);
 }

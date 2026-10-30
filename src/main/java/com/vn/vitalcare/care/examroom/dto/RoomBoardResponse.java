@@ -29,11 +29,17 @@ public record RoomBoardResponse(
             DoctorRef doctor,
             Visit current,
             List<Visit> waiting,
+            /** This doctor's patients out of the room for ordered services or another doctor. */
+            List<AwayVisit> away,
             @JsonProperty("_can")
             Map<String, Boolean> can) {
     }
 
-    public record DoctorQueue(DoctorRef doctor, List<Visit> waiting) {
+    public record DoctorQueue(DoctorRef doctor, List<Visit> waiting, List<AwayVisit> away) {
+    }
+
+    /** Out of the room: who, and how much of what they went out for is done. */
+    public record AwayVisit(Visit visit, int done, int total, List<String> pending) {
     }
 
     public record DoctorRef(Long id, String fullName, String specialty) {
@@ -52,7 +58,11 @@ public record RoomBoardResponse(
             OffsetDateTime checkedInAt,
             OffsetDateTime calledAt,
             /** Called before and not there: waits behind everybody not yet called. */
-            boolean passedOver) {
+            boolean passedOver,
+            /** Back from ordered services or sent by a colleague: called first. */
+            boolean returned,
+            /** The doctor who referred the patient here today, if any. */
+            String referredBy) {
 
         public static Visit of(Appointment appointment) {
             var customer = appointment.getCustomer();
@@ -64,7 +74,10 @@ public record RoomBoardResponse(
                     customer.getCustomerCode(),
                     appointment.getCheckedInAt(),
                     appointment.getCalledAt(),
-                    appointment.getSkippedAt() != null);
+                    appointment.getSkippedAt() != null,
+                    appointment.getReturnedAt() != null,
+                    appointment.getReferredFrom() == null || appointment.getReferredFrom().getEmployee() == null
+                            ? null : appointment.getReferredFrom().getEmployee().getUser().getFullName());
         }
     }
 }

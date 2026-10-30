@@ -1,5 +1,7 @@
 package com.vn.vitalcare.care.encounter.controller;
 
+import com.vn.vitalcare.care.encounter.dto.VisitState;
+import com.vn.vitalcare.care.encounter.dto.ReferRequest;
 import com.vn.vitalcare.care.encounter.dto.EncounterRequest;
 import com.vn.vitalcare.care.encounter.dto.EncounterResponse;
 import com.vn.vitalcare.care.encounter.service.ClinicalEncounterService;
@@ -81,6 +83,27 @@ public class ClinicalEncounterController {
     @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_CONCLUDE + "')")
     public EncounterResponse complete(@PathVariable Long id) {
         return response(service.complete(id));
+    }
+
+    /** Where the encounter's visit stands, and what it went out for. */
+    @GetMapping("/{id}/visit")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_READ + "')")
+    public VisitState visit(@PathVariable Long id) {
+        return service.visit(id);
+    }
+
+    /** The patient goes to do the services ordered; the room calls its next patient. */
+    @PostMapping("/{id}/send-out")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_WRITE + "')")
+    public VisitState sendOut(@PathVariable Long id) {
+        return service.sendOut(id);
+    }
+
+    /** The patient sees another doctor of the clinic today, then comes back. */
+    @PostMapping("/{id}/refer")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICAL_ENCOUNTERS_WRITE + "')")
+    public VisitState refer(@PathVariable Long id, @Valid @RequestBody ReferRequest request) {
+        return service.refer(id, request);
     }
 
     private EncounterResponse response(ClinicalEncounter encounter) {

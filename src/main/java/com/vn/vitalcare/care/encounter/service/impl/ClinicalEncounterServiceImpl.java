@@ -1,5 +1,9 @@
 package com.vn.vitalcare.care.encounter.service.impl;
 
+import com.vn.vitalcare.entity.ServiceOrderStatus;
+import com.vn.vitalcare.care.encounter.dto.VisitState;
+import com.vn.vitalcare.care.encounter.dto.ReferRequest;
+import com.vn.vitalcare.care.appointment.service.VisitReturns;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import java.util.stream.Stream;
 import java.util.Objects;
@@ -57,6 +61,7 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     private final Invoices invoices;
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
+    private final VisitReturns visitReturns;
 
     public ClinicalEncounterServiceImpl(ClinicalEncounterRepository repository,
                                         CustomerService customerService,
@@ -65,7 +70,8 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
                                         ServiceOrderRepository serviceOrders,
                                         Invoices invoices,
                                         RowLevelSecurity rowLevel,
-                                        Clock clock) {
+                                        Clock clock,
+                                        VisitReturns visitReturns) {
         this.repository = repository;
         this.customerService = customerService;
         this.employeeService = employeeService;
@@ -74,6 +80,7 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         this.invoices = invoices;
         this.rowLevel = rowLevel;
         this.clock = clock;
+        this.visitReturns = visitReturns;
     }
 
     @Override
@@ -223,6 +230,56 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     }
 
     /** One row through the caller's scope for {@code action}; outside it is a 404. See DeviceServiceImpl. */
+    @Override
+    @Transactional(readOnly = true)
+    public VisitState visit(Long id) {
+        return stateOf(find(id, Action.READ));
+    }
+
+    @Override
+    @Transactional
+    public VisitState sendOut(Long id) {
+        ClinicalEncounter encounter = openVisitEncounter(id);
+        Appointment appointment = encounter.getAppointment();
+        boolean waiting = serviceOrders.findByEncounter(id).stream()
+                .anyMatch(order -> order.getStatus() == ServiceOrderStatus.ORDERED
+                        || order.getStatus() == ServiceOrderStatus.IN_PROGRESS);
+        if (!waiting) {
+            throw new ConflictException("Nothing ordered is waiting to be done; order a service first");
+        }
+        appointmentService.sendAway(appointment);
+        return stateOf(encounter);
+    }
+
+    @Override
+    @Transactional
+    public VisitState refer(Long id, ReferRequest request) {
+        ClinicalEncounter encounter = openVisitEncounter(id);
+        appointmentService.referFrom(encounter.getAppointment(), request.employeeId(), request.reason());
+        return stateOf(encounter);
+    }
+
+    /** The encounter, writable and still open, of a visit that is under way. */
+    private ClinicalEncounter openVisitEncounter(Long id) {
+        ClinicalEncounter encounter = find(id, Action.WRITE);
+        if (encounter.getStatus() == EncounterStatus.COMPLETED) {
+            throw new ConflictException("This encounter is concluded");
+        }
+        if (encounter.getAppointment() == null) {
+            throw new ConflictException("This encounter is not tied to a registered visit");
+        }
+        return encounter;
+    }
+
+    private VisitState stateOf(ClinicalEncounter encounter) {
+        Appointment appointment = encounter.getAppointment();
+        if (appointment == null) {
+            return new VisitState(null, null, false, List.of());
+        }
+        return new VisitState(appointment.getId(), appointment.getStatus(), appointment.getReturnedAt() != null
+                && appointment.getStatus() == AppointmentStatus.CHECKED_IN, visitReturns.tasksOf(appointment));
+    }
+
     private ClinicalEncounter find(Long id, Action action) {
         return repository.findOne(Specification.allOf(
                         rowLevel.byId(ClinicalEncounter.class, action, id), BaseEntitySpecifications.notDeleted()))

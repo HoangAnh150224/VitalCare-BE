@@ -57,26 +57,29 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "where a.employee.id = :employeeId and a.appointmentDate = :date and a.deletedAt is null")
     int maxQueueNumber(@Param("employeeId") Long employeeId, @Param("date") LocalDate date);
 
-    /** How many people the doctor still has to see that day: registered, checked in or being seen. */
+    /** How many people the doctor still has to see that day: registered, checked in, being seen or away and coming back. */
     @Query("select count(a) from Appointment a where a.employee.id = :employeeId and a.appointmentDate = :date "
             + "and a.status in (com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED, "
             + "com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN, "
-            + "com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM) and a.deletedAt is null")
+            + "com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM, "
+            + "com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS) and a.deletedAt is null")
     long countWaiting(@Param("employeeId") Long employeeId, @Param("date") LocalDate date);
 
     /** Visits still to come whose expected time touches a period -- what blocking that period would strand. */
     @Query("select count(a) from Appointment a where a.employee.id = :employeeId and a.appointmentDate = :date "
             + "and a.status in (com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED, "
             + "com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN, "
-            + "com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM) "
+            + "com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM, "
+            + "com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS) "
             + "and a.startTime < :end and a.endTime > :start and a.deletedAt is null")
     long countExpectedBetween(@Param("employeeId") Long employeeId, @Param("date") LocalDate date,
                               @Param("start") LocalTime start, @Param("end") LocalTime end);
 
     /**
      * The next person a doctor calls in today, locked, skipping any row
-     * another transaction holds: those never called first, then those passed
-     * over in the order they were, each by queue number. Somebody passed over
+     * another transaction holds: those back from ordered services or sent by
+     * a colleague first, in the order they came; then those never called;
+     * then those passed over in the order they were; each by queue number. Somebody passed over
      * after {@code recallAfter} is left out for now, so a room does not call
      * straight back the person who just did not answer. Two dispatchers
      * asking at once get two different people, or one gets nobody, never the
@@ -92,7 +95,8 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @Query(nativeQuery = true, value = "select * from appointment "
             + "where employee_id = :employeeId and appointment_date = :date and status = 'CHECKED_IN' "
             + "and deleted_at is null and (skipped_at is null or skipped_at <= :recallAfter) "
-            + "order by skipped_at nulls first, queue_number nulls last, checked_in_at "
+            // Keep in step with findWaitingAt: the board shows the order this calls in.
+            + "order by returned_at nulls last, skipped_at nulls first, queue_number nulls last, checked_in_at "
             + "limit 1 for no key update skip locked")
     Optional<Appointment> lockNextInQueue(@Param("employeeId") Long employeeId, @Param("date") LocalDate date,
                                           @Param("recallAfter") OffsetDateTime recallAfter);
@@ -105,8 +109,21 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
             + "where a.clinicId = :clinicId and a.appointmentDate = :date "
             + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.deletedAt is null "
-            + "order by e.id, a.skippedAt asc nulls first, a.queueNumber asc nulls last, a.checkedInAt")
+            + "order by e.id, a.returnedAt asc nulls last, a.skippedAt asc nulls first, "
+            + "a.queueNumber asc nulls last, a.checkedInAt")
     List<Appointment> findWaitingAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
+
+    /** Everyone out of the room today for ordered services or another doctor, per doctor. Not scoped, as findWaitingAt. */
+    @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
+            + "where a.clinicId = :clinicId and a.appointmentDate = :date "
+            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS and a.deletedAt is null "
+            + "order by e.id, a.queueNumber asc nulls last")
+    List<Appointment> findAwayAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
+
+    /** The same-day visits a doctor sent this patient to from this visit. Not scoped: read for that visit's state. */
+    @Query("select a from Appointment a join fetch a.employee e join fetch e.user "
+            + "where a.referredFrom.id = :appointmentId and a.deletedAt is null order by a.id")
+    List<Appointment> findReferralsOf(@Param("appointmentId") Long appointmentId);
 
     /**
      * The accounts with a visit at this clinic today that is waiting, being
@@ -117,7 +134,7 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @Query(nativeQuery = true, value = "select distinct coalesce(c.user_id, g.user_id) from appointment a "
             + "join customer c on c.id = a.customer_id left join customer g on g.id = c.guardian_id "
             + "where a.clinic_id = :clinicId and a.appointment_date = :date and a.deleted_at is null "
-            + "and a.status in ('CHECKED_IN', 'IN_EXAM', 'COMPLETED', 'NO_SHOW') "
+            + "and a.status in ('CHECKED_IN', 'IN_EXAM', 'AWAITING_RESULTS', 'COMPLETED', 'NO_SHOW') "
             + "and coalesce(c.user_id, g.user_id) is not null")
     List<Long> findQueueUserIds(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 

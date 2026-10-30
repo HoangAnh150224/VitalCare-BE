@@ -1,6 +1,8 @@
 package com.vn.vitalcare.care.serviceorder;
 
+import com.vn.vitalcare.care.appointment.service.VisitEvents;
 import com.vn.vitalcare.care.billing.catalog.MedicalServiceCatalog;
+import com.vn.vitalcare.care.examroom.service.ExamRoomEvents;
 import com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.entity.ClinicalEncounter;
@@ -36,6 +38,7 @@ import java.util.Set;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -78,6 +81,7 @@ public class ServiceOrders {
     private final FileStorage storage;
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public ServiceOrders(ServiceOrderRepository orders,
                          ServiceOrderFileRepository files,
@@ -87,7 +91,8 @@ public class ServiceOrders {
                          UserService userService,
                          FileStorage storage,
                          RowLevelSecurity rowLevel,
-                         Clock clock) {
+                         Clock clock,
+                         ApplicationEventPublisher events) {
         this.orders = orders;
         this.files = files;
         this.encounters = encounters;
@@ -97,6 +102,7 @@ public class ServiceOrders {
         this.storage = storage;
         this.rowLevel = rowLevel;
         this.clock = clock;
+        this.events = events;
     }
 
     public Page<ServiceOrder> list(ListParams params) {
@@ -160,10 +166,15 @@ public class ServiceOrders {
             throw new ConflictException("This order is closed; its result can no longer change");
         }
         order.setResultText(request.resultText().trim());
-        if (order.getStatus() != ServiceOrderStatus.RESULT_READY) {
+        boolean first = order.getStatus() != ServiceOrderStatus.RESULT_READY;
+        if (first) {
             order.recordResult(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         }
-        return orders.persist(order);
+        ServiceOrder saved = orders.persist(order);
+        if (first) {
+            changed(saved);
+        }
+        return saved;
     }
 
     @Transactional
@@ -211,7 +222,16 @@ public class ServiceOrders {
             throw new ConflictException("This encounter is concluded; its orders can no longer change");
         }
         order.cancel(OffsetDateTime.now(clock), request.reason().trim());
-        return orders.persist(order);
+        ServiceOrder saved = orders.persist(order);
+        changed(saved);
+        return saved;
+    }
+
+    /** The visit this order is for may be away waiting on it; and the boards and portals look again. */
+    private void changed(ServiceOrder order) {
+        var appointment = order.getEncounter().getAppointment();
+        events.publishEvent(new VisitEvents.OrdersChanged(appointment == null ? null : appointment.getId()));
+        events.publishEvent(new ExamRoomEvents.BoardChanged(order.getClinicId()));
     }
 
     /** Full names of everybody an order mentions, for responses; one query for any number of orders. */

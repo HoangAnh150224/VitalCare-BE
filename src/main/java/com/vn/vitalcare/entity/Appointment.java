@@ -114,6 +114,18 @@ public class Appointment extends BaseEntity {
     @Column(name = "skipped_at")
     private OffsetDateTime skippedAt;
 
+    /**
+     * When it came back to its doctor from ordered services or another doctor,
+     * or arrived on a referral: such visits are called before everybody else.
+     */
+    @Column(name = "returned_at")
+    private OffsetDateTime returnedAt;
+
+    /** The visit whose doctor sent the patient here the same day; null for an ordinary registration. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "referred_from_id")
+    private Appointment referredFrom;
+
     public Appointment() {
     }
 
@@ -139,7 +151,29 @@ public class Appointment extends BaseEntity {
         this.skippedAt = when;
     }
 
-    /** The visit happened. Only valid from {@link AppointmentStatus#CHECKED_IN} or {@link AppointmentStatus#IN_EXAM}; the service checks. */
+    /**
+     * Out of the room for ordered services or another doctor: the room is the
+     * next patient's. Only valid from {@link AppointmentStatus#IN_EXAM}; the service checks.
+     */
+    public void sendAway() {
+        this.status = AppointmentStatus.AWAITING_RESULTS;
+        this.examRoom = null;
+        this.calledAt = null;
+    }
+
+    /** Back in the doctor's queue, ahead of everybody: what it went out for is done. */
+    public void returnToQueue(OffsetDateTime when) {
+        this.status = AppointmentStatus.CHECKED_IN;
+        this.skippedAt = null;
+        this.returnedAt = when;
+    }
+
+    /** Called ahead of the doctor's other patients, as somebody sent over by a colleague. */
+    public void putFirst(OffsetDateTime when) {
+        this.returnedAt = when;
+    }
+
+    /** The visit happened. Only valid while checked in, in the room or away; the service checks. */
     public void complete() {
         this.status = AppointmentStatus.COMPLETED;
     }
@@ -162,6 +196,18 @@ public class Appointment extends BaseEntity {
 
     public Long getId() {
         return id;
+    }
+
+    public OffsetDateTime getReturnedAt() {
+        return returnedAt;
+    }
+
+    public Appointment getReferredFrom() {
+        return referredFrom;
+    }
+
+    public void setReferredFrom(Appointment referredFrom) {
+        this.referredFrom = referredFrom;
     }
 
     public Customer getCustomer() {

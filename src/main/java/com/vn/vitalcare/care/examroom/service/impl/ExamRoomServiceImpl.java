@@ -10,6 +10,9 @@ import com.vn.vitalcare.care.examroom.dto.RoomBoardResponse.RoomCard;
 import com.vn.vitalcare.care.examroom.dto.RoomBoardResponse.Visit;
 import com.vn.vitalcare.care.examroom.repository.ExamRoomRepository;
 import com.vn.vitalcare.care.examroom.repository.ExamRoomSpecifications;
+import com.vn.vitalcare.care.appointment.service.VisitEvents;
+import com.vn.vitalcare.care.appointment.service.VisitReturns;
+import com.vn.vitalcare.care.examroom.dto.RoomBoardResponse.AwayVisit;
 import com.vn.vitalcare.care.examroom.service.ExamRoomEvents;
 import com.vn.vitalcare.care.examroom.service.ExamRoomService;
 import com.vn.vitalcare.care.examroom.service.RoomDispatcher;
@@ -60,6 +63,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
     private final RowLevelSecurity rowLevel;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final VisitReturns visitReturns;
 
     public ExamRoomServiceImpl(ExamRoomRepository rooms,
                                AppointmentRepository appointments,
@@ -68,7 +72,8 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                                ClinicScope clinicScope,
                                RowLevelSecurity rowLevel,
                                ApplicationEventPublisher events,
-                               Clock clock) {
+                               Clock clock,
+                               VisitReturns visitReturns) {
         this.rooms = rooms;
         this.appointments = appointments;
         this.dispatcher = dispatcher;
@@ -77,6 +82,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         this.rowLevel = rowLevel;
         this.events = events;
         this.clock = clock;
+        this.visitReturns = visitReturns;
     }
 
     @Override
@@ -152,12 +158,25 @@ public class ExamRoomServiceImpl implements ExamRoomService {
             doctors.putIfAbsent(waiting.getEmployee().getId(), waiting.getEmployee());
         }
 
+        // Out of the room for services or another doctor, per doctor, with how far along they are.
+        Map<Long, List<AwayVisit>> away = new LinkedHashMap<>();
+        for (Appointment out : appointments.findAwayAt(clinic, now.toLocalDate())) {
+            List<VisitReturns.Task> tasks = visitReturns.tasksOf(out);
+            away.computeIfAbsent(out.getEmployee().getId(), id -> new ArrayList<>()).add(new AwayVisit(
+                    Visit.of(out),
+                    (int) tasks.stream().filter(VisitReturns.Task::done).count(),
+                    tasks.size(),
+                    tasks.stream().filter(task -> !task.done()).map(VisitReturns.Task::name).toList()));
+            doctors.putIfAbsent(out.getEmployee().getId(), out.getEmployee());
+        }
+
         List<RoomCard> cards = new ArrayList<>();
         // ponytail: one session lookup per room; a clinic has a handful. Batch it
         // into a single query if boards ever show dozens of rooms.
         for (ExamRoom room : clinicRooms) {
             Optional<Employee> doctor = dispatcher.doctorInRoom(room.getId(), now);
             List<Appointment> queue = doctor.map(d -> queues.remove(d.getId())).orElse(null);
+            List<AwayVisit> out = doctor.map(d -> away.remove(d.getId())).orElse(null);
             Appointment current = room.getCurrentAppointment();
             cards.add(new RoomCard(
                     room.getId(),
@@ -167,13 +186,18 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                     doctor.map(DoctorRef::of).orElse(null),
                     current == null ? null : Visit.of(current),
                     queue == null ? List.of() : queue.stream().map(Visit::of).toList(),
+                    out == null ? List.of() : out,
                     rowLevel.capabilities(room)));
         }
 
-        List<DoctorQueue> withoutRoom = queues.entrySet().stream()
-                .map(entry -> new DoctorQueue(
-                        DoctorRef.of(doctors.get(entry.getKey())),
-                        entry.getValue().stream().map(Visit::of).toList()))
+        // Doctors with nobody in a room for them: those waiting, and those away.
+        java.util.Set<Long> left = new java.util.LinkedHashSet<>(queues.keySet());
+        left.addAll(away.keySet());
+        List<DoctorQueue> withoutRoom = left.stream()
+                .map(id -> new DoctorQueue(
+                        DoctorRef.of(doctors.get(id)),
+                        queues.getOrDefault(id, List.of()).stream().map(Visit::of).toList(),
+                        away.getOrDefault(id, List.of())))
                 .toList();
         return new RoomBoardResponse(clinic, OffsetDateTime.now(clock), cards, withoutRoom);
     }
@@ -220,6 +244,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         appointments.persist(current);
         rooms.persist(room);
         events.publishEvent(new ExamRoomEvents.RoomFreed(room.getClinicId(), room.getId()));
+        events.publishEvent(new VisitEvents.VisitEnded(current.getId()));
         return board(room.getClinicId());
     }
 
@@ -233,6 +258,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         appointments.persist(current);
         rooms.persist(room);
         events.publishEvent(new ExamRoomEvents.RoomFreed(room.getClinicId(), room.getId()));
+        events.publishEvent(new VisitEvents.VisitEnded(current.getId()));
         return board(room.getClinicId());
     }
 

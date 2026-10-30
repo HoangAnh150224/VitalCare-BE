@@ -4,6 +4,7 @@ import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
 import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.care.appointment.service.VisitReturns;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.Customer;
@@ -39,10 +40,13 @@ public class MyAppointmentController {
 
     private final AppointmentService service;
     private final CustomerService customerService;
+    private final VisitReturns visitReturns;
 
-    public MyAppointmentController(AppointmentService service, CustomerService customerService) {
+    public MyAppointmentController(AppointmentService service, CustomerService customerService,
+                                   VisitReturns visitReturns) {
         this.service = service;
         this.customerService = customerService;
+        this.visitReturns = visitReturns;
     }
 
     @GetMapping
@@ -73,6 +77,10 @@ public class MyAppointmentController {
         body.put("ahead", service.queueAhead(appointment));
         // Called while away: it waits again, behind those never called, until the recall time.
         body.put("skipped", appointment.getSkippedAt() != null);
+        // Back from what the doctor sent them to do, or sent by a colleague: called first.
+        body.put("returned", appointment.getReturnedAt() != null);
+        // Out of the room: what for, and how far along. Empty for a visit that never left.
+        body.put("tasks", visitReturns.tasksOf(appointment));
         return body;
     }
 

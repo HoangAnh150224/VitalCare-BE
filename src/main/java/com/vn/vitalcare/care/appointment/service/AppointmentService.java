@@ -44,6 +44,19 @@ public interface AppointmentService {
     Appointment getOwn(Customer customer, Long id);
 
     /**
+     * Out of the room for what the doctor ordered or referred: the room calls
+     * its next patient, the visit waits to come back. Only from the room.
+     */
+    Appointment sendAway(Appointment appointment);
+
+    /**
+     * Sends the patient of a visit to another doctor of the same clinic today:
+     * a new visit, already checked in and first in that doctor's queue, tied
+     * to this one, which leaves the room if it is in one.
+     */
+    Appointment referFrom(Appointment origin, Long doctorId, String reason);
+
+    /**
      * How many people the doctor will call before this visit: its place in the
      * same order the rooms call in. Null unless it is checked in for today.
      */

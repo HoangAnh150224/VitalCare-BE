@@ -561,6 +561,70 @@ class AppointmentServiceTest {
         return appointment;
     }
 
+    // --- out of the room, and referrals --------------------------------------------
+
+    /** Today's visit with another doctor of the clinic, in that doctor's room now. */
+    private Appointment inRoomWith(Employee with) {
+        Appointment appointment = appointmentOn(TODAY);
+        org.springframework.test.util.ReflectionTestUtils.setField(appointment, "id", 50L);
+        appointment.setEmployee(with);
+        appointment.checkIn(null, null);
+        appointment.callInto(null, null);
+        return appointment;
+    }
+
+    private Employee otherDoctor() {
+        Employee other = mock(Employee.class);
+        when(other.getId()).thenReturn(12L);
+        when(other.getClinicId()).thenReturn(CLINIC);
+        return other;
+    }
+
+    @Test
+    @DisplayName("out of the room for services: the visit waits away, and only a patient in the room can be sent")
+    void sendAway() {
+        Appointment inRoom = inRoomWith(doctor);
+
+        Appointment away = service.sendAway(inRoom);
+
+        assertEquals(AppointmentStatus.AWAITING_RESULTS, away.getStatus());
+        assertEquals(null, away.getExamRoom());
+        assertThrows(ConflictException.class, () -> service.sendAway(away), "already out");
+    }
+
+    @Test
+    @DisplayName("a referral: a new visit with the other doctor, checked in and first in line, tied to this one, which leaves the room")
+    void referral() {
+        Appointment origin = inRoomWith(otherDoctor());
+
+        Appointment referral = service.referFrom(origin, DOCTOR, "Khám tai mũi họng");
+
+        assertEquals(AppointmentStatus.CHECKED_IN, referral.getStatus());
+        assertEquals(doctor, referral.getEmployee());
+        assertEquals(origin, referral.getReferredFrom());
+        assertTrue(referral.getReturnedAt() != null, "first in that doctor's queue");
+        assertEquals("Khám tai mũi họng", referral.getReason());
+        assertEquals(AppointmentStatus.AWAITING_RESULTS, origin.getStatus(), "the origin leaves the room");
+    }
+
+    @Test
+    @DisplayName("a referral to the same doctor, or from a visit not under way, is refused")
+    void referralRefused() {
+        assertField("employeeId", () -> service.referFrom(inRoomWith(doctor), DOCTOR, "x"));
+        Appointment registered = appointmentOn(TODAY);
+        assertThrows(ConflictException.class, () -> service.referFrom(registered, DOCTOR, "x"));
+    }
+
+    @Test
+    @DisplayName("a visit away can still be completed: the doctor concludes without calling it back")
+    void completeWhileAway() {
+        Appointment away = service.sendAway(inRoomWith(doctor));
+        stored(away);
+        scopedTo = CLINIC;
+
+        assertEquals(AppointmentStatus.COMPLETED, service.complete(50L).getStatus());
+    }
+
     private static void assertField(String field, org.junit.jupiter.api.function.Executable call) {
         FieldValidationException e = assertThrows(FieldValidationException.class, call);
         assertEquals(field, e.field());

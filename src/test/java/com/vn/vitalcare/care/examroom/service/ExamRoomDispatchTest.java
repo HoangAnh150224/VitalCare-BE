@@ -85,7 +85,7 @@ class ExamRoomDispatchTest {
         dispatcher = new RoomDispatcher(rooms, appointments, hours, mock(DoctorScheduleRepository.class),
                 clinicService, events, mock(EntityManager.class), Duration.ofMinutes(3), clock);
         service = new ExamRoomServiceImpl(rooms, appointments, dispatcher, clinicService, () -> Optional.of(CLINIC),
-                new ClinicRowLevel(() -> CLINIC), events, clock);
+                new ClinicRowLevel(() -> CLINIC), events, clock, mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class));
 
         Clinic clinic = new Clinic();
         ReflectionTestUtils.setField(clinic, "clinicId", CLINIC);

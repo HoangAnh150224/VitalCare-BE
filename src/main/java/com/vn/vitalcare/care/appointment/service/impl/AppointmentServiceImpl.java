@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.appointment.service.impl;
 
+import com.vn.vitalcare.care.appointment.service.VisitEvents;
 import com.vn.vitalcare.care.appointment.dto.AppointmentUpdateRequest;
 import com.vn.vitalcare.care.appointment.dto.BookingRequest;
 import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
@@ -235,7 +236,54 @@ public class AppointmentServiceImpl implements AppointmentService {
         examRooms.releaseFor(appointment);
         appointment.complete();
         rowLevel.checkWritable(appointment);
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.VisitEnded(saved.getId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Appointment sendAway(Appointment appointment) {
+        if (appointment.getStatus() != AppointmentStatus.IN_EXAM) {
+            throw new ConflictException("Only a patient in the room can be sent out");
+        }
+        // The room first, as in complete: its lock before this row.
+        examRooms.releaseFor(appointment);
+        appointment.sendAway();
+        Appointment saved = repository.persist(appointment);
+        events.publishEvent(new ExamRoomEvents.BoardChanged(saved.getClinicId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Appointment referFrom(Appointment origin, Long doctorId, String reason) {
+        if (origin.getStatus() != AppointmentStatus.IN_EXAM && origin.getStatus() != AppointmentStatus.AWAITING_RESULTS) {
+            throw new ConflictException("Only a visit under way can be referred");
+        }
+        if (doctorId != null && origin.getEmployee() != null && doctorId.equals(origin.getEmployee().getId())) {
+            throw new FieldValidationException("employeeId", "Pick another doctor");
+        }
+        Appointment referral = new Appointment();
+        referral.setCustomer(origin.getCustomer());
+        // The same checks as a registration: the doctor sees patients today and has a turn left.
+        assign(referral, origin.getCustomer(), doctorId, today());
+        if (!origin.getClinicId().equals(referral.getClinicId())) {
+            throw new FieldValidationException("employeeId", "Pick a doctor of the same clinic");
+        }
+        referral.setReason(reason.trim());
+        referral.setBookingCode(newBookingCode());
+        referral.setReferredFrom(origin);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        // The patient is here already: checked in, and first in line, as somebody who has waited once.
+        referral.checkIn(CurrentUser.id().orElse(null), now);
+        referral.putFirst(now);
+        Appointment saved = repository.persist(referral);
+        if (origin.getStatus() == AppointmentStatus.IN_EXAM) {
+            sendAway(origin);
+        }
+        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), saved.getEmployee().getId()));
+        return saved;
     }
 
     @Override
@@ -249,6 +297,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                     examRooms.releaseFor(appointment);
                     appointment.complete();
                     repository.persist(appointment);
+                    events.publishEvent(new VisitEvents.VisitEnded(appointment.getId()));
                 });
     }
 
@@ -437,10 +486,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         throw new IllegalStateException("Could not generate an unused booking code");
     }
 
-    /** Checked in and not yet over: waiting for the doctor, or in the room with them. */
+    /** Checked in and not yet over: waiting for the doctor, in the room with them, or out and coming back. */
     private static boolean isUnderway(Appointment appointment) {
         return appointment.getStatus() == AppointmentStatus.CHECKED_IN
-                || appointment.getStatus() == AppointmentStatus.IN_EXAM;
+                || appointment.getStatus() == AppointmentStatus.IN_EXAM
+                || appointment.getStatus() == AppointmentStatus.AWAITING_RESULTS;
     }
 
     private LocalDate today() {
