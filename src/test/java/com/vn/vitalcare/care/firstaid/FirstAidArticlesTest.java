@@ -45,6 +45,7 @@ class FirstAidArticlesTest {
     void setUp() {
         articles = mock(FirstAidArticleRepository.class);
         FirstAidHistoryRepository history = mock(FirstAidHistoryRepository.class);
+        when(history.findSteps(5L)).thenAnswer(call -> steps.reversed());
         when(articles.save(any(FirstAidArticle.class))).thenAnswer(call -> {
             FirstAidArticle saved = call.getArgument(0);
             if (saved.getId() == null) {
@@ -102,6 +103,23 @@ class FirstAidArticlesTest {
         assertThrows(ConflictException.class, () -> service.approve(5L, null));
         assertThrows(ConflictException.class, () -> service.reject(5L, new FirstAidRequests.Decision("x")));
         assertTrue(!service.actions(article).contains("approve"));
+    }
+
+    @Test
+    @DisplayName("somebody who edited the draft cannot approve it either, even though another started it")
+    void editorIsNotAReviewer() {
+        signIn(DOCTOR, Permissions.FIRST_AID_ARTICLES_WRITE, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        service.create(content("Sốt"));
+        signIn(NURSE, Permissions.FIRST_AID_ARTICLES_WRITE);
+        service.update(5L, content("Sốt (sửa một chữ)"));
+        assertEquals(DOCTOR, article.getAuthorId());
+        service.submit(5L);
+
+        signIn(DOCTOR, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        assertThrows(ConflictException.class, () -> service.approve(5L, null));
+        signIn(31L, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        service.approve(5L, null);
+        assertEquals(FirstAidStatus.REVIEWED, article.getStatus());
     }
 
     @Test

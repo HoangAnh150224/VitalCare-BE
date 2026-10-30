@@ -103,8 +103,9 @@ public class FirstAidArticles {
             article.setStatus(FirstAidStatus.DRAFT);
             article.setReviewerId(null);
             article.setReviewNote(null);
+            // Whoever starts a revision is its author; later edits to the draft keep them.
+            article.setAuthorId(CurrentUser.id().orElse(null));
         }
-        article.setAuthorId(CurrentUser.id().orElse(null));
         FirstAidArticle saved = articles.save(article);
         record(saved, from, null);
         return saved;
@@ -121,7 +122,7 @@ public class FirstAidArticles {
     public FirstAidArticle approve(Long id, FirstAidRequests.Decision decision) {
         FirstAidArticle article = lock(id);
         require(article, FirstAidStatus.PENDING_REVIEW, "Only content waiting for review can be approved");
-        requireOtherThanAuthor(article);
+        requireNotAWriter(article);
         article.setReviewerId(CurrentUser.id().orElse(null));
         article.setReviewNote(note(decision));
         return move(article, FirstAidStatus.REVIEWED, note(decision));
@@ -132,7 +133,7 @@ public class FirstAidArticles {
     public FirstAidArticle reject(Long id, FirstAidRequests.Decision decision) {
         FirstAidArticle article = lock(id);
         require(article, FirstAidStatus.PENDING_REVIEW, "Only content waiting for review can be sent back");
-        requireOtherThanAuthor(article);
+        requireNotAWriter(article);
         String note = note(decision);
         if (note == null) {
             throw new FieldValidationException("note", "Say why it is sent back");
@@ -171,7 +172,8 @@ public class FirstAidArticles {
     public List<String> actions(FirstAidArticle article) {
         boolean write = CurrentUser.has(Permissions.FIRST_AID_ARTICLES_WRITE);
         boolean review = CurrentUser.has(Permissions.FIRST_AID_ARTICLES_REVIEW);
-        boolean ownWork = CurrentUser.id().filter(id -> id.equals(article.getAuthorId())).isPresent();
+        boolean ownWork = CurrentUser.id()
+                .filter(id -> id.equals(article.getAuthorId()) || writersOf(article).contains(id)).isPresent();
         FirstAidStatus status = article.getStatus();
         List<String> actions = new ArrayList<>();
         if (write && status != FirstAidStatus.PENDING_REVIEW) {
@@ -261,12 +263,29 @@ public class FirstAidArticles {
         }
     }
 
-    /** BR-31: reviewed by somebody other than whoever wrote it. */
-    private static void requireOtherThanAuthor(FirstAidArticle article) {
+    /**
+     * BR-31: reviewed by somebody who did not write it — not its author, and
+     * not anybody who edited this revision's draft either, or a second pair of
+     * hands on the draft would let the first approve their own words.
+     */
+    private void requireNotAWriter(FirstAidArticle article) {
         Optional<Long> caller = CurrentUser.id();
-        if (caller.isPresent() && caller.get().equals(article.getAuthorId())) {
+        if (caller.isEmpty()) {
+            return;
+        }
+        if (caller.get().equals(article.getAuthorId()) || writersOf(article).contains(caller.get())) {
             throw new ConflictException("Content is reviewed by somebody other than its author");
         }
+    }
+
+    /** Everybody who saved this revision as a draft. */
+    private Set<Long> writersOf(FirstAidArticle article) {
+        return history.findSteps(article.getId()).stream()
+                .filter(step -> step.getRevision() == article.getRevision() && step.getToStatus() == FirstAidStatus.DRAFT
+                        && step.getFromStatus() != FirstAidStatus.PENDING_REVIEW)
+                .map(FirstAidArticleHistory::getActorId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private static void apply(FirstAidArticle article, FirstAidRequests.Content content) {

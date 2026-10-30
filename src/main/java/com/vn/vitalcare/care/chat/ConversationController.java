@@ -44,6 +44,17 @@ public class ConversationController {
                 .toList(), page.getTotalElements());
     }
 
+    /**
+     * The clinics whose conversations the caller answers, for the inbox to
+     * follow live: their own, or every operating one for somebody tied to no
+     * clinic (the system administrator).
+     */
+    @GetMapping("/clinics")
+    @PreAuthorize("hasAuthority('" + Permissions.CONVERSATIONS_READ + "')")
+    public List<java.util.UUID> clinics() {
+        return chat.followedClinics();
+    }
+
     /** How many conversations wait on the clinic; the menu's badge. */
     @GetMapping("/waiting")
     @PreAuthorize("hasAuthority('" + Permissions.CONVERSATIONS_READ + "')")

@@ -1,6 +1,7 @@
 package com.vn.vitalcare.care.chat;
 
 import com.vn.vitalcare.care.clinic.service.ClinicService;
+import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.ChatSenderKind;
 import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.Conversation;
@@ -77,6 +78,7 @@ public class SupportChat {
     private final ConversationRepository conversations;
     private final MessageRepository messages;
     private final ClinicService clinics;
+    private final ClinicScope clinicScope;
     private final UserService users;
     private final FileStorage storage;
     private final RowLevelSecurity rowLevel;
@@ -87,11 +89,12 @@ public class SupportChat {
     private final IpWindowLimiter guestMessages;
 
     public SupportChat(ConversationRepository conversations, MessageRepository messages, ClinicService clinics,
-                       UserService users, FileStorage storage, RowLevelSecurity rowLevel,
+                       ClinicScope clinicScope, UserService users, FileStorage storage, RowLevelSecurity rowLevel,
                        ApplicationEventPublisher events, Clock clock) {
         this.conversations = conversations;
         this.messages = messages;
         this.clinics = clinics;
+        this.clinicScope = clinicScope;
         this.users = users;
         this.storage = storage;
         this.rowLevel = rowLevel;
@@ -111,10 +114,11 @@ public class SupportChat {
 
     @Transactional
     public ChatResponses.GuestStarted startAsGuest(ChatRequests.GuestStart request, String ip) {
-        guestStarts.check(ip);
         Clinic clinic = operatingClinic(request.clinicId());
         String phone = PhoneNumbers.normalize(request.phone())
                 .orElseThrow(() -> new FieldValidationException("phone", "Give a valid phone number"));
+        // Counted once the request is sound: a mistyped number does not use up the hour.
+        guestStarts.check(ip);
         byte[] secret = new byte[32];
         random.nextBytes(secret);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
@@ -216,6 +220,13 @@ public class SupportChat {
             return Map.of();
         }
         return counts(messages.countUnreadByStaff(ids(list), ChatSenderKind.STAFF));
+    }
+
+    public List<UUID> followedClinics() {
+        return clinicScope.currentClinicId().map(List::of).orElseGet(() -> clinics.listAll().stream()
+                .filter(clinic -> OPERATING.equals(clinic.getOperatingStatus()))
+                .map(Clinic::getClinicId)
+                .toList());
     }
 
     /** How many of the caller's conversations wait on the clinic: the sidebar's badge. */
@@ -326,12 +337,19 @@ public class SupportChat {
             return;
         }
         OffsetDateTime now = OffsetDateTime.now(clock);
+        int changed = staff
+                ? conversations.markStaffRead(conversation.getId(), now)
+                : conversations.markCustomerRead(conversation.getId(), now);
+        if (changed == 0) {
+            return;
+        }
+        // The bulk update went straight to the table and cleared the persistence context, so the copy
+        // in hand is detached: it follows the table for the answer without being written back.
         if (staff) {
             conversation.setStaffReadAt(now);
         } else {
             conversation.setCustomerReadAt(now);
         }
-        conversations.persist(conversation);
         publish(conversation, viewer);
     }
 

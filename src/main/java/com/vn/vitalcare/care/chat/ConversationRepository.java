@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.chat;
 
 import com.vn.vitalcare.entity.Conversation;
 import com.vn.vitalcare.share.data.SecuredRepository;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -9,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -42,6 +44,22 @@ public interface ConversationRepository extends SecuredRepository<Conversation, 
     @Query("select c from Conversation c left join fetch c.clinic "
             + "where c.id = :id and c.customerUserId = :userId and c.deletedAt is null")
     Optional<Conversation> findOwn(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * Read marks, written without touching the row's version: reading must
+     * never make somebody's message fail on an optimistic lock. Each only
+     * moves forward, and only when the other side wrote since; the count says
+     * whether anything changed.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Conversation c set c.staffReadAt = :now where c.id = :id "
+            + "and (c.staffReadAt is null or c.lastMessageAt > c.staffReadAt)")
+    int markStaffRead(@Param("id") Long id, @Param("now") OffsetDateTime now);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Conversation c set c.customerReadAt = :now where c.id = :id "
+            + "and (c.customerReadAt is null or c.lastMessageAt > c.customerReadAt)")
+    int markCustomerRead(@Param("id") Long id, @Param("now") OffsetDateTime now);
 
     /** The customer's conversation with a clinic, if there is one: writing to a clinic again continues it. */
     @Query("select c from Conversation c where c.customerUserId = :userId and c.clinicId = :clinicId "

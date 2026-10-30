@@ -84,7 +84,19 @@ class SupportChatTest {
         RowLevelSecurity rowLevel = mock(RowLevelSecurity.class);
         when(rowLevel.byId(eq(Conversation.class), any(), any()))
                 .thenReturn((root, query, cb) -> cb.conjunction());
-        chat = new SupportChat(conversations, messages, clinics, mock(UserService.class), mock(FileStorage.class),
+        // The bulk read marks, against the conversation in hand: changed only when the other side wrote since.
+        when(conversations.markStaffRead(anyLong(), any())).thenAnswer(call -> {
+            boolean due = stored.getStaffReadAt() == null || stored.getLastMessageAt().isAfter(stored.getStaffReadAt());
+            if (due) stored.setStaffReadAt(call.getArgument(1));
+            return due ? 1 : 0;
+        });
+        when(conversations.markCustomerRead(anyLong(), any())).thenAnswer(call -> {
+            boolean due = stored.getCustomerReadAt() == null || stored.getLastMessageAt().isAfter(stored.getCustomerReadAt());
+            if (due) stored.setCustomerReadAt(call.getArgument(1));
+            return due ? 1 : 0;
+        });
+        chat = new SupportChat(conversations, messages, clinics, mock(com.vn.vitalcare.care.staff.service.ClinicScope.class),
+                mock(UserService.class), mock(FileStorage.class),
                 rowLevel, events, new TickingClock());
     }
 
