@@ -122,6 +122,14 @@ public final class Permissions {
     public static final String FIRST_AID_ARTICLES_WRITE = "first_aid_articles:write";
     public static final String FIRST_AID_ARTICLES_REVIEW = "first_aid_articles:review";
 
+    // Seeded by 038. Clinic staff answer their clinic's support chats (scoped
+    // by row-level policy); a customer writes in their own. Guests chat
+    // through /api/public/chat with a token instead of a permission.
+    public static final String CONVERSATIONS_READ = "conversations:read";
+    public static final String CONVERSATIONS_WRITE = "conversations:write";
+    public static final String MY_CONVERSATIONS_READ = "my_conversations:read";
+    public static final String MY_CONVERSATIONS_WRITE = "my_conversations:write";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.

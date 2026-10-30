@@ -76,3 +76,5 @@ databaseChangeLog:
       file: db/changelog/changes/036-visit-away-and-referral.sql
   - include:
       file: db/changelog/changes/037-first-aid.sql
+  - include:
+      file: db/changelog/changes/038-support-chat.sql

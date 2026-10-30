@@ -21,10 +21,9 @@ import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.security.rowlevel.Action;
 import com.vn.vitalcare.share.storage.FileStorage;
+import com.vn.vitalcare.share.storage.UploadedFiles;
 import com.vn.vitalcare.share.web.ListParams;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -60,12 +59,6 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @Transactional(readOnly = true)
 public class ServiceOrders {
-
-    /** What a result may carry: lab sheets and images, nothing executable or opaque. */
-    private static final Map<String, byte[]> ALLOWED = Map.of(
-            "application/pdf", new byte[] {'%', 'P', 'D', 'F'},
-            "image/png", new byte[] {(byte) 0x89, 'P', 'N', 'G'},
-            "image/jpeg", new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF});
 
     static final long MAX_FILE_BYTES = 10L * 1024 * 1024;
 
@@ -259,29 +252,10 @@ public class ServiceOrders {
     public record StoredFile(String name, String contentType, long sizeBytes, Resource content) {
     }
 
+    /** What a result may carry: lab sheets and images, nothing executable or opaque. */
     private byte[] readChecked(MultipartFile upload) {
-        if (upload == null || upload.isEmpty()) {
-            throw new FieldValidationException("file", "Choose a file");
-        }
-        if (upload.getSize() > MAX_FILE_BYTES) {
-            throw new FieldValidationException("file", "A file can be at most 10 MB");
-        }
-        String type = upload.getContentType();
-        byte[] magic = type == null ? null : ALLOWED.get(type);
-        if (magic == null) {
-            throw new FieldValidationException("file", "Only PDF, PNG and JPEG files are accepted");
-        }
-        byte[] bytes;
-        try {
-            bytes = upload.getBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Could not read an uploaded file", e);
-        }
-        // The declared type is the client's word; the first bytes are the file's.
-        if (bytes.length < magic.length || !Arrays.equals(Arrays.copyOf(bytes, magic.length), magic)) {
-            throw new FieldValidationException("file", "The file's content does not match its type");
-        }
-        return bytes;
+        return UploadedFiles.readChecked(upload, UploadedFiles.PDF_PNG_JPEG, MAX_FILE_BYTES,
+                "A file can be at most 10 MB", "Only PDF, PNG and JPEG files are accepted");
     }
 
     /** The uploaded name, kept only for the download's file name: no path, no control characters. */
