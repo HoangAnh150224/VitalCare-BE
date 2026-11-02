@@ -63,6 +63,14 @@ public final class Permissions {
     public static final String EMPLOYEES_WRITE = "employees:write";
     public static final String DEVICES_READ = "devices:read";
     public static final String DEVICES_WRITE = "devices:write";
+    /** Issue a device's MQTT/REST secret and run the device simulator. */
+    public static final String DEVICES_OPERATE = "devices:operate";
+    public static final String DEVICE_SYNCS_READ = "device_syncs:read";
+    public static final String SYNC_FAILURES_READ = "sync_failures:read";
+    public static final String SYNC_FAILURES_WRITE = "sync_failures:write";
+    public static final String VITAL_SIGNS_READ = "vital_signs:read";
+    public static final String MY_DEVICES_READ = "my_devices:read";
+    public static final String MY_DEVICES_WRITE = "my_devices:write";
     public static final String CUSTOMERS_ASSIGN = "customers:assign";
     // SRS 3.1.3: "Assign Patient to Healthcare Staff" is the clinic administrator's alone;
     // handing out a device stays with customers:assign.

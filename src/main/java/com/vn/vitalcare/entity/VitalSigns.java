@@ -13,9 +13,21 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
+/**
+ * One reading from a monitoring device (FE-03): SpO₂, heart rate and wrist
+ * skin temperature, for the patient the device was handed to at the time.
+ *
+ * <p>{@code clientRecordId} is the device's own id for the reading; the same
+ * one sent twice — a retried upload, an MQTT redelivery — is stored once. A
+ * reading that fails validation is kept with {@code INVALID} and its reason,
+ * so it can be looked at, but is never shown or alerted on as a measurement.
+ */
 @Entity
 @Table(name = "vital_signs")
 public class VitalSigns extends BaseEntity {
+
+    public static final String VALID = "VALID";
+    public static final String INVALID = "INVALID";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -34,23 +46,19 @@ public class VitalSigns extends BaseEntity {
     @JoinColumn(name = "device_assignment_id")
     private DeviceAssignment deviceAssignment;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "session_id")
+    private MeasurementSession session;
+
     @Column(name = "heart_rate")
     private Integer heartRate;
 
-    @Column(name = "spo2")
+    @Column(name = "spo2", precision = 5, scale = 2)
     private BigDecimal spo2;
 
-    @Column(name = "temperature")
+    /** Wrist skin temperature, °C. */
+    @Column(name = "temperature", precision = 5, scale = 2)
     private BigDecimal temperature;
-
-    @Column(name = "systolic_bp")
-    private Integer systolicBp;
-
-    @Column(name = "diastolic_bp")
-    private Integer diastolicBp;
-
-    @Column(name = "respiratory_rate")
-    private Integer respiratoryRate;
 
     @Column(name = "measured_at")
     private OffsetDateTime measuredAt;
@@ -58,10 +66,28 @@ public class VitalSigns extends BaseEntity {
     @Column(name = "received_at")
     private OffsetDateTime receivedAt;
 
-    @Column(name = "sync_status")
-    private String syncStatus;
+    @Column(name = "client_record_id", length = 64)
+    private String clientRecordId;
+
+    /** {@code REST}, {@code MQTT} or {@code SIMULATOR}. */
+    @Column(name = "source", nullable = false, length = 16)
+    private String source = "REST";
+
+    @Column(name = "validation_status", nullable = false, length = 16)
+    private String validationStatus = VALID;
+
+    @Column(name = "validation_error", length = 255)
+    private String validationError;
+
+    /** Kept from 008; {@code SYNCED} for everything taken in. */
+    @Column(name = "sync_status", length = 32)
+    private String syncStatus = "SYNCED";
 
     public VitalSigns() {
+    }
+
+    public boolean isValid() {
+        return VALID.equals(validationStatus);
     }
 
     public Long getId() {
@@ -92,6 +118,14 @@ public class VitalSigns extends BaseEntity {
         this.deviceAssignment = deviceAssignment;
     }
 
+    public MeasurementSession getSession() {
+        return session;
+    }
+
+    public void setSession(MeasurementSession session) {
+        this.session = session;
+    }
+
     public Integer getHeartRate() {
         return heartRate;
     }
@@ -116,30 +150,6 @@ public class VitalSigns extends BaseEntity {
         this.temperature = temperature;
     }
 
-    public Integer getSystolicBp() {
-        return systolicBp;
-    }
-
-    public void setSystolicBp(Integer systolicBp) {
-        this.systolicBp = systolicBp;
-    }
-
-    public Integer getDiastolicBp() {
-        return diastolicBp;
-    }
-
-    public void setDiastolicBp(Integer diastolicBp) {
-        this.diastolicBp = diastolicBp;
-    }
-
-    public Integer getRespiratoryRate() {
-        return respiratoryRate;
-    }
-
-    public void setRespiratoryRate(Integer respiratoryRate) {
-        this.respiratoryRate = respiratoryRate;
-    }
-
     public OffsetDateTime getMeasuredAt() {
         return measuredAt;
     }
@@ -156,11 +166,32 @@ public class VitalSigns extends BaseEntity {
         this.receivedAt = receivedAt;
     }
 
-    public String getSyncStatus() {
-        return syncStatus;
+    public String getClientRecordId() {
+        return clientRecordId;
     }
 
-    public void setSyncStatus(String syncStatus) {
-        this.syncStatus = syncStatus;
+    public void setClientRecordId(String clientRecordId) {
+        this.clientRecordId = clientRecordId;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    public String getValidationStatus() {
+        return validationStatus;
+    }
+
+    public String getValidationError() {
+        return validationError;
+    }
+
+    public void markInvalid(String reason) {
+        this.validationStatus = INVALID;
+        this.validationError = reason == null || reason.length() <= 255 ? reason : reason.substring(0, 255);
     }
 }

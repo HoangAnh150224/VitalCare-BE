@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * Settings and the clock for registration and the appointment book.
  */
 @Configuration
-@EnableConfigurationProperties({OtpProperties.class, ClinicProperties.class})
+@EnableConfigurationProperties({OtpProperties.class, ClinicProperties.class, MqttProperties.class})
 public class CareConfig {
 
     /**

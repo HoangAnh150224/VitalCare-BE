@@ -82,3 +82,5 @@ databaseChangeLog:
       file: db/changelog/changes/039-pay-before-queue.sql
   - include:
       file: db/changelog/changes/040-notifications-audit.sql
+  - include:
+      file: db/changelog/changes/041-iomt-ingestion.sql

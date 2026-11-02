@@ -36,4 +36,8 @@ public interface DeviceAssignmentRepository extends JpaRepository<DeviceAssignme
     List<DeviceAssignment> findByCustomerIdInAndUnassignedAtIsNullAndDeletedAtIsNull(Collection<Long> customerIds);
 
     boolean existsByDeviceIdAndUnassignedAtIsNullAndDeletedAtIsNull(Long deviceId);
+
+    /** The devices a set of profiles wears now, with who wears each — the patient app's device list. */
+    @EntityGraph(attributePaths = {"device", "customer"})
+    List<DeviceAssignment> findWornByCustomerIdInAndUnassignedAtIsNullAndDeletedAtIsNull(Collection<Long> customerIds);
 }

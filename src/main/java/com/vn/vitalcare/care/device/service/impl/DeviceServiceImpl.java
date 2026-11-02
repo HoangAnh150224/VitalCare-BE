@@ -50,6 +50,9 @@ public class DeviceServiceImpl implements DeviceService {
     private final ClinicScope clinicScope;
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
+    // Only so a device can never be registered under the MQTT bridge account's name.
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.vn.vitalcare.config.MqttProperties mqtt;
 
     public DeviceServiceImpl(MedicalDeviceRepository repository,
                              DeviceAssignmentRepository assignments,
@@ -104,6 +107,9 @@ public class DeviceServiceImpl implements DeviceService {
         String code = request.deviceCode().trim().toUpperCase(Locale.ROOT);
         if (repository.existsByDeviceCodeIgnoreCase(code)) {
             throw new FieldValidationException("deviceCode", "A device with that code already exists");
+        }
+        if (mqtt.username() != null && code.equalsIgnoreCase(mqtt.username())) {
+            throw new FieldValidationException("deviceCode", "That code is reserved");
         }
         String serial = blankToNull(request.serialNumber());
         if (serial != null && repository.existsBySerialNumberIgnoreCase(serial)) {

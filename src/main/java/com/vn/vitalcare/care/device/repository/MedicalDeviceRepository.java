@@ -26,4 +26,24 @@ public interface MedicalDeviceRepository extends SecuredRepository<MedicalDevice
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from MedicalDevice d where d.id = :id and d.deletedAt is null")
     Optional<MedicalDevice> findForUpdate(@Param("id") Long id);
+
+    // Not scoped: a device reporting in is not anybody's request. VitalIngestion
+    // locks it for the upload, so a resent batch waits and finds its readings stored.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from MedicalDevice d where d.deviceCode = :code and d.deletedAt is null")
+    Optional<MedicalDevice> findForUpdateByCode(@Param("code") String code);
+
+    @Query("select d from MedicalDevice d where d.deviceCode = :code and d.deletedAt is null")
+    Optional<MedicalDevice> findByCode(@Param("code") String code);
+
+    /** Online, but not heard from since the cutoff: DeviceHeartbeat's to mark offline. */
+    @Query("select d from MedicalDevice d where d.connectivity = 'ONLINE' and d.deletedAt is null"
+            + " and (d.lastSeenAt is null or d.lastSeenAt < :cutoff)")
+    java.util.List<MedicalDevice> findGoneQuiet(@Param("cutoff") java.time.OffsetDateTime cutoff);
+
+    /** 1 when this call took it offline; 0 when it reported in meanwhile or another sweep got there first. */
+    @org.springframework.data.jpa.repository.Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update MedicalDevice d set d.connectivity = 'OFFLINE' where d.id = :id and d.connectivity = 'ONLINE'"
+            + " and (d.lastSeenAt is null or d.lastSeenAt < :cutoff)")
+    int markOffline(@Param("id") Long id, @Param("cutoff") java.time.OffsetDateTime cutoff);
 }

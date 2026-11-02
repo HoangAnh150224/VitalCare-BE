@@ -25,6 +25,14 @@ public record DeviceResponse(
         OffsetDateTime registeredAt,
         UUID clinicId,
         Wearer currentPatient,
+        /** FE-02: what the device last said about itself. */
+        String connectivity,
+        Integer batteryLevel,
+        String firmwareVersion,
+        OffsetDateTime lastSyncAt,
+        OffsetDateTime pairedAt,
+        /** Whether an MQTT/REST secret has been issued; the secret itself is never sent back. */
+        boolean hasToken,
         /**
          * What the caller may do to this row, from the row-level write and
          * delete policies — the framework's {@code _can}, read by the client's
@@ -63,6 +71,12 @@ public record DeviceResponse(
                 // The id only: it reads off the proxy without loading the clinic.
                 device.getClinic() == null ? null : device.getClinic().getClinicId(),
                 wearer,
+                device.getConnectivity(),
+                device.getBatteryLevel(),
+                device.getFirmwareVersion(),
+                device.getLastSyncAt(),
+                device.getPairedAt(),
+                device.getTokenHash() != null,
                 rowLevel == null ? Map.of() : rowLevel.capabilities(device));
     }
 }

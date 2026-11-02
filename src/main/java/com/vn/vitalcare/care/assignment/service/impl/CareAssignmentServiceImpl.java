@@ -203,6 +203,8 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         assignment.end(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         assignment.setNote(appendNote(assignment.getNote(), request == null ? null : request.note()));
         device.setStatus(DeviceStatus.AVAILABLE);
+        // The next wearer's phone pairs afresh; this one's must not keep uploading as if it still wore it.
+        device.unpair();
         rowLevel.checkWritable(device);
         return deviceAssignments.save(assignment);
     }

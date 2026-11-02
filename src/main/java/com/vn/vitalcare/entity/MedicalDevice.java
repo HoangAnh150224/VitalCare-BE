@@ -68,6 +68,97 @@ public class MedicalDevice extends BaseEntity {
     public MedicalDevice() {
     }
 
+    /** Battery as the device last reported it, 0-100; null until it has. */
+    @Column(name = "battery_level")
+    private Integer batteryLevel;
+
+    @Column(name = "firmware_version", length = 64)
+    private String firmwareVersion;
+
+    /** {@code ONLINE} while it keeps reporting, {@code OFFLINE} after a quiet spell; see DeviceHeartbeat. */
+    @Column(name = "connectivity", nullable = false, length = 16)
+    private String connectivity = OFFLINE;
+
+    /** When its readings last arrived. */
+    @Column(name = "last_sync_at")
+    private OffsetDateTime lastSyncAt;
+
+    /** SHA-256 of the secret it signs in to MQTT with; the secret itself is shown once and never kept. */
+    @Column(name = "token_hash", length = 64)
+    private String tokenHash;
+
+    /** When the patient's phone paired with it over BLE (FE-02 Device Pairing). */
+    @Column(name = "paired_at")
+    private OffsetDateTime pairedAt;
+
+    @Column(name = "paired_by_user_id")
+    private Long pairedByUserId;
+
+    public static final String ONLINE = "ONLINE";
+    public static final String OFFLINE = "OFFLINE";
+
+    /** It reported: online, and what it said about itself. */
+    public void heardFrom(OffsetDateTime when, Integer battery, String firmware) {
+        this.lastSeenAt = when;
+        this.connectivity = ONLINE;
+        if (battery != null) {
+            this.batteryLevel = Math.max(0, Math.min(100, battery));
+        }
+        if (firmware != null && !firmware.isBlank()) {
+            this.firmwareVersion = firmware.trim().length() > 64 ? firmware.trim().substring(0, 64) : firmware.trim();
+        }
+    }
+
+    public Integer getBatteryLevel() {
+        return batteryLevel;
+    }
+
+    public String getFirmwareVersion() {
+        return firmwareVersion;
+    }
+
+    public String getConnectivity() {
+        return connectivity;
+    }
+
+    public void setConnectivity(String connectivity) {
+        this.connectivity = connectivity;
+    }
+
+    public OffsetDateTime getLastSyncAt() {
+        return lastSyncAt;
+    }
+
+    public void setLastSyncAt(OffsetDateTime lastSyncAt) {
+        this.lastSyncAt = lastSyncAt;
+    }
+
+    public String getTokenHash() {
+        return tokenHash;
+    }
+
+    public void setTokenHash(String tokenHash) {
+        this.tokenHash = tokenHash;
+    }
+
+    public OffsetDateTime getPairedAt() {
+        return pairedAt;
+    }
+
+    public Long getPairedByUserId() {
+        return pairedByUserId;
+    }
+
+    public void pair(Long userId, OffsetDateTime when) {
+        this.pairedByUserId = userId;
+        this.pairedAt = when;
+    }
+
+    public void unpair() {
+        this.pairedByUserId = null;
+        this.pairedAt = null;
+    }
+
     public Long getId() {
         return id;
     }

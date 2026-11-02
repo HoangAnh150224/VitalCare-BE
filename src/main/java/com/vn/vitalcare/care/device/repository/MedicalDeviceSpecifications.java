@@ -27,6 +27,11 @@ public final class MedicalDeviceSpecifications {
                     specs.add((root, query, cb) -> cb.disjunction());
                 }
             }
+            // FE-02 Device Status Monitoring: ONLINE / OFFLINE.
+            if ("connectivity".equals(criterion.field())) {
+                String value = criterion.value() == null ? "" : criterion.value().trim().toUpperCase();
+                specs.add((root, query, cb) -> cb.equal(root.get("connectivity"), value));
+            }
             if ("status".equals(criterion.field())) {
                 try {
                     DeviceStatus status = DeviceStatus.from(criterion.value());

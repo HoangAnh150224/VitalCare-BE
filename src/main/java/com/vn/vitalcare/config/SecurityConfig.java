@@ -119,6 +119,11 @@ public class SecurityConfig {
                         // Every endpoint under it answers public DTOs only;
                         // the guest chat proves itself with its own token.
                         .requestMatchers("/api/public/**").permitAll()
+                        // A device and the MQTT broker, which have no user sign-in: the
+                        // device proves itself with its own secret, the broker with
+                        // its hook secret (DeviceDataController).
+                        .requestMatchers(HttpMethod.POST, "/api/device_data/batch", "/api/mqtt/auth",
+                                "/api/mqtt/acl").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;
