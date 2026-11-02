@@ -345,6 +345,9 @@ public class Invoices {
         rowLevel.checkWritable(invoice);
         invoices.persist(invoice);
         settled(invoice, now);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("invoices", invoice.getId(), "pay",
+                Map.of("status", "UNPAID"), Map.of("status", "PAID", "method", method.name(),
+                        "amount", invoice.getTotalAmount().toPlainString())));
         return InvoiceResponse.from(invoice, rowLevel.capabilities(invoice));
     }
 

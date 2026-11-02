@@ -77,6 +77,7 @@ public class ServiceOrders {
     private final Clock clock;
     private final ApplicationEventPublisher events;
     private final Invoices invoices;
+    private final com.vn.vitalcare.care.notification.Notifier notifier;
 
     public ServiceOrders(ServiceOrderRepository orders,
                          ServiceOrderFileRepository files,
@@ -88,7 +89,8 @@ public class ServiceOrders {
                          RowLevelSecurity rowLevel,
                          Clock clock,
                          ApplicationEventPublisher events,
-                         Invoices invoices) {
+                         Invoices invoices,
+                         com.vn.vitalcare.care.notification.Notifier notifier) {
         this.orders = orders;
         this.files = files;
         this.encounters = encounters;
@@ -100,6 +102,7 @@ public class ServiceOrders {
         this.clock = clock;
         this.events = events;
         this.invoices = invoices;
+        this.notifier = notifier;
     }
 
     public Page<ServiceOrder> list(ListParams params) {
@@ -176,6 +179,12 @@ public class ServiceOrders {
         ServiceOrder saved = orders.persist(order);
         if (first) {
             changed(saved);
+            notifier.notify(com.vn.vitalcare.care.notification.VisitNotifications.accountOf(saved.getCustomer()),
+                    com.vn.vitalcare.entity.NotificationLevel.INFO, "result",
+                    "Đã có kết quả " + saved.getService().getName(),
+                    "Bác sĩ sẽ xem kết quả và tư vấn cho bạn.",
+                    saved.getEncounter().getAppointment() == null ? null
+                            : "/my-appointments/show/" + saved.getEncounter().getAppointment().getId());
         }
         return saved;
     }

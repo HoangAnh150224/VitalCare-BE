@@ -299,6 +299,9 @@ public class AppointmentServiceImpl implements AppointmentService {
             boolean wasUnpaid = appointment.getPaidAt() == null;
             appointment.markPaid(when);
             repository.persist(appointment);
+            if (wasUnpaid) {
+                events.publishEvent(new VisitEvents.ExamPaid(appointment.getId()));
+            }
             // Already at the desk: paying is what puts the patient in the line now.
             if (wasUnpaid && appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
                 events.publishEvent(new ExamRoomEvents.QueueJoined(appointment.getClinicId(),

@@ -28,8 +28,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class CustomerCareController {
 
     private final CareAssignmentService service;
+    private final com.vn.vitalcare.identity.audit.AuditTrail audit;
 
-    public CustomerCareController(CareAssignmentService service) {
+    public CustomerCareController(CareAssignmentService service, com.vn.vitalcare.identity.audit.AuditTrail audit) {
+        this.audit = audit;
         this.service = service;
     }
 
@@ -64,7 +66,9 @@ public class CustomerCareController {
     @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_ASSIGN + "')")
     public DeviceAssignmentResponse assignDevice(@PathVariable Long customerId,
                                                  @Valid @RequestBody AssignmentRequests.AssignDevice request) {
-        return DeviceAssignmentResponse.ofPatient(service.assignDevice(customerId, request));
+        DeviceAssignmentResponse assigned = DeviceAssignmentResponse.ofPatient(service.assignDevice(customerId, request));
+        audit.record("device_assignments", assigned.id(), "assign", null, java.util.Map.of("customerId", customerId));
+        return assigned;
     }
 
     @PostMapping("/devices/{assignmentId}/return")
@@ -72,6 +76,8 @@ public class CustomerCareController {
     public DeviceAssignmentResponse returnDevice(@PathVariable Long customerId,
                                                  @PathVariable Long assignmentId,
                                                  @Valid @RequestBody(required = false) AssignmentRequests.End request) {
-        return DeviceAssignmentResponse.ofPatient(service.returnDevice(customerId, assignmentId, request));
+        DeviceAssignmentResponse returned = DeviceAssignmentResponse.ofPatient(service.returnDevice(customerId, assignmentId, request));
+        audit.record("device_assignments", assignmentId, "return", null, java.util.Map.of("customerId", customerId));
+        return returned;
     }
 }

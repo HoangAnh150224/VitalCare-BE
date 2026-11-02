@@ -83,6 +83,7 @@ public class SupportChat {
     private final FileStorage storage;
     private final RowLevelSecurity rowLevel;
     private final ApplicationEventPublisher events;
+    private final com.vn.vitalcare.care.notification.Notifier notifier;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
     private final IpWindowLimiter guestStarts;
@@ -90,7 +91,8 @@ public class SupportChat {
 
     public SupportChat(ConversationRepository conversations, MessageRepository messages, ClinicService clinics,
                        ClinicScope clinicScope, UserService users, FileStorage storage, RowLevelSecurity rowLevel,
-                       ApplicationEventPublisher events, Clock clock) {
+                       ApplicationEventPublisher events, com.vn.vitalcare.care.notification.Notifier notifier,
+                       Clock clock) {
         this.conversations = conversations;
         this.messages = messages;
         this.clinics = clinics;
@@ -99,6 +101,7 @@ public class SupportChat {
         this.storage = storage;
         this.rowLevel = rowLevel;
         this.events = events;
+        this.notifier = notifier;
         this.clock = clock;
         this.guestStarts = new IpWindowLimiter(Duration.ofHours(1), 5,
                 "Too many conversations have been started from this network; try again later", clock);
@@ -319,6 +322,12 @@ public class SupportChat {
         }
         conversations.persist(conversation);
         publish(conversation, kind);
+        if (kind == ChatSenderKind.STAFF && conversation.getCustomerUserId() != null) {
+            notifier.notify(conversation.getCustomerUserId(), com.vn.vitalcare.entity.NotificationLevel.INFO, "chat",
+                    "Tin nhắn mới từ " + (conversation.getClinic() == null ? "phòng khám" : conversation.getClinic().getClinicName()),
+                    saved.getContent() == null ? "[Ảnh]" : ChatResponses.preview(saved),
+                    "/my-conversations/" + conversation.getId());
+        }
         return saved;
     }
 

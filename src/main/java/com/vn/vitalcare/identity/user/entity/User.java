@@ -119,6 +119,8 @@ public class User {
         updatedAt = Instant.now();
     }
 
+    private static final Set<String> OWN_NOTIFICATIONS = Set.of("notifications:read", "notifications:write");
+
     /**
      * Every permission code this user holds, from every role, de-duplicated.
      *
@@ -126,7 +128,9 @@ public class User {
      * authorising a request never touches the database.
      */
     public Set<String> permissionCodes() {
-        Set<String> codes = new TreeSet<>();
+        // Everybody's own notifications (FE-13), whatever the roles: a role
+        // created later on the roles screen must not leave its holders deaf.
+        Set<String> codes = new TreeSet<>(OWN_NOTIFICATIONS);
         for (Role role : roles) {
             for (Permission permission : role.getPermissions()) {
                 codes.add(permission.getCode());

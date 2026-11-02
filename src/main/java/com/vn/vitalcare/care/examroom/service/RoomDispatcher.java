@@ -105,6 +105,7 @@ public class RoomDispatcher {
         appointments.persist(appointment);
         rooms.persist(room);
         events.publishEvent(new ExamRoomEvents.BoardChanged(room.getClinicId()));
+        events.publishEvent(new ExamRoomEvents.Called(appointment.getId(), room.getCode()));
         return Optional.of(appointment);
     }
 

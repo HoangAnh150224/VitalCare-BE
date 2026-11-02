@@ -19,20 +19,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class MedicalRecordController {
 
     private final MedicalRecordService service;
+    private final com.vn.vitalcare.identity.audit.AuditTrail audit;
 
-    public MedicalRecordController(MedicalRecordService service) {
+    public MedicalRecordController(MedicalRecordService service, com.vn.vitalcare.identity.audit.AuditTrail audit) {
         this.service = service;
+        this.audit = audit;
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.MEDICAL_RECORDS_READ + "')")
     public MedicalRecordResponse get(@PathVariable Long customerId) {
-        return service.get(customerId);
+        MedicalRecordResponse record = service.get(customerId);
+        // BR-24: every look at a patient's health data is on the record.
+        audit.record("medical_records", customerId, "view", null, null);
+        return record;
     }
 
     @PutMapping
     @PreAuthorize("hasAuthority('" + Permissions.MEDICAL_RECORDS_WRITE + "')")
     public MedicalRecordResponse save(@PathVariable Long customerId, @Valid @RequestBody MedicalRecordRequest request) {
-        return service.save(customerId, request);
+        MedicalRecordResponse saved = service.save(customerId, request);
+        audit.record("medical_records", customerId, "update", null, null);
+        return saved;
     }
 }

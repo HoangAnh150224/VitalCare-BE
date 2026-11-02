@@ -130,6 +130,12 @@ public final class Permissions {
     public static final String MY_CONVERSATIONS_READ = "my_conversations:read";
     public static final String MY_CONVERSATIONS_WRITE = "my_conversations:write";
 
+    // Seeded by 040. Every role has its own notifications; the audit log is
+    // the administrators' to search, and nobody's to change.
+    public static final String NOTIFICATIONS_READ = "notifications:read";
+    public static final String NOTIFICATIONS_WRITE = "notifications:write";
+    public static final String AUDIT_LOGS_READ = "audit_logs:read";
+
     // A new business domain (patient, appointment, billing, ...) adds its own
     // three constants here, seeded in its own migration, the same way this
     // set was added on top of USERS_*/ROLES_*/PERMISSIONS_READ.

@@ -154,6 +154,7 @@ public class UserService {
     public User setSignInAllowed(Long id, boolean allowed) {
         User user = get(id);
         boolean wasActive = user.canSignIn();
+        UserStatus before = user.getStatus();
         if (allowed) {
             // Only undoes what this workflow did. A LOCKED account was locked
             // for a security reason by an administrator; somebody coming back
@@ -174,7 +175,15 @@ public class UserService {
             refreshTokenService.revokeAllFor(saved, Instant.now());
         }
         events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        if (before != saved.getStatus()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "status_change",
+                    java.util.Map.of("status", String.valueOf(before)), java.util.Map.of("status", String.valueOf(saved.getStatus()))));
+        }
         return saved;
+    }
+
+    private static java.util.List<String> roleCodes(java.util.Collection<Role> roles) {
+        return roles.stream().map(Role::getCode).sorted().toList();
     }
 
     private User createWithSystemRole(String phone, String rawEmail, String rawPassword, String fullName,
@@ -246,13 +255,22 @@ public class UserService {
         UserStatus status = request.status() == null ? user.getStatus() : request.status();
         requireAdminSurvives(user, roles, status);
 
+        boolean wasActive = user.canSignIn();
+        java.util.List<String> rolesBefore = roleCodes(user.getRoles());
+        UserStatus statusBefore = user.getStatus();
         if (request.roles() != null) {
             user.setRoles(roles);
         }
-
-        boolean wasActive = user.canSignIn();
         user.setStatus(status);
         User saved = repository.save(user);
+        if (request.roles() != null && !rolesBefore.equals(roleCodes(saved.getRoles()))) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
+                    java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
+        }
+        if (statusBefore != saved.getStatus()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "status_change",
+                    java.util.Map.of("status", String.valueOf(statusBefore)), java.util.Map.of("status", String.valueOf(saved.getStatus()))));
+        }
 
         // An account that just stopped being able to sign in must also stop
         // being able to renew a token it already holds. So must one whose
@@ -284,6 +302,7 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         User saved = repository.save(user);
         refreshTokenService.revokeAllFor(saved, Instant.now());
+        events.publishEvent(com.vn.vitalcare.share.audit.AuditEvent.of("users", saved.getId(), "password_reset"));
         return saved;
     }
 
@@ -329,6 +348,8 @@ public class UserService {
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
         repository.delete(user);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", user.getId(), "delete",
+                java.util.Map.of("phone", user.getPhone(), "fullName", user.getFullName()), null));
         // The cache would find no row and drop the entry on its own, but only
         // when something next asks for it. Saying so outright means a token
         // held by the deleted account stops working immediately rather than at

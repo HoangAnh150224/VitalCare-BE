@@ -22,6 +22,10 @@ public final class VisitEvents {
     public record Registered(Long appointmentId) {
     }
 
+    /** A visit's examination fee was paid: it may queue. */
+    public record ExamPaid(Long appointmentId) {
+    }
+
     /** A visit is about to be cancelled or marked a no-show: heard first, so its bill is locked before it. */
     public record Cancelling(Long appointmentId) {
     }

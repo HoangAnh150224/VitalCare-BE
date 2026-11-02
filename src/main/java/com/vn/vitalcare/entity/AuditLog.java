@@ -1,34 +1,29 @@
 package com.vn.vitalcare.entity;
 
-import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.share.data.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import org.hibernate.annotations.ColumnTransformer;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * The audit trail itself, which makes the inherited audit columns awkward.
+ * One protected action, as it happened (FE-20, BR-24): who, what, on which
+ * record, when, from where, and the state before and after. Append-only — no
+ * setters, and nothing in the application updates or deletes a row.
  *
- * <p>{@code occurredAt} and {@code actor} below are this table's own record of
- * who did what and when — they describe the <em>event</em>, which is the whole
- * point of the row. {@link BaseEntity} then adds {@code createdAt} and
- * {@code createdById} describing the <em>write</em>. For this one table those
- * are the same fact twice, and {@code updatedAt} / {@code deletedAt} should
- * never be set at all: an audit entry that can be edited or removed is not
- * evidence of anything.
- *
- * <p>Kept uniform with the other twenty-one on purpose, so that every business
- * table carries the same columns. Nothing writes the inherited pair except the
- * listener, and reading {@code occurredAt} stays the right thing to do.
+ * <p>{@code occurredAt} and {@code actorId} below are this table's own record
+ * of who did what and when — they describe the <em>event</em>, which is the
+ * whole point of the row. {@link BaseEntity} adds {@code createdAt} and
+ * {@code createdById} describing the <em>write</em>: the same fact twice, kept
+ * so every business table carries the same columns. The actor is a bare
+ * {@code users.id} with the name as it was, for the reason {@code BaseEntity}
+ * gives about entities of the identity domain.
  */
 @Entity
 @Table(name = "audit_log")
@@ -39,136 +34,109 @@ public class AuditLog extends BaseEntity {
     @Column(name = "id")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "actor_id")
-    private User actor;
+    @Column(name = "actor_id", updatable = false)
+    private Long actorId;
 
-    @Column(name = "actor_name")
+    @Column(name = "actor_name", updatable = false)
     private String actorName;
 
-    @Column(name = "entity_type")
+    /** What kind of record: {@code user}, {@code medical_record}, {@code device_assignment}, {@code invoice}... */
+    @Column(name = "entity_type", length = 128, updatable = false)
     private String entityType;
 
-    // Not a foreign key: which table it points at depends on entityType.
-    @Column(name = "entity_id")
+    @Column(name = "entity_id", updatable = false)
     private Long entityId;
 
-    @Column(name = "action")
+    /** What was done: {@code view}, {@code role_change}, {@code status_change}, {@code assign}, {@code pay}... */
+    @Column(name = "action", length = 64, updatable = false)
     private String action;
 
-    /** The row as JSON, the same way row_level_policy holds its scope trees. */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "before_state", columnDefinition = "jsonb")
+    @Column(name = "before_state", columnDefinition = "jsonb", updatable = false)
     private String beforeState;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "after_state", columnDefinition = "jsonb")
+    @Column(name = "after_state", columnDefinition = "jsonb", updatable = false)
     private String afterState;
 
-    @Column(name = "occurred_at")
+    @Column(name = "occurred_at", updatable = false)
     private OffsetDateTime occurredAt;
 
-    @Column(name = "ip_address", columnDefinition = "inet")
+    /** An {@code inet} in the database: cast on the way in, read back as text. */
+    @ColumnTransformer(read = "host(ip_address)", write = "cast(? as inet)")
+    @Column(name = "ip_address", columnDefinition = "inet", updatable = false)
     private String ipAddress;
 
-    @Column(name = "user_agent")
+    @Column(name = "user_agent", length = 512, updatable = false)
     private String userAgent;
 
-    @Column(name = "request_id")
+    @Column(name = "request_id", length = 128, updatable = false)
     private String requestId;
 
-    public AuditLog() {
+    protected AuditLog() {
+    }
+
+    public AuditLog(Long actorId, String actorName, String entityType, Long entityId, String action,
+                    String beforeState, String afterState, OffsetDateTime occurredAt, String ipAddress,
+                    String userAgent, String requestId) {
+        this.actorId = actorId;
+        this.actorName = actorName;
+        this.entityType = entityType;
+        this.entityId = entityId;
+        this.action = action;
+        this.beforeState = beforeState;
+        this.afterState = afterState;
+        this.occurredAt = occurredAt;
+        this.ipAddress = ipAddress;
+        this.userAgent = userAgent;
+        this.requestId = requestId;
     }
 
     public Long getId() {
         return id;
     }
 
-    public User getActor() {
-        return actor;
-    }
-
-    public void setActor(User actor) {
-        this.actor = actor;
+    public Long getActorId() {
+        return actorId;
     }
 
     public String getActorName() {
         return actorName;
     }
 
-    public void setActorName(String actorName) {
-        this.actorName = actorName;
-    }
-
     public String getEntityType() {
         return entityType;
-    }
-
-    public void setEntityType(String entityType) {
-        this.entityType = entityType;
     }
 
     public Long getEntityId() {
         return entityId;
     }
 
-    public void setEntityId(Long entityId) {
-        this.entityId = entityId;
-    }
-
     public String getAction() {
         return action;
-    }
-
-    public void setAction(String action) {
-        this.action = action;
     }
 
     public String getBeforeState() {
         return beforeState;
     }
 
-    public void setBeforeState(String beforeState) {
-        this.beforeState = beforeState;
-    }
-
     public String getAfterState() {
         return afterState;
-    }
-
-    public void setAfterState(String afterState) {
-        this.afterState = afterState;
     }
 
     public OffsetDateTime getOccurredAt() {
         return occurredAt;
     }
 
-    public void setOccurredAt(OffsetDateTime occurredAt) {
-        this.occurredAt = occurredAt;
-    }
-
     public String getIpAddress() {
         return ipAddress;
-    }
-
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
     }
 
     public String getUserAgent() {
         return userAgent;
     }
 
-    public void setUserAgent(String userAgent) {
-        this.userAgent = userAgent;
-    }
-
     public String getRequestId() {
         return requestId;
-    }
-
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
     }
 }

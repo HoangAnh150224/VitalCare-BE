@@ -97,7 +97,7 @@ class SupportChatTest {
         });
         chat = new SupportChat(conversations, messages, clinics, mock(com.vn.vitalcare.care.staff.service.ClinicScope.class),
                 mock(UserService.class), mock(FileStorage.class),
-                rowLevel, events, new TickingClock());
+                rowLevel, events, mock(com.vn.vitalcare.care.notification.Notifier.class), new TickingClock());
     }
 
     @AfterEach

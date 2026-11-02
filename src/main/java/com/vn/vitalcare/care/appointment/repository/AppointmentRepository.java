@@ -117,6 +117,14 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "a.queueNumber asc nulls last, a.checkedInAt")
     List<Appointment> findWaitingAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 
+    /**
+     * One visit with whom it is for and with: what a notification about it
+     * says. Not scoped: the caller is the system telling the visit's own account.
+     */
+    @Query("select a from Appointment a join fetch a.customer c left join fetch c.user left join fetch c.guardian g "
+            + "left join fetch g.user left join fetch a.employee e left join fetch e.user where a.id = :id")
+    Optional<Appointment> findForNotice(@Param("id") Long id);
+
     /** Checked in today but the examination fee is not paid yet: not in the queue until it is. Not scoped, as findWaitingAt. */
     @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
             + "where a.clinicId = :clinicId and a.appointmentDate = :date "

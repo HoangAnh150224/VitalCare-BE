@@ -9,6 +9,10 @@ import java.util.UUID;
  */
 public final class ExamRoomEvents {
 
+    /** A patient was called into a room. */
+    public record Called(Long appointmentId, String roomCode) {
+    }
+
     private ExamRoomEvents() {
     }
 
