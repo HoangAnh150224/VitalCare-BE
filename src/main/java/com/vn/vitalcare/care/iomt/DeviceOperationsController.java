@@ -34,10 +34,12 @@ public class DeviceOperationsController {
     private final DeviceTokens tokens;
     private final VitalIngestion ingestion;
     private final MqttBridge mqtt;
+    private final VitalSignsRepository vitals;
     private final Clock clock;
 
     public DeviceOperationsController(DeviceService devices, DeviceTokens tokens, VitalIngestion ingestion,
-                                      MqttBridge mqtt, Clock clock) {
+                                      MqttBridge mqtt, VitalSignsRepository vitals, Clock clock) {
+        this.vitals = vitals;
         this.devices = devices;
         this.tokens = tokens;
         this.ingestion = ingestion;
@@ -53,6 +55,27 @@ public class DeviceOperationsController {
         return Map.of("deviceCode", issued.deviceCode(), "token", issued.token(),
                 "mqttUsername", issued.deviceCode(),
                 "mqttTopic", com.vn.vitalcare.config.MqttProperties.TOPIC_ROOT + "/" + issued.deviceCode() + "/vitals");
+    }
+
+    public record ReadingResponse(Long id, OffsetDateTime measuredAt, OffsetDateTime receivedAt, Integer heartRate,
+                                  BigDecimal spo2, BigDecimal skinTemperature, String source, String validationStatus,
+                                  String validationError, Long customerId, String customerName) {
+    }
+
+    /** What a device has sent lately, newest first (at most 200) — to see readings arrive. */
+    @GetMapping("/{id}/readings")
+    @PreAuthorize("hasAuthority('" + Permissions.DEVICES_READ + "') and hasAuthority('" + Permissions.VITAL_SIGNS_READ + "')")
+    public List<ReadingResponse> readings(@PathVariable Long id,
+                                          @org.springframework.web.bind.annotation.RequestParam(defaultValue = "50") int limit) {
+        MedicalDevice device = devices.get(id);
+        return vitals.findByDeviceIdOrderByMeasuredAtDescIdDesc(device.getId(),
+                        org.springframework.data.domain.PageRequest.of(0, Math.max(1, Math.min(limit, 200))))
+                .stream()
+                .map(v -> new ReadingResponse(v.getId(), v.getMeasuredAt(), v.getReceivedAt(), v.getHeartRate(),
+                        v.getSpo2(), v.getTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
+                        v.getCustomer() == null ? null : v.getCustomer().getId(),
+                        v.getCustomer() == null ? null : v.getCustomer().getFullName()))
+                .toList();
     }
 
     @GetMapping("/mqtt")

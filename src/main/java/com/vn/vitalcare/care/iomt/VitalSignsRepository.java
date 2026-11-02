@@ -7,4 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
 
     boolean existsByDeviceIdAndClientRecordId(Long deviceId, String clientRecordId);
+
+    /** A device's latest readings, newest first, with whose they are. */
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = "customer")
+    java.util.List<VitalSigns> findByDeviceIdOrderByMeasuredAtDescIdDesc(Long deviceId,
+                                                                         org.springframework.data.domain.Pageable page);
 }

@@ -96,6 +96,29 @@ Bản ghi bị `REJECTED` khi:
 - thiết bị chưa được giao cho ai vào thời điểm đo;
 - thiết bị đã ngừng sử dụng.
 
+### Gửi nguyên log của vòng tay (`#v2`)
+Vòng tay có thể gửi thẳng log của nó, không cần chuyển sang JSON:
+- **REST:** `POST /device_data/batch`, header `Content-Type: text/csv` cùng `X-Device-Code` và `X-Device-Token`.
+- **MQTT:** publish lên `vitalcare/devices/{deviceCode}/vitals`. Server nhận ra log khi payload bắt đầu bằng `#v2`.
+```
+#v2
+ts,t100,hr,spo2,conf,flags
+1793153993,3278,62,98,98,0
+```
+Server đọc từng dòng như sau:
+- **`ts`** (Unix giây) là thời điểm đo. Mã bản ghi là `<deviceCode>-<ts>`, nên vòng tay gửi lại log cũ cũng không bị lưu trùng.
+- **`t100`** chia 100 ra nhiệt độ da (°C).
+- **`hr` / `spo2`** bằng `0` nghĩa là chưa có giá trị.
+- **Dòng không có giá trị nào** bị bỏ qua.
+- **`conf`** thấp hơn `APP_IOMT_MIN_CONFIDENCE` (mặc định 0 = giữ hết) thì bỏ HR và SpO₂ của dòng đó, vẫn giữ nhiệt độ.
+- **`flags`** không được lưu.
+- **Giới hạn và lỗi:** mỗi lần gửi tối đa 500 dòng. Log sai định dạng bị từ chối toàn bộ với mã 400 kèm số dòng lỗi; qua MQTT thì nhận ack `FAILED`.
+
+Kết quả trả về giống mục trên.
+
+### Đọc lại số đo (phía phòng khám)
+`GET /devices/{id}/readings?limit=50` trả về các số đo mới nhất của một thiết bị, mới nhất trước, tối đa 200 dòng. Cần quyền `devices:read` và `vital_signs:read`. Trang thiết bị trên web có bảng "Số đo gần đây" dùng API này, tự làm mới mỗi 5 giây.
+
 ### Đồng bộ offline
 - App lưu bản ghi vào hàng đợi cục bộ. Khi có mạng, gửi theo lô và đặt `pendingOnDevice` bằng số bản ghi còn lại.
 - Sau mỗi lần gửi, xoá khỏi hàng đợi mọi bản ghi có `outcome` khác `REJECTED`. Bản ghi `REJECTED` đã được server giữ lại, nên app cũng không cần gửi lại.
@@ -164,6 +187,8 @@ node tools/device-simulator.mjs --code VC-BAND-01 --token <secret> --csv log.csv
 - **Thời gian đo:** không có `--shift now` thì mỗi dòng giữ nguyên thời gian gốc. Vòng tay phải được giao cho bệnh nhân trước dòng đầu tiên của log, nếu không các dòng sẽ bị từ chối.
 - **Giá trị bằng 0** được gửi là trống.
 - **`--min-conf`:** dòng có độ tin cậy dưới ngưỡng này bị bỏ HR và SpO₂, nhưng vẫn giữ nhiệt độ.
+- **`--raw`:** gửi nguyên văn log (text/csv qua REST, hoặc payload MQTT) để server tự đọc, đúng như vòng tay thật.
+- **`--shift N`:** dời log thêm N giây. Dùng cùng một N thì log gửi lại y hệt, server nhận ra trùng; `--shift now` in ra N tương ứng.
 
 **Trên web**
 - ADMIN vào trang thiết bị → "Giả lập dữ liệu".

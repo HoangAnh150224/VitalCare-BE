@@ -39,6 +39,8 @@ public class MqttBridge implements MqttCallbackExtended {
     private final VitalIngestion ingestion;
     private final ObjectMapper json;
     private final jakarta.validation.Validator validator;
+    @org.springframework.beans.factory.annotation.Value("${app.iomt.min-confidence:0}")
+    private int minConfidence;
     private volatile MqttClient client;
     private volatile boolean stopping;
 
@@ -124,7 +126,10 @@ public class MqttBridge implements MqttCallbackExtended {
         String body = new String(message.getPayload(), StandardCharsets.UTF_8);
         try {
             if ("vitals".equals(parts[3])) {
-                DeviceUpload upload = json.readValue(body, DeviceUpload.class);
+                // The band's own #v2 log as it keeps it, or the JSON upload.
+                DeviceUpload upload = BandLog.looksLike(body)
+                        ? BandLog.parse(code, body, minConfidence)
+                        : json.readValue(body, DeviceUpload.class);
                 // The same limits REST's @Valid applies (at most 500 readings, field lengths).
                 var violations = validator.validate(upload);
                 if (!violations.isEmpty()) {

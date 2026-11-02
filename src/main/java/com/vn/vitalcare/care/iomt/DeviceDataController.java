@@ -26,15 +26,19 @@ public class DeviceDataController {
     private final VitalIngestion ingestion;
     private final DeviceTokens tokens;
     private final MqttProperties mqtt;
+    private final int minConfidence;
 
-    public DeviceDataController(VitalIngestion ingestion, DeviceTokens tokens, MqttProperties mqtt) {
+    public DeviceDataController(VitalIngestion ingestion, DeviceTokens tokens, MqttProperties mqtt,
+                                @org.springframework.beans.factory.annotation.Value("${app.iomt.min-confidence:0}")
+                                int minConfidence) {
         this.ingestion = ingestion;
         this.tokens = tokens;
         this.mqtt = mqtt;
+        this.minConfidence = minConfidence;
     }
 
     /** A device (or a gateway) uploading straight to the server. 401 for a wrong secret. */
-    @PostMapping("/device_data/batch")
+    @PostMapping(value = "/device_data/batch", consumes = "application/json")
     public ResponseEntity<?> batch(@RequestHeader(name = "X-Device-Code", required = false) String code,
                                    @RequestHeader(name = "X-Device-Token", required = false) String token,
                                    @Valid @RequestBody DeviceUpload upload) {
@@ -43,6 +47,18 @@ public class DeviceDataController {
                     .body(Map.of("message", "The device code or token is not valid"));
         }
         return ResponseEntity.ok(ingestion.ingest(code, upload, "REST"));
+    }
+
+    /** The same, with the band's own log as it keeps it ({@link BandLog}, {@code text/csv}). */
+    @PostMapping(value = "/device_data/batch", consumes = {"text/csv", "text/plain"})
+    public ResponseEntity<?> bandLog(@RequestHeader(name = "X-Device-Code", required = false) String code,
+                                     @RequestHeader(name = "X-Device-Token", required = false) String token,
+                                     @RequestBody String log) {
+        if (!tokens.verify(code, token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "The device code or token is not valid"));
+        }
+        return ResponseEntity.ok(ingestion.ingest(code, BandLog.parse(code, log, minConfidence), "REST"));
     }
 
     /** EMQX HTTP authentication: a device by its code and secret, the server's own bridge by its account. */

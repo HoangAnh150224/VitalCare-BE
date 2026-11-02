@@ -6,7 +6,8 @@
 //        [--count 5] [--every 2] [--scenario normal|low_spo2|high_heart_rate|fever|sensor_fault]
 //        [--offline 3]   hold the first N readings back and send them together, like a phone back online
 //        [--repeat]      send the last batch a second time, to see duplicates refused
-//        [--csv file.csv [--shift now] [--batch 20] [--min-conf 80]]  replay a band's "#v2" log (see replayCsv)
+//        [--csv file.csv [--shift now] [--batch 20] [--min-conf 80] [--raw]]  replay a band's "#v2" log (see replayCsv);
+//                        --raw sends the log text itself (text/csv, or the MQTT payload) for the server to read
 //
 // The secret comes from the device's page ("Cấp mã bí mật") or POST /api/devices/{id}/token.
 // MQTT needs the "mqtt" package: npm i mqtt.
@@ -59,7 +60,9 @@ if (via === "mqtt") {
   send = (upload) =>
     new Promise((resolve, reject) => {
       acks.push(resolve);
-      client.publish(`vitalcare/devices/${code}/vitals`, JSON.stringify(upload), { qos: 1 }, (err) => err && reject(err));
+      // An upload object goes as JSON; a band log (--raw) as the text it is.
+      const payload = typeof upload === "string" ? upload : JSON.stringify(upload);
+      client.publish(`vitalcare/devices/${code}/vitals`, payload, { qos: 1 }, (err) => err && reject(err));
       setTimeout(() => reject(new Error("no ack in 10 s")), 10_000);
     });
   close = () => client.endAsync();
@@ -67,8 +70,12 @@ if (via === "mqtt") {
   send = async (upload) => {
     const r = await fetch(`${api}/device_data/batch`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Device-Code": code, "X-Device-Token": token },
-      body: JSON.stringify(upload),
+      headers: {
+        "Content-Type": typeof upload === "string" ? "text/csv" : "application/json",
+        "X-Device-Code": code,
+        "X-Device-Token": token,
+      },
+      body: typeof upload === "string" ? upload : JSON.stringify(upload),
     });
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(`${r.status} ${body.message ?? ""}`);
@@ -91,7 +98,7 @@ await close();
  *   conf      confidence, %
  *   flags     the band's status bits, printed but not sent (32: no SpO₂; 36: no HR nor SpO₂)
  * Options: --shift now   move the series so its last line is now (keeps the spacing), for a band
- *                        handed over today; without it the lines keep their own time
+ *                        handed over today; --shift N moves it N seconds; without it the lines keep their time
  *          --batch N     lines per upload (default 20); the rest are reported as pendingOnDevice
  *          --min-conf N  below this confidence, HR and SpO₂ are dropped (temperature kept)
  * Each line's id is "<code>-<ts>", so replaying the same file again stores nothing twice.
@@ -109,7 +116,10 @@ async function replayCsv(path) {
   const [TS, T100, HR, SPO2, CONF, FLAGS] = ["ts", "t100", "hr", "spo2", "conf", "flags"].map(col);
   const rows = lines.slice(2).map((l) => l.split(",").map(Number));
   const minConf = Number(args["min-conf"] ?? 0);
-  const shiftMs = args.shift === "now" ? Date.now() - rows.at(-1)[TS] * 1000 : 0;
+  // "now": the last line lands now; a number: that many seconds later — the same number twice is the
+  // same log resent, which the server recognises (its ids come from ts).
+  const shiftMs = args.shift === "now" ? Date.now() - rows.at(-1)[TS] * 1000 : Number(args.shift ?? 0) * 1000;
+  if (args.shift === "now") console.log(`shift: ${Math.round(shiftMs / 1000)} s (pass --shift ${Math.round(shiftMs / 1000)} to resend this same log)`);
   const value = (v) => (v > 0 ? v : null);
 
   const readings = [];
@@ -133,6 +143,23 @@ async function replayCsv(path) {
     readings.push(r);
   }
   const size = Math.max(1, Number(args.batch ?? 20));
+  // --raw: the server reads the log itself — each batch is "#v2", the header and its lines, as a band
+  // would send it (with --shift now, the ts column moved like the readings above).
+  if (args.raw) {
+    const shiftS = Math.round(shiftMs / 1000);
+    const data = lines.slice(2).map((l) => {
+      const f = l.split(",");
+      f[TS] = String(Number(f[TS]) + shiftS);
+      return f.join(",");
+    });
+    for (let i = 0; i < data.length; i += size) {
+      const result = await send(["#v2", lines[1], ...data.slice(i, i + size)].join(String.fromCharCode(10)));
+      console.log(`raw batch ${i / size + 1} (${Math.min(size, data.length - i)} lines) ${via.toUpperCase()} → ${result.status}: ${result.accepted} kept, ${result.duplicates} repeats, ${result.invalid} invalid, ${result.rejected} refused`);
+      for (const reason of new Set((result.records ?? []).filter((x) => x.reason).map((x) => `${x.outcome}: ${x.reason}`))) console.log(`  ${reason}`);
+      if (i + size < data.length) await new Promise((r) => setTimeout(r, every * 1000));
+    }
+    return;
+  }
   const startedAt = readings[0]?.measuredAt;
   let sent = 0;
   let lastUpload;
