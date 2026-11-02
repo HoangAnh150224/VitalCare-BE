@@ -37,6 +37,15 @@ public interface DeviceAssignmentRepository extends JpaRepository<DeviceAssignme
 
     boolean existsByDeviceIdAndUnassignedAtIsNullAndDeletedAtIsNull(Long deviceId);
 
+    /** Every device worn now, with its wearer — the vital-sign overview, narrowed to the caller's patients after. */
+    @EntityGraph(attributePaths = {"device", "customer"})
+    @org.springframework.data.jpa.repository.Query("select a from DeviceAssignment a where a.unassignedAt is null"
+            + " and a.deletedAt is null and (:clinicId is null or a.device.clinicId = :clinicId)"
+            + " order by a.assignedAt desc")
+    List<DeviceAssignment> findOpenWithPatients(
+            @org.springframework.data.repository.query.Param("clinicId") java.util.UUID clinicId,
+            org.springframework.data.domain.Pageable page);
+
     /** The devices a set of profiles wears now, with who wears each — the patient app's device list. */
     @EntityGraph(attributePaths = {"device", "customer"})
     List<DeviceAssignment> findWornByCustomerIdInAndUnassignedAtIsNullAndDeletedAtIsNull(Collection<Long> customerIds);

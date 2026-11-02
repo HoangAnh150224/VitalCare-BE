@@ -4,6 +4,7 @@ import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.ClinicalEncounter;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.CustomerStatus;
+import com.vn.vitalcare.entity.DeviceAssignment;
 import com.vn.vitalcare.entity.MonitoringAssignment;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
@@ -93,7 +94,15 @@ public final class CustomerSpecifications {
                     cb.equal(encounter.get("clinicId"), clinicId),
                     cb.isNull(encounter.get("deletedAt")));
 
-            return cb.or(cb.exists(booked), cb.exists(followed), cb.exists(seen));
+            // Wearing (or having worn) one of its monitoring devices: their readings are the clinic's.
+            Subquery<Long> monitored = query.subquery(Long.class);
+            Root<DeviceAssignment> worn = monitored.from(DeviceAssignment.class);
+            monitored.select(worn.get("id")).where(
+                    cb.equal(worn.get("customer"), root),
+                    cb.equal(worn.get("device").get("clinicId"), clinicId),
+                    cb.isNull(worn.get("deletedAt")));
+
+            return cb.or(cb.exists(booked), cb.exists(followed), cb.exists(seen), cb.exists(monitored));
         };
     }
 
@@ -122,7 +131,14 @@ public final class CustomerSpecifications {
             followed.select(assignment.get("id")).where(
                     cb.equal(assignment.get("customer"), root),
                     cb.isNull(assignment.get("deletedAt")));
-            return cb.and(cb.not(cb.exists(any)), cb.not(cb.exists(anyVisit)), cb.not(cb.exists(followed)));
+            // Handed a device somewhere: their vital signs are health data too.
+            Subquery<Long> anyDevice = query.subquery(Long.class);
+            Root<DeviceAssignment> worn = anyDevice.from(DeviceAssignment.class);
+            anyDevice.select(worn.get("id")).where(
+                    cb.equal(worn.get("customer"), root),
+                    cb.isNull(worn.get("deletedAt")));
+            return cb.and(cb.not(cb.exists(any)), cb.not(cb.exists(anyVisit)), cb.not(cb.exists(followed)),
+                    cb.not(cb.exists(anyDevice)));
         };
         return ofClinic(clinicId).or(unbooked);
     }

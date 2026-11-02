@@ -70,6 +70,7 @@ public final class Permissions {
     public static final String SYNC_FAILURES_WRITE = "sync_failures:write";
     public static final String VITAL_SIGNS_READ = "vital_signs:read";
     public static final String MY_DEVICES_READ = "my_devices:read";
+    public static final String MY_VITAL_SIGNS_READ = "my_vital_signs:read";
     public static final String MY_DEVICES_WRITE = "my_devices:write";
     public static final String CUSTOMERS_ASSIGN = "customers:assign";
     // SRS 3.1.3: "Assign Patient to Healthcare Staff" is the clinic administrator's alone;
