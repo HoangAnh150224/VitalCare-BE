@@ -49,4 +49,18 @@ public class RegistrationServiceImpl implements RegistrationService {
         customerService.createNeutral(user);
         return authService.signInVerified(user);
     }
+
+    @Override
+    @Transactional
+    public com.vn.vitalcare.entity.Customer registerAtDesk(String fullName, String phone,
+                                                          java.time.LocalDate dateOfBirth, String gender) {
+        byte[] secret = new byte[24];
+        new java.security.SecureRandom().nextBytes(secret);
+        String unknownPassword = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
+        User user = userService.createSelfRegistered(phone, null, unknownPassword, fullName.trim(), CUSTOMER_ROLE);
+        com.vn.vitalcare.entity.Customer customer = customerService.createNeutral(user);
+        customer.setDateOfBirth(dateOfBirth);
+        customer.setGender(gender);
+        return customer;
+    }
 }

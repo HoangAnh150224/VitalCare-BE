@@ -5,12 +5,12 @@ import com.vn.vitalcare.care.encounter.dto.VisitState;
 import com.vn.vitalcare.care.encounter.dto.ReferRequest;
 import com.vn.vitalcare.care.appointment.service.VisitReturns;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.care.billing.invoice.Invoices;
 import java.util.stream.Stream;
 import java.util.Objects;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.entity.VisitVitals;
-import com.vn.vitalcare.care.billing.invoice.Invoices;
 import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
 import com.vn.vitalcare.entity.ServiceOrder;
 import com.vn.vitalcare.care.customer.service.CustomerService;
@@ -56,9 +56,9 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
     private final CustomerService customerService;
     private final EmployeeService employeeService;
     private final AppointmentService appointmentService;
+    private final Invoices invoices;
     // Concluding a visit waits for the results it ordered, and bills it.
     private final ServiceOrderRepository serviceOrders;
-    private final Invoices invoices;
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
     private final VisitReturns visitReturns;
@@ -68,16 +68,16 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
                                         EmployeeService employeeService,
                                         AppointmentService appointmentService,
                                         ServiceOrderRepository serviceOrders,
-                                        Invoices invoices,
                                         RowLevelSecurity rowLevel,
                                         Clock clock,
-                                        VisitReturns visitReturns) {
+                                        VisitReturns visitReturns,
+                                        Invoices invoices) {
+        this.invoices = invoices;
         this.repository = repository;
         this.customerService = customerService;
         this.employeeService = employeeService;
         this.appointmentService = appointmentService;
         this.serviceOrders = serviceOrders;
-        this.invoices = invoices;
         this.rowLevel = rowLevel;
         this.clock = clock;
         this.visitReturns = visitReturns;
@@ -179,9 +179,9 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (encounter.getAppointment() != null) {
             appointmentService.completeForEncounter(encounter.getAppointment().getId());
         }
+        // A visit begun before bills came first is billed at its end, as it used to be.
+        invoices.billLegacyVisit(encounter);
         ClinicalEncounter saved = repository.persist(encounter);
-        // FE-23: one bill for the visit, the examination and its services.
-        invoices.issueFor(saved);
         return saved;
     }
 
@@ -204,6 +204,10 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
                 && appointment.getStatus() != AppointmentStatus.IN_EXAM) {
             throw new FieldValidationException("appointmentId", "The patient has not checked in for that appointment");
+        }
+        // BF-02: seen once the examination fee is paid, as the queue would have it.
+        if (appointment.getPaidAt() == null) {
+            throw new FieldValidationException("appointmentId", "The examination fee for that appointment is not paid yet");
         }
         return appointment;
     }

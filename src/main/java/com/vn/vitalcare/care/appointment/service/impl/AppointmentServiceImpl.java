@@ -141,6 +141,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     public Integer queueAhead(Appointment appointment) {
         if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
+                || appointment.getPaidAt() == null
                 || !appointment.getAppointmentDate().equals(today())) {
             return null;
         }
@@ -281,12 +282,39 @@ public class AppointmentServiceImpl implements AppointmentService {
         // The patient is here already: checked in, and first in line, as somebody who has waited once.
         referral.checkIn(CurrentUser.id().orElse(null), now);
         referral.putFirst(now);
+        // The examination fee was paid on the visit that sent the patient here; this one carries none.
+        referral.markPaid(now);
         Appointment saved = repository.persist(referral);
         if (origin.getStatus() == AppointmentStatus.IN_EXAM) {
             sendAway(origin);
         }
         events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), saved.getEmployee().getId()));
         return saved;
+    }
+
+    @Override
+    @Transactional
+    public void markExamPaid(Long appointmentId, OffsetDateTime when) {
+        repository.lockById(appointmentId).ifPresent(appointment -> {
+            boolean wasUnpaid = appointment.getPaidAt() == null;
+            appointment.markPaid(when);
+            repository.persist(appointment);
+            // Already at the desk: paying is what puts the patient in the line now.
+            if (wasUnpaid && appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
+                events.publishEvent(new ExamRoomEvents.QueueJoined(appointment.getClinicId(),
+                        appointment.getEmployee().getId()));
+            }
+        });
+    }
+
+    @Override
+    @Transactional
+    public Appointment walkIn(StaffBookingRequest request) {
+        if (!request.booking().appointmentDate().equals(today())) {
+            throw new FieldValidationException("appointmentDate", "A walk-in is registered for today");
+        }
+        Appointment booked = bookFor(request);
+        return checkIn(booked.getId());
     }
 
     @Override
@@ -308,15 +336,20 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public Appointment markNoShow(Long id) {
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+        // Also somebody checked in who left without paying: they never joined the line (BF-02).
+        boolean leftUnpaid = appointment.getStatus() == AppointmentStatus.CHECKED_IN && appointment.getPaidAt() == null;
+        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !leftUnpaid) {
             throw new ConflictException("Only a registered appointment can be marked as a no-show");
         }
+        events.publishEvent(new VisitEvents.Cancelling(appointment.getId()));
         if (appointment.getAppointmentDate().isAfter(today())) {
             throw new ConflictException("That appointment's day has not come yet");
         }
         appointment.markNoShow();
         rowLevel.checkWritable(appointment);
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.Cancelled(saved.getId()));
+        return saved;
     }
 
     @Override
@@ -334,11 +367,14 @@ public class AppointmentServiceImpl implements AppointmentService {
     /** @param byStaff whether the desk cancels it, and so the write policy applies; see {@link #book}. */
     private Appointment cancel(Appointment appointment, String reason, boolean byStaff) {
         requireChangeable(appointment, "cancelled");
+        events.publishEvent(new VisitEvents.Cancelling(appointment.getId()));
         appointment.cancel(CurrentUser.id().orElse(null), OffsetDateTime.now(clock), reason);
         if (byStaff) {
             rowLevel.checkWritable(appointment);
         }
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.Cancelled(saved.getId()));
+        return saved;
     }
 
     @Override
@@ -374,7 +410,9 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (byStaff) {
             rowLevel.checkWritable(appointment);
         }
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.Rescheduled(saved.getId()));
+        return saved;
     }
 
     /**
@@ -423,6 +461,8 @@ public class AppointmentServiceImpl implements AppointmentService {
             repository.flush();
             rowLevel.checkWritable(saved);
         }
+        // Heard inside this transaction: the examination bill is issued with the registration.
+        events.publishEvent(new VisitEvents.Registered(saved.getId()));
         return saved;
     }
 

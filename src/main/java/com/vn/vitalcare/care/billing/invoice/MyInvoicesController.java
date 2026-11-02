@@ -26,4 +26,12 @@ public class MyInvoicesController {
     public List<InvoiceResponse> list() {
         return service.ownAll();
     }
+
+    /** Starts paying one of the caller's own bills through VNPay — a service's as well as a visit's. */
+    @org.springframework.web.bind.annotation.PostMapping("/{invoiceId}/vnpay")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
+    public java.util.Map<String, String> payOnline(@org.springframework.web.bind.annotation.PathVariable Long invoiceId,
+                                                   jakarta.servlet.http.HttpServletRequest request) {
+        return java.util.Map.of("url", service.startVnpayForInvoice(invoiceId, MyInvoiceController.clientIp(request)));
+    }
 }

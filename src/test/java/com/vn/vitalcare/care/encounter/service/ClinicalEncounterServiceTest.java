@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.ClinicRowLevel;
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
-import com.vn.vitalcare.care.billing.invoice.Invoices;
 import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.encounter.dto.EncounterRequest;
@@ -53,7 +52,6 @@ class ClinicalEncounterServiceTest {
 
     private ClinicalEncounterRepository repository;
     private ServiceOrderRepository serviceOrders;
-    private Invoices invoices;
     private ClinicalEncounterService service;
     private Employee doctor;
     private Customer patient;
@@ -77,11 +75,11 @@ class ClinicalEncounterServiceTest {
         when(customers.get(7L)).thenReturn(patient);
 
         serviceOrders = mock(ServiceOrderRepository.class);
-        invoices = mock(Invoices.class);
         signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE, Permissions.CLINICAL_ENCOUNTERS_CONCLUDE);
         service = new ClinicalEncounterServiceImpl(repository, customers, employees, mock(AppointmentService.class),
-                serviceOrders, invoices, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC),
-                mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class));
+                serviceOrders, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC),
+                mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class),
+                mock(com.vn.vitalcare.care.billing.invoice.Invoices.class));
     }
 
     @AfterEach
@@ -142,12 +140,11 @@ class ClinicalEncounterServiceTest {
         assertEquals(EncounterStatus.COMPLETED, service.complete(1L).getStatus());
         assertEquals(NOW, encounter.getEndedAt().toInstant());
         assertEquals(doctor, encounter.getEmployee(), "the concluding doctor is the visit's clinician");
-        verify(invoices).issueFor(encounter);
         assertThrows(ConflictException.class, () -> service.complete(1L));
     }
 
     @Test
-    @DisplayName("FE-22: an encounter with an ordered service not yet reviewed cannot be concluded, nor billed")
+    @DisplayName("FE-22: an encounter with an ordered service not yet reviewed cannot be concluded")
     @SuppressWarnings("unchecked")
     void completeWaitsForResults() {
         ClinicalEncounter encounter = new ClinicalEncounter();
@@ -158,7 +155,6 @@ class ClinicalEncounterServiceTest {
 
         assertThrows(ConflictException.class, () -> service.complete(1L));
         assertEquals(EncounterStatus.IN_PROGRESS, encounter.getStatus());
-        verify(invoices, never()).issueFor(any());
     }
 
     @Test
@@ -171,7 +167,6 @@ class ClinicalEncounterServiceTest {
 
         assertThrows(ConflictException.class, () -> service.complete(1L));
         assertEquals(EncounterStatus.IN_PROGRESS, encounter.getStatus());
-        verify(invoices, never()).issueFor(any());
     }
 
     @Test

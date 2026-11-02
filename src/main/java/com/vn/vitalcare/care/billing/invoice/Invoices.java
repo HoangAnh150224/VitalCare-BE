@@ -1,6 +1,8 @@
 package com.vn.vitalcare.care.billing.invoice;
 
 import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.care.appointment.service.VisitEvents;
+import com.vn.vitalcare.care.examroom.service.ExamRoomEvents;
 import com.vn.vitalcare.care.billing.Vnd;
 import com.vn.vitalcare.care.billing.catalog.MedicalServiceCatalog;
 import com.vn.vitalcare.care.billing.vnpay.VnpayClient;
@@ -13,6 +15,7 @@ import com.vn.vitalcare.entity.ClinicalEncounter;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.Invoice;
 import com.vn.vitalcare.entity.InvoiceItem;
+import com.vn.vitalcare.entity.InvoiceKind;
 import com.vn.vitalcare.entity.InvoiceStatus;
 import com.vn.vitalcare.entity.MedicalService;
 import com.vn.vitalcare.entity.Payment;
@@ -46,6 +49,8 @@ import java.util.TreeMap;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -53,8 +58,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Bills and their payments (Report 1 FE-23): one bill per concluded
- * encounter, paid once — at the counter, or online through VNPay — and the
+ * Bills and their payments (Report 1 FE-23): a visit's examination bill,
+ * issued when it is registered and paid before it queues (BF-02), and one bill
+ * per ordered service, paid before the service is done (BF-03). Each is paid
+ * once — at the counter, by transfer, or online through VNPay — and the
  * clinic's revenue over a period.
  *
  * <p>Responses are built here, inside the transaction, because a bill's lines
@@ -85,6 +92,7 @@ public class Invoices {
     private final VnpayClient vnpay;
     private final RowLevelSecurity rowLevel;
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
@@ -99,6 +107,7 @@ public class Invoices {
                     VnpayClient vnpay,
                     RowLevelSecurity rowLevel,
                     EntityManager entityManager,
+                    ApplicationEventPublisher events,
                     Clock clock) {
         this.invoices = invoices;
         this.payments = payments;
@@ -111,45 +120,185 @@ public class Invoices {
         this.vnpay = vnpay;
         this.rowLevel = rowLevel;
         this.entityManager = entityManager;
+        this.events = events;
         this.clock = clock;
     }
 
     // --- issuing ------------------------------------------------------------------
 
+    /** BF-02: a visit just registered is billed its examination fee, to be paid before it queues. */
+    @EventListener
+    @Transactional
+    public void onRegistered(VisitEvents.Registered event) {
+        Appointment appointment = entityManager.find(Appointment.class, event.appointmentId());
+        if (appointment != null) {
+            issueExam(appointment);
+        }
+    }
+
     /**
-     * The bill for an encounter being concluded: the examination fee, then
-     * every service ordered in it that was not cancelled, at the price it was
-     * ordered at. Called by the encounter's completion, in its transaction;
-     * an encounter already billed keeps its bill.
+     * About to cancel a visit: its examination bill is locked first, so the
+     * cancellation takes the bill then the visit — the same order as a payment
+     * settling it — and the two wait for each other instead of deadlocking.
+     */
+    @EventListener
+    @Transactional
+    public void onCancelling(VisitEvents.Cancelling event) {
+        invoices.findExamOf(event.appointmentId()).ifPresent(found -> lock(found.getId()));
+    }
+
+    /** A visit called off before it was seen: its examination bill too, unless already paid. */
+    @EventListener
+    @Transactional
+    public void onCancelled(VisitEvents.Cancelled event) {
+        invoices.findExamOf(event.appointmentId()).ifPresent(found -> {
+            Invoice invoice = lock(found.getId());
+            if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                invoice.cancel();
+                invoices.persist(invoice);
+            } else if (invoice.getStatus() == InvoiceStatus.PAID) {
+                log.warn("Visit {} was cancelled after its examination bill {} was paid: refund needed",
+                        event.appointmentId(), invoice.getInvoiceNumber());
+            }
+        });
+    }
+
+    /** A visit moved to another doctor, maybe of another clinic: an unpaid bill moves with it. */
+    @EventListener
+    @Transactional
+    public void onRescheduled(VisitEvents.Rescheduled event) {
+        invoices.findExamOf(event.appointmentId()).ifPresent(found -> {
+            Invoice invoice = lock(found.getId());
+            Appointment appointment = invoice.getAppointment();
+            if (invoice.getStatus() == InvoiceStatus.UNPAID && appointment != null
+                    && !appointment.getClinicId().equals(invoice.getClinicId())) {
+                invoice.setClinic(appointment.getClinic());
+                invoices.persist(invoice);
+            }
+        });
+    }
+
+    /**
+     * Bills an encounter concluded under the rule before bills came first: a
+     * visit already past the desk when that changed has no examination bill,
+     * and its services none of their own. Issued now, as the visit used to be
+     * billed at its end; a visit billed the new way gets nothing more. An
+     * encounter with no registered visit is billed its examination here too.
      */
     @Transactional
-    public Invoice issueFor(ClinicalEncounter encounter) {
-        var existing = invoices.findByEncounter(encounter.getId());
+    public void billLegacyVisit(ClinicalEncounter encounter) {
+        Appointment appointment = encounter.getAppointment();
+        if (appointment != null && appointment.getReferredFrom() != null) {
+            return;
+        }
+        boolean hasExam = appointment != null
+                ? invoices.findExamOf(appointment.getId()).isPresent()
+                : invoices.findAllOfEncounter(encounter.getId()).stream().anyMatch(i -> i.getKind() == InvoiceKind.EXAM);
+        if (!hasExam) {
+            MedicalService consultation = catalog.consultation();
+            Invoice invoice = newInvoice(InvoiceKind.EXAM, encounter.getCustomer(), appointment, encounter.getClinic());
+            invoice.setEncounter(encounter);
+            invoice.addItem(new InvoiceItem(consultation, consultation.getName(), 1, consultation.getPrice()));
+            number(invoice);
+        }
+        for (ServiceOrder order : orders.findByEncounter(encounter.getId())) {
+            if (order.getStatus() != ServiceOrderStatus.CANCELLED && invoices.findForOrder(order.getId()).isEmpty()
+                    && invoices.findAnyForOrder(order.getId()).isEmpty()) {
+                issueForOrder(order);
+            }
+        }
+    }
+
+    /**
+     * A visit's examination bill: the fee from the catalogue. A visit that has
+     * one keeps it, so registering, the desk and the portal can all ask.
+     */
+    @Transactional
+    public Invoice issueExam(Appointment appointment) {
+        var existing = invoices.findExamOf(appointment.getId());
         if (existing.isPresent()) {
             return existing.get();
         }
-        OffsetDateTime now = OffsetDateTime.now(clock);
         MedicalService consultation = catalog.consultation();
-
-        Invoice invoice = new Invoice();
-        invoice.setCustomer(encounter.getCustomer());
-        invoice.setEncounter(encounter);
-        invoice.setAppointment(encounter.getAppointment());
-        invoice.setClinic(encounter.getClinic());
-        invoice.setIssuedAt(now);
+        Invoice invoice = newInvoice(InvoiceKind.EXAM, appointment.getCustomer(), appointment, appointment.getClinic());
         invoice.addItem(new InvoiceItem(consultation, consultation.getName(), 1, consultation.getPrice()));
-        for (ServiceOrder order : orders.findByEncounter(encounter.getId())) {
-            if (order.getStatus() != ServiceOrderStatus.CANCELLED) {
-                invoice.addItem(new InvoiceItem(order.getService(), order.getService().getName(), 1,
-                        order.getUnitPrice()));
-            }
+        return number(invoice);
+    }
+
+    /** BF-03: an ordered service is billed on its own, at the price it was ordered at, and done once paid. */
+    @Transactional
+    public Invoice issueForOrder(ServiceOrder order) {
+        var existing = invoices.findForOrder(order.getId());
+        if (existing.isPresent()) {
+            return existing.get();
         }
-        // A provisional number the unique column accepts, replaced by the real one once the id exists.
+        ClinicalEncounter encounter = order.getEncounter();
+        Invoice invoice = newInvoice(InvoiceKind.SERVICE, order.getCustomer(), encounter.getAppointment(),
+                encounter.getClinic());
+        invoice.setEncounter(encounter);
+        invoice.setServiceOrder(order);
+        invoice.addItem(new InvoiceItem(order.getService(), order.getService().getName(), 1, order.getUnitPrice()));
+        return number(invoice);
+    }
+
+    /** A cancelled service's bill is called off; one already paid is kept and flagged for a refund. */
+    @Transactional
+    public void cancelForOrder(ServiceOrder order) {
+        invoices.findForOrder(order.getId()).ifPresent(found -> {
+            Invoice invoice = lock(found.getId());
+            if (invoice.getStatus() == InvoiceStatus.UNPAID) {
+                invoice.cancel();
+                invoices.persist(invoice);
+            } else {
+                log.warn("Service order {} was cancelled after its bill {} was paid: refund needed",
+                        order.getId(), invoice.getInvoiceNumber());
+            }
+        });
+    }
+
+    /**
+     * Whether an ordered service may be carried out: its bill is paid. An
+     * order from before services were billed one by one has no bill of its
+     * own; it was paid for with the visit, and may go ahead.
+     */
+    public boolean orderPaid(ServiceOrder order) {
+        return invoices.findForOrder(order.getId())
+                .map(invoice -> invoice.getStatus() == InvoiceStatus.PAID)
+                .orElse(true);
+    }
+
+    private Invoice newInvoice(InvoiceKind kind, Customer customer, Appointment appointment,
+                               com.vn.vitalcare.entity.Clinic clinic) {
+        Invoice invoice = new Invoice();
+        invoice.setKind(kind);
+        invoice.setCustomer(customer);
+        invoice.setAppointment(appointment);
+        invoice.setClinic(clinic);
+        invoice.setIssuedAt(OffsetDateTime.now(clock));
+        return invoice;
+    }
+
+    /** Saved under a provisional number the unique column accepts, then its real one once the id exists. */
+    private Invoice number(Invoice invoice) {
         invoice.setInvoiceNumber("HD-TMP-" + UUID.randomUUID());
         Invoice saved = invoices.persist(invoice);
         invoices.flush();
-        saved.setInvoiceNumber("HD-%s-%05d".formatted(now.atZoneSameInstant(zone()).format(DAY), saved.getId()));
+        saved.setInvoiceNumber("HD-%s-%05d".formatted(
+                saved.getIssuedAt().atZoneSameInstant(zone()).format(DAY), saved.getId()));
         return invoices.persist(saved);
+    }
+
+    /**
+     * What a bill being paid sets off: an examination bill lets its visit
+     * queue (BF-02), ordered by when it was paid; a service's lets the service
+     * be done, and the boards show it.
+     */
+    private void settled(Invoice invoice, OffsetDateTime when) {
+        if (invoice.getKind() == InvoiceKind.EXAM && invoice.getAppointment() != null) {
+            appointmentService.markExamPaid(invoice.getAppointment().getId(), when);
+        } else if (invoice.getKind() == InvoiceKind.SERVICE) {
+            events.publishEvent(new ExamRoomEvents.BoardChanged(invoice.getClinicId()));
+        }
     }
 
     // --- staff --------------------------------------------------------------------
@@ -195,6 +344,7 @@ public class Invoices {
         invoice.markPaid(now);
         rowLevel.checkWritable(invoice);
         invoices.persist(invoice);
+        settled(invoice, now);
         return InvoiceResponse.from(invoice, rowLevel.capabilities(invoice));
     }
 
@@ -240,10 +390,49 @@ public class Invoices {
 
     // --- the customer's own -------------------------------------------------------
 
-    /** The bill for one of the caller's own appointments; none yet answers as not found. */
+    /** The examination bill of one of the caller's own visits. */
+    @Transactional
     public InvoiceResponse ownForAppointment(Long appointmentId) {
-        Invoice invoice = ownInvoice(appointmentId);
+        Invoice invoice = ownExamInvoice(appointmentId);
         return InvoiceResponse.from(invoice, Map.of());
+    }
+
+    /** Every bill of one of the caller's own visits: the examination's, then each ordered service's. */
+    @Transactional
+    public List<InvoiceResponse> ownAllForAppointment(Long appointmentId) {
+        Appointment appointment = ownAppointment(appointmentId);
+        if (owesExamFee(appointment)) {
+            issueExam(appointment);
+        }
+        return invoices.findAllOf(appointment.getId()).stream()
+                .map(invoice -> InvoiceResponse.from(invoice, Map.of()))
+                .toList();
+    }
+
+    /**
+     * The examination bill of a visit, for the desk taking the fee at check-in;
+     * issued now for a visit registered before bills came first.
+     */
+    @Transactional
+    public InvoiceResponse examFor(Long appointmentId) {
+        Appointment appointment = appointmentService.get(appointmentId);
+        Invoice invoice = owesExamFee(appointment) ? issueExam(appointment)
+                : invoices.findExamOf(appointment.getId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Invoice for appointment", appointmentId));
+        return InvoiceResponse.from(invoice, rowLevel.capabilities(invoice));
+    }
+
+    /**
+     * Whether a visit should carry an examination bill it may not have yet:
+     * one still registered or at the desk unpaid (registered before bills came
+     * first). Never a referral — the fee was paid on the visit that sent the
+     * patient — nor a visit already paid, over, cancelled or missed.
+     */
+    private static boolean owesExamFee(Appointment appointment) {
+        var status = appointment.getStatus();
+        return appointment.getReferredFrom() == null && appointment.getPaidAt() == null
+                && (status == com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED
+                    || status == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN);
     }
 
     /**
@@ -268,10 +457,19 @@ public class Invoices {
      */
     @Transactional
     public String startVnpay(Long appointmentId, String clientIp) {
+        return startVnpayFor(ownExamInvoice(appointmentId), clientIp);
+    }
+
+    /** As {@link #startVnpay}, for any one of the caller's own bills: a service's too. */
+    @Transactional
+    public String startVnpayForInvoice(Long invoiceId, String clientIp) {
+        return startVnpayFor(ownInvoiceById(invoiceId), clientIp);
+    }
+
+    private String startVnpayFor(Invoice owned, String clientIp) {
         if (!vnpay.enabled()) {
             throw new ConflictException("Online payment is not set up for this clinic yet");
         }
-        Invoice owned = ownInvoice(appointmentId);
         Invoice invoice = lock(owned.getId());
         if (invoice.getStatus() != InvoiceStatus.UNPAID) {
             throw new ConflictException("This bill is already settled");
@@ -328,6 +526,7 @@ public class Invoices {
         if (locked.getStatus() == InvoiceStatus.UNPAID) {
             locked.markPaid(now);
             invoices.persist(locked);
+            settled(locked, now);
         } else {
             // Money moved for a bill already settled (a second tab, an expired-looking URL paid
             // anyway). Recorded as what happened, and said loudly so somebody refunds it.
@@ -391,6 +590,7 @@ public class Invoices {
         if (invoice.getStatus() == InvoiceStatus.UNPAID) {
             invoice.markPaid(now);
             invoices.persist(invoice);
+            settled(invoice, now);
         } else {
             log.warn("SePay transfer {} paid bill {} that was already {}: refund needed",
                     transfer.id(), invoice.getInvoiceNumber(), invoice.getStatus());
@@ -409,11 +609,26 @@ public class Invoices {
 
     // --- helpers ------------------------------------------------------------------
 
-    private Invoice ownInvoice(Long appointmentId) {
-        Customer customer = customerService.getForCurrentUser();
-        Appointment appointment = appointmentService.getOwn(customer, appointmentId);
-        return invoices.findByAppointment(appointment.getId())
+    private Appointment ownAppointment(Long appointmentId) {
+        return appointmentService.getOwn(customerService.getForCurrentUser(), appointmentId);
+    }
+
+    private Invoice ownExamInvoice(Long appointmentId) {
+        Appointment appointment = ownAppointment(appointmentId);
+        if (owesExamFee(appointment)) {
+            return issueExam(appointment);
+        }
+        return invoices.findExamOf(appointment.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Invoice for appointment", appointmentId));
+    }
+
+    /** One of the caller's bills (their own or a relative's), by id; anybody else's is not found. */
+    private Invoice ownInvoiceById(Long invoiceId) {
+        Customer customer = customerService.getForCurrentUser();
+        return invoices.findOwn(customer.getId()).stream()
+                .filter(invoice -> invoice.getId().equals(invoiceId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Invoice", invoiceId));
     }
 
     /**

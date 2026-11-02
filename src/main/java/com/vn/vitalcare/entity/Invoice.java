@@ -73,6 +73,16 @@ public class Invoice extends BaseEntity {
     @Column(name = "status", length = 32)
     private InvoiceStatus status = InvoiceStatus.UNPAID;
 
+    /** The examination fee of a visit, paid before it queues, or one ordered service, paid before it is done. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", nullable = false, length = 16)
+    private InvoiceKind kind = InvoiceKind.EXAM;
+
+    /** The service a {@link InvoiceKind#SERVICE} bill is for; null on an examination bill. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_order_id")
+    private ServiceOrder serviceOrder;
+
     @Column(name = "issued_at")
     private OffsetDateTime issuedAt;
 
@@ -105,6 +115,27 @@ public class Invoice extends BaseEntity {
     public void markPaid(OffsetDateTime when) {
         this.status = InvoiceStatus.PAID;
         this.paidAt = when;
+    }
+
+    /** Called off: the visit or the service it was for will not happen. Only an unpaid bill; the service checks. */
+    public void cancel() {
+        this.status = InvoiceStatus.CANCELLED;
+    }
+
+    public InvoiceKind getKind() {
+        return kind;
+    }
+
+    public void setKind(InvoiceKind kind) {
+        this.kind = kind;
+    }
+
+    public ServiceOrder getServiceOrder() {
+        return serviceOrder;
+    }
+
+    public void setServiceOrder(ServiceOrder serviceOrder) {
+        this.serviceOrder = serviceOrder;
     }
 
     public Long getId() {

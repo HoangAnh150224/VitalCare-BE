@@ -92,6 +92,7 @@ class AppointmentServiceTest {
     /** The signed-in receptionist's clinic; null for somebody tied to none. */
     private UUID scopedTo;
     private ClinicRowLevel rowLevel;
+    private ApplicationEventPublisher events;
     /** What the doctor has blocked on whichever day is asked about. */
     private final List<DoctorSchedule> blocked = new ArrayList<>();
     /** The doctor's day so far: people still to be seen, and the highest number issued. */
@@ -149,7 +150,7 @@ class AppointmentServiceTest {
                         mock(ExamRoomRepository.class), clock),
                 rowLevel,
                 mock(ExamRoomService.class),
-                mock(ApplicationEventPublisher.class),
+                events = mock(ApplicationEventPublisher.class),
                 clock);
 
         customer = new Customer();
@@ -553,11 +554,38 @@ class AppointmentServiceTest {
         verify(repository, never()).findWaitingAt(any(), any());
     }
 
+    @Test
+    @DisplayName("BF-02: checked in but the examination fee not paid is not in the line yet")
+    void unpaidIsNotInLine() {
+        Appointment arrived = appointmentOn(TODAY);
+        org.springframework.test.util.ReflectionTestUtils.setField(arrived, "id", 6L);
+        arrived.checkIn(null, null);
+        assertEquals(null, service.queueAhead(arrived));
+    }
+
+    @Test
+    @DisplayName("BF-02: paying at the desk after check-in puts the visit in its doctor's line at once")
+    void payingJoinsTheLine() {
+        Appointment arrived = appointmentOn(TODAY);
+        org.springframework.test.util.ReflectionTestUtils.setField(arrived, "id", 6L);
+        arrived.setEmployee(doctor);
+        arrived.checkIn(null, null);
+        when(repository.lockById(6L)).thenReturn(Optional.of(arrived));
+        java.time.OffsetDateTime paid = java.time.OffsetDateTime.parse("2026-10-26T08:00:00+07:00");
+
+        service.markExamPaid(6L, paid);
+        service.markExamPaid(6L, paid.plusHours(1));
+
+        assertEquals(paid, arrived.getPaidAt(), "the first payment counts");
+        verify(events, org.mockito.Mockito.times(1)).publishEvent(any(com.vn.vitalcare.care.examroom.service.ExamRoomEvents.QueueJoined.class));
+    }
+
     private Appointment waiting(long id, Employee with) {
         Appointment appointment = appointmentOn(TODAY);
         org.springframework.test.util.ReflectionTestUtils.setField(appointment, "id", id);
         appointment.setEmployee(with);
         appointment.checkIn(null, null);
+        appointment.markPaid(java.time.OffsetDateTime.parse("2026-10-26T07:00:00+07:00"));
         return appointment;
     }
 

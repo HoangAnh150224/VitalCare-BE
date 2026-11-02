@@ -52,6 +52,16 @@ public class InvoiceController {
         return service.report(from, to);
     }
 
+    /**
+     * A visit's examination bill, for the desk to take the fee at check-in
+     * (BF-02); issued now for a visit registered before bills came first.
+     */
+    @GetMapping("/exam")
+    @PreAuthorize("hasAuthority('" + Permissions.INVOICES_READ + "')")
+    public InvoiceResponse examOf(@RequestParam Long appointmentId) {
+        return service.examFor(appointmentId);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.INVOICES_READ + "')")
     public InvoiceResponse get(@PathVariable Long id) {

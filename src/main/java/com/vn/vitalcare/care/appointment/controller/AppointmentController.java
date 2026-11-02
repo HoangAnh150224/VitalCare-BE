@@ -40,7 +40,11 @@ public class AppointmentController {
     private final AppointmentService service;
     private final RowLevelSecurity rowLevel;
 
-    public AppointmentController(AppointmentService service, RowLevelSecurity rowLevel) {
+    private final com.vn.vitalcare.care.appointment.service.WalkIns walkIns;
+
+    public AppointmentController(AppointmentService service, RowLevelSecurity rowLevel,
+                                 com.vn.vitalcare.care.appointment.service.WalkIns walkIns) {
+        this.walkIns = walkIns;
         this.service = service;
         this.rowLevel = rowLevel;
     }
@@ -82,6 +86,22 @@ public class AppointmentController {
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
     public ResponseEntity<AppointmentResponse> create(@Valid @RequestBody StaffBookingRequest request) {
         Appointment created = service.bookFor(request);
+        return ResponseEntity
+                .created(URI.create("/api/appointments/" + created.getId()))
+                .body(AppointmentResponse.from(created, rowLevel));
+    }
+
+    /**
+     * Somebody who walked in: registered for today with the doctor chosen and
+     * checked in at once, given the next number of the day. The examination
+     * fee is taken next; the visit queues once it is paid (BF-02).
+     */
+    @PostMapping("/walk-in")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "') and hasAuthority('"
+            + Permissions.APPOINTMENTS_CHECK_IN + "')")
+    public ResponseEntity<AppointmentResponse> walkIn(
+            @Valid @RequestBody com.vn.vitalcare.care.appointment.dto.WalkInRequest request) {
+        Appointment created = walkIns.register(request);
         return ResponseEntity
                 .created(URI.create("/api/appointments/" + created.getId()))
                 .body(AppointmentResponse.from(created, rowLevel));

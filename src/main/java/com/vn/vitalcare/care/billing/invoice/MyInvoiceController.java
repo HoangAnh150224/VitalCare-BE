@@ -29,7 +29,10 @@ public class MyInvoiceController {
         this.transfer = transfer;
     }
 
-    /** The bill, and whether it can be paid online here. 404 until the visit is concluded. */
+    /**
+     * The visit's examination bill (BF-02: paid before the visit queues), and
+     * whether it can be paid online here.
+     */
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
     public OwnInvoice get(@PathVariable Long appointmentId) {
@@ -46,6 +49,20 @@ public class MyInvoiceController {
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
     public Map<String, String> payOnline(@PathVariable Long appointmentId, HttpServletRequest request) {
         return Map.of("url", service.startVnpay(appointmentId, clientIp(request)));
+    }
+
+    /** Every bill of the visit — its examination's, then each ordered service's — each with how to pay it. */
+    @GetMapping("/all")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
+    public java.util.List<OwnInvoice> all(@PathVariable Long appointmentId) {
+        return service.ownAllForAppointment(appointmentId).stream().map(this::own).toList();
+    }
+
+    private OwnInvoice own(InvoiceResponse invoice) {
+        BankTransfer.Instructions instructions = transfer.enabled() && invoice.status() == InvoiceStatus.UNPAID
+                ? transfer.instructionsFor(invoice.id(), Vnd.of(invoice.totalAmount()).longValueExact())
+                : null;
+        return new OwnInvoice(invoice, service.onlinePaymentEnabled(), instructions);
     }
 
     public record OwnInvoice(InvoiceResponse invoice, boolean onlinePayment, BankTransfer.Instructions transfer) {

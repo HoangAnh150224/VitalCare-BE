@@ -94,24 +94,35 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
      */
     @Query(nativeQuery = true, value = "select * from appointment "
             + "where employee_id = :employeeId and appointment_date = :date and status = 'CHECKED_IN' "
+            // BF-02: only a visit whose examination fee is paid queues, in the order it was paid.
+            + "and paid_at is not null "
             + "and deleted_at is null and (skipped_at is null or skipped_at <= :recallAfter) "
             // Keep in step with findWaitingAt: the board shows the order this calls in.
-            + "order by returned_at nulls last, skipped_at nulls first, queue_number nulls last, checked_in_at "
+            + "order by returned_at nulls last, skipped_at nulls first, paid_at, queue_number nulls last, checked_in_at "
             + "limit 1 for no key update skip locked")
     Optional<Appointment> lockNextInQueue(@Param("employeeId") Long employeeId, @Param("date") LocalDate date,
                                           @Param("recallAfter") OffsetDateTime recallAfter);
 
     /**
-     * Everyone checked in at a clinic today and not yet called, in the order
-     * they will be called, for the board. Not scoped: the board has already
+     * Everyone checked in and paid at a clinic today and not yet called, in
+     * the order they will be called (BF-02: by when they paid, the smaller
+     * number on a tie), for the board. Not scoped: the board has already
      * checked the caller may see this clinic.
      */
     @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
             + "where a.clinicId = :clinicId and a.appointmentDate = :date "
-            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.deletedAt is null "
-            + "order by e.id, a.returnedAt asc nulls last, a.skippedAt asc nulls first, "
+            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.paidAt is not null "
+            + "and a.deletedAt is null "
+            + "order by e.id, a.returnedAt asc nulls last, a.skippedAt asc nulls first, a.paidAt asc, "
             + "a.queueNumber asc nulls last, a.checkedInAt")
     List<Appointment> findWaitingAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
+
+    /** Checked in today but the examination fee is not paid yet: not in the queue until it is. Not scoped, as findWaitingAt. */
+    @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
+            + "where a.clinicId = :clinicId and a.appointmentDate = :date "
+            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.paidAt is null "
+            + "and a.deletedAt is null order by e.id, a.checkedInAt")
+    List<Appointment> findUnpaidAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 
     /** Everyone out of the room today for ordered services or another doctor, per doctor. Not scoped, as findWaitingAt. */
     @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "

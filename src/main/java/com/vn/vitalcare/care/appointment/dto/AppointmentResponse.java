@@ -43,6 +43,8 @@ public record AppointmentResponse(
         OffsetDateTime cancelledAt,
         /** Why the clinic cancelled it; the customer sees this too. */
         String cancelReason,
+        /** When the examination fee was paid (BF-02); null while it is owed. The queue follows this. */
+        OffsetDateTime paidAt,
         Instant createdAt,
         /**
          * What the caller may do to this row, from the row-level write and
@@ -75,7 +77,8 @@ public record AppointmentResponse(
                 full.id(), full.bookingCode(), full.customer(), full.clinic(), full.doctor(), full.queueNumber(),
                 full.appointmentDate(), full.startTime(),
                 full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
-                full.examRoom(), full.calledAt(), full.cancelledAt(), full.cancelReason(), full.createdAt(), Map.of());
+                full.examRoom(), full.calledAt(), full.cancelledAt(), full.cancelReason(), full.paidAt(),
+                full.createdAt(), Map.of());
     }
 
     /** Without row flags — for a caller with no scope to report against. */
@@ -112,6 +115,7 @@ public record AppointmentResponse(
                 appointment.getCalledAt(),
                 appointment.getCancelledAt(),
                 appointment.getCancelReason(),
+                appointment.getPaidAt(),
                 appointment.getCreatedAt(),
                 rowLevel == null ? Map.of() : rowLevel.capabilities(appointment));
     }

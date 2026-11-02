@@ -22,4 +22,13 @@ public interface RegistrationService {
      * (409).
      */
     TokenResponse register(RegisterRequest request);
+
+    /**
+     * An account and a customer record taken down at the desk for somebody who
+     * walked in, with a password nobody knows: they set their own through
+     * "forgot password" when they want to sign in. A phone number already on
+     * an account is refused (409): the desk picks that customer instead.
+     */
+    com.vn.vitalcare.entity.Customer registerAtDesk(String fullName, String phone, java.time.LocalDate dateOfBirth,
+                                                   String gender);
 }

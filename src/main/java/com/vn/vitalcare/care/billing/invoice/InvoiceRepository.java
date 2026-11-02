@@ -39,12 +39,31 @@ public interface InvoiceRepository extends SecuredRepository<Invoice, Long> {
             + "where (c.id = :ownerId or g.id = :ownerId) and i.deletedAt is null order by i.issuedAt desc, i.id desc")
     List<Invoice> findOwn(@Param("ownerId") Long ownerCustomerId);
 
-    @Query("select i from Invoice i where i.encounter.id = :encounterId and i.deletedAt is null")
-    Optional<Invoice> findByEncounter(@Param("encounterId") Long encounterId);
-
-    @Query("select i from Invoice i where i.appointment.id = :appointmentId and i.deletedAt is null "
+    /** A visit's examination bill, the live one (not cancelled). */
+    @Query("select i from Invoice i where i.appointment.id = :appointmentId "
+            + "and i.kind = com.vn.vitalcare.entity.InvoiceKind.EXAM "
+            + "and i.status <> com.vn.vitalcare.entity.InvoiceStatus.CANCELLED and i.deletedAt is null "
             + "order by i.id desc limit 1")
-    Optional<Invoice> findByAppointment(@Param("appointmentId") Long appointmentId);
+    Optional<Invoice> findExamOf(@Param("appointmentId") Long appointmentId);
+
+    /** Every bill of a visit, the examination's first, then its services' in the order they were ordered. */
+    @EntityGraph(attributePaths = {"customer", "clinic"})
+    @Query("select i from Invoice i where i.appointment.id = :appointmentId and i.deletedAt is null "
+            + "order by i.kind asc, i.id asc")
+    List<Invoice> findAllOf(@Param("appointmentId") Long appointmentId);
+
+    /** An encounter's bills, for one that has no registered visit. */
+    @Query("select i from Invoice i where i.encounter.id = :encounterId and i.deletedAt is null")
+    List<Invoice> findAllOfEncounter(@Param("encounterId") Long encounterId);
+
+    /** An ordered service's bill, cancelled or not: whether it was ever billed on its own. */
+    @Query("select i from Invoice i where i.serviceOrder.id = :orderId and i.deletedAt is null")
+    List<Invoice> findAnyForOrder(@Param("orderId") Long orderId);
+
+    /** An ordered service's bill, the live one. */
+    @Query("select i from Invoice i where i.serviceOrder.id = :orderId "
+            + "and i.status <> com.vn.vitalcare.entity.InvoiceStatus.CANCELLED and i.deletedAt is null")
+    Optional<Invoice> findForOrder(@Param("orderId") Long orderId);
 
     /** The bill, locked: what any change of its status takes first, so it is settled once. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

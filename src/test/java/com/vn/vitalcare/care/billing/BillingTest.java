@@ -23,10 +23,12 @@ import com.vn.vitalcare.care.billing.vnpay.VnpayClient;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.serviceorder.ServiceOrderRepository;
+import com.vn.vitalcare.entity.Appointment;
 import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.entity.ClinicalEncounter;
 import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.Invoice;
+import com.vn.vitalcare.entity.InvoiceKind;
 import com.vn.vitalcare.entity.InvoiceStatus;
 import com.vn.vitalcare.entity.MedicalService;
 import com.vn.vitalcare.entity.Payment;
@@ -75,6 +77,7 @@ class BillingTest {
     private ServiceOrderRepository orders;
     private VnpayClient vnpay;
     private CustomerService customers;
+    private AppointmentService appointments;
     private Invoices service;
     private final Map<String, Payment> byRef = new HashMap<>();
 
@@ -95,7 +98,8 @@ class BillingTest {
         ClinicService clinicService = mock(ClinicService.class);
         when(clinicService.timeZone()).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
 
-        when(invoices.findByEncounter(any())).thenReturn(Optional.empty());
+        when(invoices.findExamOf(any())).thenReturn(Optional.empty());
+        when(invoices.findForOrder(any())).thenReturn(Optional.empty());
         when(invoices.persist(any())).thenAnswer(invocation -> {
             Invoice invoice = invocation.getArgument(0);
             if (invoice.getId() == null) {
@@ -114,30 +118,102 @@ class BillingTest {
         vnpay = new VnpayClient("TESTTMN1", SECRET, "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
                 "http://localhost:8080/api/payments/vnpay/return", clock);
         customers = mock(CustomerService.class);
-        service = new Invoices(invoices, payments, orders, catalog, mock(AppointmentService.class),
+        appointments = mock(AppointmentService.class);
+        service = new Invoices(invoices, payments, orders, catalog, appointments,
                 customers, clinicService, () -> Optional.of(CLINIC), vnpay,
-                new ClinicRowLevel(() -> CLINIC), mock(EntityManager.class), clock);
+                new ClinicRowLevel(() -> CLINIC), mock(EntityManager.class),
+                mock(org.springframework.context.ApplicationEventPublisher.class), clock);
 
         clinic = new Clinic();
         clinic.setClinicId(CLINIC);
     }
 
     @Test
-    @DisplayName("concluding a visit bills the examination and every service not cancelled, at the ordered price")
-    void issueBillsTheVisitAndItsServices() {
+    @DisplayName("BF-02: registering a visit bills its examination fee once, however often it is asked")
+    void examBillOnRegistration() {
+        Appointment visit = appointment();
+        Invoice invoice = service.issueExam(visit);
+
+        assertEquals(1, invoice.getItems().size());
+        assertEquals(0, new BigDecimal("150000").compareTo(invoice.getTotalAmount()));
+        assertEquals(InvoiceKind.EXAM, invoice.getKind());
+        assertEquals("HD-20261026-00042", invoice.getInvoiceNumber());
+        when(invoices.findExamOf(7L)).thenReturn(Optional.of(invoice));
+        assertEquals(invoice, service.issueExam(visit), "a visit keeps the bill it has");
+    }
+
+    @Test
+    @DisplayName("BF-02: paying the examination bill lets the visit queue, from the moment it was paid")
+    @SuppressWarnings("unchecked")
+    void paidExamQueues() {
+        Invoice invoice = issued();
+        when(invoices.findOne(any(Specification.class))).thenReturn(Optional.of(invoice));
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+
+        service.payAtCounter(42L, PaymentMethod.CASH);
+
+        verify(appointments).markExamPaid(7L, java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC));
+    }
+
+    @Test
+    @DisplayName("BF-03: each ordered service has its own bill at the ordered price, and is done only once it is paid")
+    void serviceBilledOnItsOwn() {
         ClinicalEncounter encounter = encounter();
         ServiceOrder blood = order(encounter, service("XN-CTM", ServiceCategory.LAB, 120_000), 100_000);
-        ServiceOrder xray = order(encounter, service("XQ", ServiceCategory.IMAGING, 180_000), 180_000);
-        xray.cancel(null, "không cần nữa");
-        when(orders.findByEncounter(1L)).thenReturn(List.of(blood, xray));
+        ReflectionTestUtils.setField(blood, "id", 9L);
 
-        Invoice invoice = service.issueFor(encounter);
+        Invoice invoice = service.issueForOrder(blood);
 
-        assertEquals(2, invoice.getItems().size(), "the cancelled X-ray is not billed");
-        assertEquals(0, new BigDecimal("250000").compareTo(invoice.getTotalAmount()),
-                "150 000 examination + 100 000 as ordered, not the 120 000 the catalogue says now");
-        assertEquals(InvoiceStatus.UNPAID, invoice.getStatus());
-        assertEquals("HD-20261026-00042", invoice.getInvoiceNumber());
+        assertEquals(InvoiceKind.SERVICE, invoice.getKind());
+        assertEquals(0, new BigDecimal("100000").compareTo(invoice.getTotalAmount()),
+                "the price it was ordered at, not the 120 000 the catalogue says now");
+        when(invoices.findForOrder(9L)).thenReturn(Optional.of(invoice));
+        assertFalse(service.orderPaid(blood));
+        invoice.markPaid(java.time.OffsetDateTime.now());
+        assertTrue(service.orderPaid(blood));
+    }
+
+    @Test
+    @DisplayName("no examination bill is made for a referral, nor for a visit missed or already paid")
+    void noBillWhereNoneIsOwed() {
+        Appointment referral = appointment();
+        referral.setReferredFrom(appointment());
+        when(appointments.get(7L)).thenReturn(referral);
+        assertThrows(com.vn.vitalcare.share.exception.ResourceNotFoundException.class, () -> service.examFor(7L));
+
+        Appointment missed = appointment();
+        missed.markNoShow();
+        when(appointments.get(7L)).thenReturn(missed);
+        assertThrows(com.vn.vitalcare.share.exception.ResourceNotFoundException.class, () -> service.examFor(7L));
+
+        verify(invoices, org.mockito.Mockito.never()).persist(any());
+    }
+
+    @Test
+    @DisplayName("a visit begun before bills came first is billed at its end: the examination and each service")
+    void legacyVisitBilledAtItsEnd() {
+        ClinicalEncounter encounter = encounter();
+        encounter.setAppointment(appointment());
+        ServiceOrder blood = order(encounter, service("XN-CTM", ServiceCategory.LAB, 100_000), 100_000);
+        ReflectionTestUtils.setField(blood, "id", 9L);
+        when(orders.findByEncounter(1L)).thenReturn(List.of(blood));
+        when(invoices.findAnyForOrder(9L)).thenReturn(List.of());
+
+        service.billLegacyVisit(encounter);
+
+        verify(invoices, org.mockito.Mockito.times(4)).persist(any());
+    }
+
+    @Test
+    @DisplayName("a visit cancelled before it was paid calls its examination bill off")
+    void cancelledVisitCancelsTheBill() {
+        Invoice invoice = issued();
+        when(invoices.findExamOf(7L)).thenReturn(Optional.of(invoice));
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+
+        service.onCancelled(new com.vn.vitalcare.care.appointment.service.VisitEvents.Cancelled(7L));
+
+        assertEquals(InvoiceStatus.CANCELLED, invoice.getStatus());
     }
 
     @Test
@@ -185,8 +261,8 @@ class BillingTest {
         Invoice invoice = issued();
         when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
 
-        service.settleTransfer(transferIn(901, 250_000, "VC000042", "VC000042 kham benh"));
-        service.settleTransfer(transferIn(901, 250_000, "VC000042", "VC000042 kham benh"));
+        service.settleTransfer(transferIn(901, 150_000, "VC000042", "VC000042 kham benh"));
+        service.settleTransfer(transferIn(901, 150_000, "VC000042", "VC000042 kham benh"));
 
         assertEquals(InvoiceStatus.PAID, invoice.getStatus());
         assertEquals(1, byRef.size(), "the re-sent webhook adds nothing");
@@ -215,7 +291,7 @@ class BillingTest {
         Invoice invoice = issued();
         when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
 
-        service.settleTransfer(transferIn(903, 250_000, null, "NGUYEN VAN A chuyen tien vc000042"));
+        service.settleTransfer(transferIn(903, 150_000, null, "NGUYEN VAN A chuyen tien vc000042"));
 
         assertEquals(InvoiceStatus.PAID, invoice.getStatus());
     }
@@ -226,9 +302,9 @@ class BillingTest {
         when(invoices.findForUpdate(any())).thenReturn(Optional.empty());
 
         service.settleTransfer(new SepayTransfer(904L, "MBBank", null, null, "VC000042", null, "out",
-                BigDecimal.valueOf(250_000), null));
-        service.settleTransfer(transferIn(905, 250_000, null, "an sang"));
-        service.settleTransfer(transferIn(906, 250_000, "VC999999", null));
+                BigDecimal.valueOf(150_000), null));
+        service.settleTransfer(transferIn(905, 150_000, null, "an sang"));
+        service.settleTransfer(transferIn(906, 150_000, "VC999999", null));
 
         assertTrue(byRef.isEmpty());
     }
@@ -269,9 +345,9 @@ class BillingTest {
     void vnpaySuccessOnce() {
         Invoice invoice = pendingVnpay("42-000001");
 
-        assertEquals(Outcome.PAID, service.settleVnpay(answer("42-000001", "25000000", "00")).outcome());
+        assertEquals(Outcome.PAID, service.settleVnpay(answer("42-000001", "15000000", "00")).outcome());
         assertEquals(InvoiceStatus.PAID, invoice.getStatus());
-        assertEquals(Outcome.ALREADY_PAID, service.settleVnpay(answer("42-000001", "25000000", "00")).outcome());
+        assertEquals(Outcome.ALREADY_PAID, service.settleVnpay(answer("42-000001", "15000000", "00")).outcome());
     }
 
     @Test
@@ -279,11 +355,11 @@ class BillingTest {
     void vnpayRefusals() {
         Invoice invoice = pendingVnpay("42-000002");
 
-        Map<String, String> forged = answer("42-000002", "25000000", "00");
+        Map<String, String> forged = answer("42-000002", "15000000", "00");
         forged.put("vnp_SecureHash", "00" + forged.get("vnp_SecureHash").substring(2));
         assertEquals(Outcome.BAD_SIGNATURE, service.settleVnpay(forged).outcome());
         assertEquals(Outcome.BAD_AMOUNT, service.settleVnpay(answer("42-000002", "100", "00")).outcome());
-        assertEquals(Outcome.FAILED, service.settleVnpay(answer("42-000002", "25000000", "24")).outcome());
+        assertEquals(Outcome.FAILED, service.settleVnpay(answer("42-000002", "15000000", "24")).outcome());
         assertEquals(InvoiceStatus.UNPAID, invoice.getStatus(), "a cancelled payment leaves the bill to pay again");
     }
 
@@ -332,9 +408,15 @@ class BillingTest {
     }
 
     private Invoice issued() {
-        when(orders.findByEncounter(1L)).thenReturn(List.of(order(encounter(),
-                service("XN-CTM", ServiceCategory.LAB, 100_000), 100_000)));
-        return service.issueFor(encounter());
+        return service.issueExam(appointment());
+    }
+
+    private Appointment appointment() {
+        Appointment appointment = new Appointment();
+        ReflectionTestUtils.setField(appointment, "id", 7L);
+        appointment.setClinic(clinic);
+        appointment.setCustomer(new Customer());
+        return appointment;
     }
 
     private ClinicalEncounter encounter() {

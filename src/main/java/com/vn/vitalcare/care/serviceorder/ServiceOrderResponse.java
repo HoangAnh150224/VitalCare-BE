@@ -34,7 +34,9 @@ public record ServiceOrderResponse(
         String cancelReason,
         List<File> files,
         @JsonProperty("_can")
-        Map<String, Boolean> can) {
+        Map<String, Boolean> can,
+        /** Its own bill is paid (BF-03), or it predates services being billed one by one. */
+        boolean paid) {
 
     public record Patient(Long id, String customerCode, String fullName) {
     }
@@ -50,6 +52,11 @@ public record ServiceOrderResponse(
      *              missing from it shows as null
      */
     public static ServiceOrderResponse from(ServiceOrder order, Map<Long, String> names, Map<String, Boolean> can) {
+        return from(order, names, can, true);
+    }
+
+    public static ServiceOrderResponse from(ServiceOrder order, Map<Long, String> names, Map<String, Boolean> can,
+                                            boolean paid) {
         var customer = order.getCustomer();
         var service = order.getService();
         return new ServiceOrderResponse(
@@ -77,6 +84,7 @@ public record ServiceOrderResponse(
                         .map(file -> new File(file.getId(), file.getOriginalName(), file.getContentType(),
                                 file.getSizeBytes(), file.getCreatedAt()))
                         .toList(),
-                can);
+                can,
+                paid);
     }
 }

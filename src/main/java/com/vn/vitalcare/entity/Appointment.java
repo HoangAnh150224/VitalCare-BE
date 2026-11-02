@@ -121,6 +121,14 @@ public class Appointment extends BaseEntity {
     @Column(name = "returned_at")
     private OffsetDateTime returnedAt;
 
+    /**
+     * When its examination fee was paid (BF-02): a visit joins its doctor's
+     * queue only once it is checked in and paid, and the queue is ordered by
+     * this time. Set straight away on a referral, which carries no new fee.
+     */
+    @Column(name = "paid_at")
+    private OffsetDateTime paidAt;
+
     /** The visit whose doctor sent the patient here the same day; null for an ordinary registration. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referred_from_id")
@@ -200,6 +208,17 @@ public class Appointment extends BaseEntity {
 
     public OffsetDateTime getReturnedAt() {
         return returnedAt;
+    }
+
+    public OffsetDateTime getPaidAt() {
+        return paidAt;
+    }
+
+    /** The examination fee is paid; the first payment counts, a later one changes nothing. */
+    public void markPaid(OffsetDateTime when) {
+        if (this.paidAt == null) {
+            this.paidAt = when;
+        }
     }
 
     public Appointment getReferredFrom() {

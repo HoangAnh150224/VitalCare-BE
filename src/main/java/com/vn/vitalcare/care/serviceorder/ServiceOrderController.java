@@ -120,6 +120,6 @@ public class ServiceOrderController {
 
     private List<ServiceOrderResponse> responses(List<ServiceOrder> list) {
         Map<Long, String> names = service.namesFor(list);
-        return list.stream().map(order -> ServiceOrderResponse.from(order, names, service.capabilities(order))).toList();
+        return list.stream().map(order -> ServiceOrderResponse.from(order, names, service.capabilities(order), service.paid(order))).toList();
     }
 }

@@ -199,7 +199,10 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                         queues.getOrDefault(id, List.of()).stream().map(Visit::of).toList(),
                         away.getOrDefault(id, List.of())))
                 .toList();
-        return new RoomBoardResponse(clinic, OffsetDateTime.now(clock), cards, withoutRoom);
+        List<RoomBoardResponse.UnpaidVisit> unpaid = appointments.findUnpaidAt(clinic, now.toLocalDate()).stream()
+                .map(visit -> new RoomBoardResponse.UnpaidVisit(Visit.of(visit), DoctorRef.of(visit.getEmployee())))
+                .toList();
+        return new RoomBoardResponse(clinic, OffsetDateTime.now(clock), cards, withoutRoom, unpaid);
     }
 
     @Override

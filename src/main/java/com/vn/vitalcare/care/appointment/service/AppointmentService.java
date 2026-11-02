@@ -108,6 +108,15 @@ public interface AppointmentService {
      */
     void completeForEncounter(Long appointmentId);
 
+    /**
+     * The visit's examination fee is paid (BF-02): it may now queue, ordered by
+     * {@code when}. A visit already checked in joins its doctor's line at once.
+     */
+    void markExamPaid(Long appointmentId, java.time.OffsetDateTime when);
+
+    /** Somebody walked in: registered for today with the chosen doctor and checked in, in one step. */
+    Appointment walkIn(StaffBookingRequest request);
+
     /** The patient never came. Only from registered, and not before the day itself. */
     Appointment markNoShow(Long id);
 

@@ -12,13 +12,19 @@ import java.util.UUID;
 /**
  * One clinic's floor right now: every room, the doctor sitting in it this
  * session, who is inside and who is waiting for that doctor; and the doctors
- * whose patients are waiting with no room to be called into.
+ * whose patients are waiting with no room to be called into; and those at
+ * the desk whose examination fee is not paid, who queue once it is (BF-02).
  */
 public record RoomBoardResponse(
         UUID clinicId,
         OffsetDateTime at,
         List<RoomCard> rooms,
-        List<DoctorQueue> withoutRoom) {
+        List<DoctorQueue> withoutRoom,
+        List<UnpaidVisit> awaitingPayment) {
+
+    /** Checked in, fee not paid yet: who, and which doctor they will queue for. */
+    public record UnpaidVisit(Visit visit, DoctorRef doctor) {
+    }
 
     public record RoomCard(
             Long id,

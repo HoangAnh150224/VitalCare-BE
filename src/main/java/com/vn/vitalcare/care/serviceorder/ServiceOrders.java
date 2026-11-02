@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.serviceorder;
 
 import com.vn.vitalcare.care.appointment.service.VisitEvents;
 import com.vn.vitalcare.care.billing.catalog.MedicalServiceCatalog;
+import com.vn.vitalcare.care.billing.invoice.Invoices;
 import com.vn.vitalcare.care.examroom.service.ExamRoomEvents;
 import com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository;
 import com.vn.vitalcare.care.staff.service.EmployeeService;
@@ -75,6 +76,7 @@ public class ServiceOrders {
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
     private final ApplicationEventPublisher events;
+    private final Invoices invoices;
 
     public ServiceOrders(ServiceOrderRepository orders,
                          ServiceOrderFileRepository files,
@@ -85,7 +87,8 @@ public class ServiceOrders {
                          FileStorage storage,
                          RowLevelSecurity rowLevel,
                          Clock clock,
-                         ApplicationEventPublisher events) {
+                         ApplicationEventPublisher events,
+                         Invoices invoices) {
         this.orders = orders;
         this.files = files;
         this.encounters = encounters;
@@ -96,6 +99,7 @@ public class ServiceOrders {
         this.rowLevel = rowLevel;
         this.clock = clock;
         this.events = events;
+        this.invoices = invoices;
     }
 
     public Page<ServiceOrder> list(ListParams params) {
@@ -138,6 +142,8 @@ public class ServiceOrders {
         ServiceOrder saved = orders.persist(order);
         orders.flush();
         rowLevel.checkWritable(saved);
+        // BF-03: billed on its own, and done once that bill is paid.
+        invoices.issueForOrder(saved);
         return saved;
     }
 
@@ -147,6 +153,7 @@ public class ServiceOrders {
         if (order.getStatus() != ServiceOrderStatus.ORDERED) {
             throw new ConflictException("Only an order not yet started can be started");
         }
+        requirePaidIfNotStarted(order);
         order.start(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         ServiceOrder saved = orders.persist(order);
         events.publishEvent(new ExamRoomEvents.BoardChanged(saved.getClinicId()));
@@ -160,6 +167,7 @@ public class ServiceOrders {
         if (order.getStatus() == ServiceOrderStatus.REVIEWED || order.getStatus() == ServiceOrderStatus.CANCELLED) {
             throw new ConflictException("This order is closed; its result can no longer change");
         }
+        requirePaidIfNotStarted(order);
         order.setResultText(request.resultText().trim());
         boolean first = order.getStatus() != ServiceOrderStatus.RESULT_READY;
         if (first) {
@@ -178,6 +186,7 @@ public class ServiceOrders {
         if (order.getStatus() == ServiceOrderStatus.REVIEWED || order.getStatus() == ServiceOrderStatus.CANCELLED) {
             throw new ConflictException("This order is closed; files can no longer be added");
         }
+        requirePaidIfNotStarted(order);
         byte[] bytes = readChecked(upload);
         String key = storage.store(new ByteArrayInputStream(bytes));
         String name = safeName(upload.getOriginalFilename());
@@ -218,6 +227,7 @@ public class ServiceOrders {
         }
         order.cancel(OffsetDateTime.now(clock), request.reason().trim());
         ServiceOrder saved = orders.persist(order);
+        invoices.cancelForOrder(saved);
         changed(saved);
         return saved;
     }
@@ -242,6 +252,18 @@ public class ServiceOrders {
             userService.getMany(ids).forEach(user -> names.put(user.getId(), user.getFullName()));
         }
         return names;
+    }
+
+    /** BF-03: nothing is done on an order — started, a result, a file — before its bill is paid. */
+    private void requirePaidIfNotStarted(ServiceOrder order) {
+        if (order.getStatus() == ServiceOrderStatus.ORDERED && !invoices.orderPaid(order)) {
+            throw new ConflictException("This service is not paid yet; it is done once the patient has paid for it");
+        }
+    }
+
+    /** Whether the order's own bill is paid (BF-03): the screens hold "start" back until it is. */
+    public boolean paid(ServiceOrder order) {
+        return invoices.orderPaid(order);
     }
 
     public Map<String, Boolean> capabilities(ServiceOrder order) {

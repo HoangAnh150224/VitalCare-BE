@@ -19,6 +19,10 @@ public record InvoiceResponse(
         Long id,
         String invoiceNumber,
         InvoiceStatus status,
+        /** {@code exam}: a visit's examination fee; {@code service}: one ordered service. */
+        com.vn.vitalcare.entity.InvoiceKind kind,
+        /** The service a {@code service} bill is for. */
+        Long serviceOrderId,
         Patient patient,
         Clinic clinic,
         Long appointmentId,
@@ -54,6 +58,8 @@ public record InvoiceResponse(
                 invoice.getId(),
                 invoice.getInvoiceNumber(),
                 invoice.getStatus(),
+                invoice.getKind(),
+                invoice.getServiceOrder() == null ? null : invoice.getServiceOrder().getId(),
                 new Patient(customer.getId(), customer.getCustomerCode(), customer.getFullName(), customer.getPhone()),
                 clinic == null ? null : new Clinic(clinic.getClinicId(), clinic.getClinicName()),
                 invoice.getAppointment() == null ? null : invoice.getAppointment().getId(),
