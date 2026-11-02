@@ -143,6 +143,28 @@ node tools/device-simulator.mjs --code VC-BAND-01 --token <secret> --via mqtt --
 node tools/device-simulator.mjs --code VC-BAND-01 --token <secret> --offline 3 --repeat
 ```
 
+**Phát lại log của vòng tay (định dạng `#v2`)**
+
+Mỗi dòng của log gồm các cột sau:
+
+| Cột | Ý nghĩa |
+|---|---|
+| `ts` | Unix giây |
+| `t100` | nhiệt độ da × 100 (3279 = 32,79 °C) |
+| `hr`, `spo2` | `0` nghĩa là chưa có giá trị |
+| `conf` | độ tin cậy, % |
+| `flags` | bit trạng thái; script in ra nhưng không gửi |
+
+```
+node tools/device-simulator.mjs --code VC-BAND-01 --token <secret> --csv tools/samples/band-v2.csv --shift now
+node tools/device-simulator.mjs --code VC-BAND-01 --token <secret> --csv log.csv --via mqtt --batch 50 --min-conf 80
+```
+
+- **Mã bản ghi:** mỗi dòng có mã `<deviceCode>-<ts>`, nên phát lại cùng một file sẽ không lưu trùng.
+- **Thời gian đo:** không có `--shift now` thì mỗi dòng giữ nguyên thời gian gốc. Vòng tay phải được giao cho bệnh nhân trước dòng đầu tiên của log, nếu không các dòng sẽ bị từ chối.
+- **Giá trị bằng 0** được gửi là trống.
+- **`--min-conf`:** dòng có độ tin cậy dưới ngưỡng này bị bỏ HR và SpO₂, nhưng vẫn giữ nhiệt độ.
+
 **Trên web**
 - ADMIN vào trang thiết bị → "Giả lập dữ liệu".
 - Hoặc gọi `POST /devices/{id}/simulate` với body `{ "count": 5, "scenario": "LOW_SPO2" }`.
