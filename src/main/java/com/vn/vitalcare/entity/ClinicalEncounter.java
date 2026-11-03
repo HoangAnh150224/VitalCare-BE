@@ -79,6 +79,42 @@ public class ClinicalEncounter extends BaseEntity {
     @Column(name = "follow_up", columnDefinition = "text")
     private String followUp;
 
+    /** BF-07: the doctor's conclusion once the service results are in, and what they told the patient. */
+    @Column(name = "final_conclusion")
+    private String finalConclusion;
+
+    @Column(name = "consultation_notes")
+    private String consultationNotes;
+
+    @Column(name = "consulted_at")
+    private java.time.OffsetDateTime consultedAt;
+
+    @Column(name = "consulted_by_id")
+    private Long consultedById;
+
+    public void consult(String conclusion, String notes, Long by, java.time.OffsetDateTime when) {
+        this.finalConclusion = conclusion;
+        this.consultationNotes = notes;
+        this.consultedById = by;
+        this.consultedAt = when;
+    }
+
+    public String getFinalConclusion() {
+        return finalConclusion;
+    }
+
+    public String getConsultationNotes() {
+        return consultationNotes;
+    }
+
+    public java.time.OffsetDateTime getConsultedAt() {
+        return consultedAt;
+    }
+
+    public Long getConsultedById() {
+        return consultedById;
+    }
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     private EncounterStatus status = EncounterStatus.IN_PROGRESS;

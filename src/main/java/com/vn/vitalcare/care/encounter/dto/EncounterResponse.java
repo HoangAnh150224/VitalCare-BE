@@ -30,6 +30,10 @@ public record EncounterResponse(
         String clinicalNote,
         String diagnosis,
         String followUp,
+        /** BF-07: the doctor's word once the service results are in; null until then. */
+        String finalConclusion,
+        String consultationNotes,
+        OffsetDateTime consultedAt,
         /** What the caller may do to this row; see {@code DeviceResponse}. */
         @JsonProperty("_can")
         Map<String, Boolean> can) {
@@ -61,6 +65,9 @@ public record EncounterResponse(
                 encounter.getClinicalNote(),
                 encounter.getDiagnosis(),
                 encounter.getFollowUp(),
+                encounter.getFinalConclusion(),
+                encounter.getConsultationNotes(),
+                encounter.getConsultedAt(),
                 rowLevel == null ? Map.of() : rowLevel.capabilities(encounter));
     }
 }
