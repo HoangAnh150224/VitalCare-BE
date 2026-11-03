@@ -204,7 +204,7 @@ class FirstAidArticlesTest {
 
     private static FirstAidRequests.Content content(String title) {
         return new FirstAidRequests.Content(title, FirstAidCategory.GENERAL, "Tóm tắt",
-                "## Việc cần làm ngay\n1. Bình tĩnh", "Gọi 115 khi nguy hiểm");
+                "## Việc cần làm ngay\n1. Bình tĩnh", "Gọi 115 khi nguy hiểm", null);
     }
 
     private static void signIn(long userId, String... permissions) {

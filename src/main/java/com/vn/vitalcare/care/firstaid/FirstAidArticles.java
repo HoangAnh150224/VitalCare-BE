@@ -294,6 +294,7 @@ public class FirstAidArticles {
         article.setSummary(content.summary().trim());
         article.setBody(content.body().strip());
         article.setEmergencyWarning(content.emergencyWarning().trim());
+        article.setVideoUrl(FirstAidVideos.embed(content.videoUrl()));
     }
 
     private static String note(FirstAidRequests.Decision decision) {

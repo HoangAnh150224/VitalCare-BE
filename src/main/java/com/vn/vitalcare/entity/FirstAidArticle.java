@@ -49,6 +49,10 @@ public class FirstAidArticle extends BaseEntity {
     @Column(name = "emergency_warning", nullable = false, length = 1000)
     private String emergencyWarning;
 
+    /** An embed address (Google Drive preview or YouTube embed), as {@code FirstAidVideos} keeps it; null for none. */
+    @Column(name = "video_url", length = 255)
+    private String videoUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     private FirstAidStatus status = FirstAidStatus.DRAFT;
@@ -118,6 +122,14 @@ public class FirstAidArticle extends BaseEntity {
 
     public String getEmergencyWarning() {
         return emergencyWarning;
+    }
+
+    public String getVideoUrl() {
+        return videoUrl;
+    }
+
+    public void setVideoUrl(String videoUrl) {
+        this.videoUrl = videoUrl;
     }
 
     public void setEmergencyWarning(String emergencyWarning) {

@@ -29,6 +29,7 @@ public final class FirstAidResponses {
             String summary,
             String body,
             String emergencyWarning,
+            String videoUrl,
             FirstAidStatus status,
             int revision,
             Long authorId,
@@ -42,7 +43,8 @@ public final class FirstAidResponses {
 
         static Article from(FirstAidArticle article, Map<Long, String> names, List<String> actions) {
             return new Article(article.getId(), article.getTitle(), article.getCategory(), article.getSummary(),
-                    article.getBody(), article.getEmergencyWarning(), article.getStatus(), article.getRevision(),
+                    article.getBody(), article.getEmergencyWarning(), article.getVideoUrl(), article.getStatus(),
+                    article.getRevision(),
                     article.getAuthorId(), names.get(article.getAuthorId()), names.get(article.getReviewerId()),
                     article.getReviewNote(), article.getPublishedRevision(), article.getPublishedAt(),
                     article.getUpdatedAt() != null ? article.getUpdatedAt() : article.getCreatedAt(), actions);
@@ -62,12 +64,13 @@ public final class FirstAidResponses {
             FirstAidCategory category,
             String summary,
             String body,
-            String emergencyWarning) {
+            String emergencyWarning,
+            String videoUrl) {
 
         static Step from(FirstAidArticleHistory step, Map<Long, String> names) {
             return new Step(step.getId(), step.getRevision(), step.getFromStatus(), step.getToStatus(),
                     names.get(step.getActorId()), step.getNote(), step.getAt(), step.getTitle(), step.getCategory(),
-                    step.getSummary(), step.getBody(), step.getEmergencyWarning());
+                    step.getSummary(), step.getBody(), step.getEmergencyWarning(), step.getVideoUrl());
         }
     }
 
@@ -79,11 +82,12 @@ public final class FirstAidResponses {
             String summary,
             String body,
             String emergencyWarning,
+            String videoUrl,
             OffsetDateTime publishedAt) {
 
         public static Published from(FirstAidArticleHistory step) {
             return new Published(step.getArticleId(), step.getTitle(), step.getCategory(), step.getSummary(),
-                    step.getBody(), step.getEmergencyWarning(), step.getAt());
+                    step.getBody(), step.getEmergencyWarning(), step.getVideoUrl(), step.getAt());
         }
     }
 }

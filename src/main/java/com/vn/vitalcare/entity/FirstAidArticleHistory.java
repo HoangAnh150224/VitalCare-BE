@@ -67,6 +67,9 @@ public class FirstAidArticleHistory {
     @Column(name = "emergency_warning", nullable = false, length = 1000, updatable = false)
     private String emergencyWarning;
 
+    @Column(name = "video_url", length = 255, updatable = false)
+    private String videoUrl;
+
     protected FirstAidArticleHistory() {
     }
 
@@ -86,6 +89,7 @@ public class FirstAidArticleHistory {
         step.summary = article.getSummary();
         step.body = article.getBody();
         step.emergencyWarning = article.getEmergencyWarning();
+        step.videoUrl = article.getVideoUrl();
         return step;
     }
 
@@ -139,5 +143,9 @@ public class FirstAidArticleHistory {
 
     public String getEmergencyWarning() {
         return emergencyWarning;
+    }
+
+    public String getVideoUrl() {
+        return videoUrl;
     }
 }

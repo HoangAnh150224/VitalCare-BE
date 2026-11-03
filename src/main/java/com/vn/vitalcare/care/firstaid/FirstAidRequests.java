@@ -30,7 +30,11 @@ public final class FirstAidRequests {
 
             @NotBlank(message = "Say when to call for emergency help")
             @Size(max = 1000, message = "The emergency warning must be at most 1000 characters")
-            String emergencyWarning) {
+            String emergencyWarning,
+
+            /** A Google Drive or YouTube link; empty for none. */
+            @Size(max = 500, message = "The video link must be at most 500 characters")
+            String videoUrl) {
     }
 
     /** A reviewer's word on a step; required when sending an article back. */
