@@ -111,6 +111,12 @@ public class Alerts {
         return alerts.findForProfiles(ids, PageRequest.of(Math.max(start, 0) / size, size));
     }
 
+    /** A patient's alerts, unscoped — for a caregiver whose grant the caller already checked. */
+    public Page<Alert> forPatient(Long customerId, int start, int end) {
+        int size = Math.min(Math.max(end - start, 1), 100);
+        return alerts.findForProfiles(List.of(customerId), PageRequest.of(Math.max(start, 0) / size, size));
+    }
+
     @Transactional
     public Alert acknowledge(Long id) {
         Alert alert = lockedForWrite(id);

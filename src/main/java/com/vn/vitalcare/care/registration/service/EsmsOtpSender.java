@@ -122,7 +122,7 @@ public class EsmsOtpSender implements OtpSender {
      * @throws RestClientException when eSMS could not be reached or answered
      *                             with an HTTP error
      */
-    String deliver(String phone, String content) {
+    public String deliver(String phone, String content) {
         Map<String, String> body = new LinkedHashMap<>();
         body.put("ApiKey", apiKey);
         body.put("SecretKey", secretKey);

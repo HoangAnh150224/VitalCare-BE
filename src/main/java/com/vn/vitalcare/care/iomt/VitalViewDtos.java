@@ -29,7 +29,7 @@ public final class VitalViewDtos {
                           BigDecimal spo2, BigDecimal skinTemperature, String source, String validationStatus,
                           String validationError, Long deviceId, String deviceCode) {
 
-        static Reading of(VitalSigns v) {
+        public static Reading of(VitalSigns v) {
             MedicalDevice d = v.getDevice();
             return new Reading(v.getId(), v.getMeasuredAt(), v.getReceivedAt(), v.getHeartRate(), v.getSpo2(),
                     v.getTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),

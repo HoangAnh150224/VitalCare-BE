@@ -53,6 +53,8 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
     private final ClinicScope clinicScope;
     private final Clock clock;
 
+    private final com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders;
+
     public CareAssignmentServiceImpl(MonitoringAssignmentRepository careTeams,
                                      DeviceAssignmentRepository deviceAssignments,
                                      CustomerService customerService,
@@ -60,7 +62,9 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
                                      DeviceService deviceService,
                                      RowLevelSecurity rowLevel,
                                      ClinicScope clinicScope,
+                                     com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders,
                                      Clock clock) {
+        this.monitoringOrders = monitoringOrders;
         this.careTeams = careTeams;
         this.deviceAssignments = deviceAssignments;
         this.customerService = customerService;
@@ -174,6 +178,10 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         }
         if (currentDevice(patient.getId()).isPresent()) {
             throw new ConflictException("This patient is already wearing a device; take it back first");
+        }
+        // BF-04: monitoring is the patient's choice; without their recorded consent there is no device.
+        if (!monitoringOrders.hasActive(patient.getId())) {
+            throw new ConflictException("This patient has no accepted monitoring order; the doctor records their consent first");
         }
         OffsetDateTime now = OffsetDateTime.now(clock);
         if (request.expectedReturnAt() != null && !request.expectedReturnAt().isAfter(now)) {

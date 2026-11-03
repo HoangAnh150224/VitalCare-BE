@@ -7,6 +7,7 @@ import static com.vn.vitalcare.care.assignment.service.CareFixtures.staff;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -42,6 +43,7 @@ import org.junit.jupiter.api.Test;
 /** The rules for putting a patient in somebody's care and on a device. */
 class CareAssignmentServiceTest {
 
+    private com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders;
     private MonitoringAssignmentRepository careTeams;
     private DeviceAssignmentRepository deviceAssignments;
     private CustomerService customers;
@@ -56,11 +58,14 @@ class CareAssignmentServiceTest {
         customers = mock(CustomerService.class);
         employees = mock(EmployeeService.class);
         devices = mock(DeviceService.class);
+        monitoringOrders = mock(com.vn.vitalcare.care.monitoring.MonitoringOrderRepository.class);
+        // Consent recorded, unless a test says otherwise (BF-04).
+        when(monitoringOrders.hasActive(any())).thenReturn(true);
         when(careTeams.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(deviceAssignments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service = new CareAssignmentServiceImpl(careTeams, deviceAssignments, customers, employees, devices,
-                ClinicRowLevel.unrestricted(), Optional::empty, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+                ClinicRowLevel.unrestricted(), Optional::empty, monitoringOrders, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -162,6 +167,18 @@ class CareAssignmentServiceTest {
 
         assertEquals(AssignmentStatus.ACTIVE, assignment.getStatus());
         assertEquals(DeviceStatus.ASSIGNED, band.getStatus());
+    }
+
+    @Test
+    @DisplayName("BF-04: without the patient's recorded consent to monitoring, no device is handed out")
+    void noDeviceWithoutConsent() {
+        when(customers.getForUpdate(1L)).thenReturn(patient(1));
+        when(devices.lockForUpdate(9L)).thenReturn(device(9, DeviceStatus.AVAILABLE));
+        when(monitoringOrders.hasActive(1L)).thenReturn(false);
+
+        ConflictException refused = assertThrows(ConflictException.class,
+                () -> service.assignDevice(1L, new AssignmentRequests.AssignDevice(9L, null, null)));
+        assertTrue(refused.getMessage().contains("monitoring order"));
     }
 
     @Test

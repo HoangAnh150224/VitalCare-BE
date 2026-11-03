@@ -76,6 +76,14 @@ public final class Permissions {
     public static final String ALERTS_READ = "alerts:read";
     public static final String ALERTS_WRITE = "alerts:write";
     public static final String MY_ALERTS_READ = "my_alerts:read";
+    public static final String MONITORING_ORDERS_READ = "monitoring_orders:read";
+    public static final String MONITORING_ORDERS_WRITE = "monitoring_orders:write";
+    public static final String MY_SHARING_READ = "my_sharing:read";
+    public static final String MY_SHARING_WRITE = "my_sharing:write";
+    public static final String SHARED_PATIENTS_READ = "shared_patients:read";
+    public static final String EMERGENCY_ALERTS_READ = "emergency_alerts:read";
+    public static final String EMERGENCY_ALERTS_WRITE = "emergency_alerts:write";
+    public static final String ESCALATIONS_READ = "escalations:read";
     public static final String MY_DEVICES_WRITE = "my_devices:write";
     public static final String CUSTOMERS_ASSIGN = "customers:assign";
     // SRS 3.1.3: "Assign Patient to Healthcare Staff" is the clinic administrator's alone;

@@ -56,7 +56,7 @@ public final class AlertDtos {
                                 int occurrences, OffsetDateTime triggeredAt, OffsetDateTime lastTriggeredAt,
                                 OffsetDateTime acknowledgedAt, OffsetDateTime resolvedAt, OffsetDateTime dismissedAt,
                                 Long ruleId, String ruleName) {
-        static AlertResponse of(Alert a) {
+        public static AlertResponse of(Alert a) {
             return new AlertResponse(a.getId(), Patient.of(a.getCustomer()), a.getClinicId(),
                     a.getDevice() == null ? null : a.getDevice().getId(),
                     a.getDevice() == null ? null : a.getDevice().getDeviceCode(), a.getMetric(), a.getOperator(),
