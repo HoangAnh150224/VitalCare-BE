@@ -47,6 +47,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     private final EmployeeRepository repository;
     private final MonitoringAssignmentRepository careTeams;
+    private final com.vn.vitalcare.care.staff.repository.StaffMembershipRepository memberships;
     private final UserService userService;
     private final ClinicService clinicService;
     // Only to pick the clinic a new member of staff joins when the request
@@ -59,6 +60,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     public EmployeeServiceImpl(EmployeeRepository repository,
                                MonitoringAssignmentRepository careTeams,
+                               com.vn.vitalcare.care.staff.repository.StaffMembershipRepository memberships,
                                UserService userService,
                                ClinicService clinicService,
                                ClinicScope clinicScope,
@@ -67,6 +69,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                                Clock clock) {
         this.repository = repository;
         this.careTeams = careTeams;
+        this.memberships = memberships;
         this.userService = userService;
         this.clinicService = clinicService;
         this.clinicScope = clinicScope;
@@ -124,6 +127,8 @@ public class EmployeeServiceImpl implements EmployeeService {
         rowLevel.checkWritable(saved);
         // Derived from the id, like the customer code.
         saved.setEmployeeCode("NV%06d".formatted(saved.getId()));
+        // Joining is the first membership.
+        memberships.save(new com.vn.vitalcare.entity.StaffMembership(saved, saved.getClinic(), OffsetDateTime.now(clock)));
         // Their clinic is what their own policies compare against, and it is
         // read into the authority cache: drop anything cached for the account.
         events.publishEvent(new AuthoritiesChanged.ForUser(user.getId()));
@@ -176,19 +181,129 @@ public class EmployeeServiceImpl implements EmployeeService {
      * patient's, not the carer's.
      */
     private void changeStatus(Employee employee, EmployeeStatus status) {
+        changeStatus(employee, status, "Nghỉ việc");
+    }
+
+    private void changeStatus(Employee employee, EmployeeStatus status, String reason) {
         employee.setStatus(status);
+        OffsetDateTime now = OffsetDateTime.now(clock);
         if (status == EmployeeStatus.INACTIVE) {
-            OffsetDateTime now = OffsetDateTime.now(clock);
-            Long actor = CurrentUser.id().orElse(null);
-            for (MonitoringAssignment assignment :
-                    careTeams.findByEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtDesc(
-                            employee.getId())) {
-                assignment.end(actor, now);
-            }
+            endCareTeams(employee, now);
+            memberships.findActive(employee.getId()).ifPresent(m -> m.end(now, reason));
             userService.setSignInAllowed(employee.getUser().getId(), false);
         } else {
+            // Coming back is a new membership of the clinic they belong to.
+            if (memberships.findActive(employee.getId()).isEmpty() && employee.getClinic() != null) {
+                memberships.save(new com.vn.vitalcare.entity.StaffMembership(employee, employee.getClinic(), now));
+            }
             userService.setSignInAllowed(employee.getUser().getId(), true);
         }
+    }
+
+    private void endCareTeams(Employee employee, OffsetDateTime now) {
+        Long actor = CurrentUser.id().orElse(null);
+        for (MonitoringAssignment assignment :
+                careTeams.findByEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNullOrderByAssignedAtDesc(employee.getId())) {
+            assignment.end(actor, now);
+        }
+    }
+
+    @Override
+    public List<com.vn.vitalcare.entity.StaffMembership> memberships(Long id) {
+        find(id, Action.READ);
+        return memberships.findHistory(id);
+    }
+
+    /**
+     * Their membership here ends and one at the other clinic starts. The
+     * patients they looked after here are not theirs there: their care teams
+     * end, and their working sessions leave this clinic's rooms. Refused while
+     * they have visits still to see here.
+     */
+    @Override
+    @Transactional
+    public Employee transfer(Long id, java.util.UUID clinicId, String reason) {
+        Employee employee = lock(id, Action.WRITE);
+        if (employee.getStatus() != EmployeeStatus.ACTIVE) {
+            throw new ConflictException("Only somebody still on staff can move to another clinic");
+        }
+        com.vn.vitalcare.entity.Clinic target;
+        try {
+            target = clinicService.get(clinicId);
+        } catch (ResourceNotFoundException e) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("clinicId", "Pick one of the clinics");
+        }
+        if (employee.getClinic() != null && target.getClinicId().equals(employee.getClinic().getClinicId())) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("clinicId", "They already work at this clinic");
+        }
+        if (repository.countUpcomingVisits(id, java.time.LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Ho_Chi_Minh")))) > 0) {
+            throw new ConflictException("They still have visits to see at this clinic; hand them over first");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        String why = reason == null || reason.isBlank() ? "Chuyển cơ sở" : reason.trim();
+        memberships.findActive(id).ifPresent(m -> m.end(now, why));
+        // Written before the new one goes in: at most one membership is active (uq_staff_membership_active),
+        // and the new row's IDENTITY insert happens at once, ahead of the flush that would carry this update.
+        memberships.flush();
+        endCareTeams(employee, now);
+        repository.leaveRooms(id);
+        java.util.UUID from = employee.getClinic() == null ? null : employee.getClinic().getClinicId();
+        employee.setClinic(target);
+        memberships.save(new com.vn.vitalcare.entity.StaffMembership(employee, target, now));
+        Employee saved = repository.persist(employee);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", id, "transfer",
+                java.util.Map.of("clinicId", String.valueOf(from)), java.util.Map.of("clinicId", target.getClinicId().toString())));
+        // Their clinic is what their policies compare against: drop what is cached for the account.
+        events.publishEvent(new AuthoritiesChanged.ForUser(employee.getUser().getId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Employee endMembership(Long id, String reason) {
+        Employee employee = lock(id, Action.WRITE);
+        if (employee.getStatus() != EmployeeStatus.ACTIVE) {
+            throw new ConflictException("Their membership has already ended");
+        }
+        changeStatus(employee, EmployeeStatus.INACTIVE, reason == null || reason.isBlank() ? "Kết thúc thành viên" : reason.trim());
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", id, "membership_end", null,
+                java.util.Map.of("reason", reason == null ? "" : reason)));
+        return repository.persist(employee);
+    }
+
+    @Override
+    public List<String> clinicRoles(Long id) {
+        return find(id, Action.READ).getUser().roleCodes().stream()
+                .filter(com.vn.vitalcare.care.staff.service.StaffRoles.CLINIC_LEVEL::containsKey).sorted().toList();
+    }
+
+    @Override
+    @Transactional
+    public Employee setClinicRoles(Long id, java.util.Set<String> roles) {
+        Employee employee = find(id, Action.WRITE);
+        if (CurrentUser.id().filter(me -> me.equals(employee.getUser().getId())).isPresent()) {
+            throw new ConflictException("Your own roles are changed by somebody else");
+        }
+        if (roles == null || roles.isEmpty()) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("roles", "Give them at least one role");
+        }
+        for (String code : roles) {
+            if (!com.vn.vitalcare.care.staff.service.StaffRoles.CLINIC_LEVEL.containsKey(code)) {
+                throw new com.vn.vitalcare.share.exception.FieldValidationException("roles", "Not a clinic-level role: " + code);
+            }
+        }
+        // Only the system administrator makes a clinic administrator, or takes that away.
+        boolean admin = CurrentUser.has(com.vn.vitalcare.share.security.Permissions.STAFF_MEMBERSHIPS_TRANSFER);
+        java.util.Set<String> had = new java.util.HashSet<>(employee.getUser().roleCodes());
+        for (String code : com.vn.vitalcare.care.staff.service.StaffRoles.ADMIN_ONLY) {
+            if (!admin && roles.contains(code) != had.contains(code)) {
+                throw new org.springframework.security.authorization.AuthorizationDeniedException(
+                        "Only the system administrator gives or takes away that role");
+            }
+        }
+        userService.replaceRolesWithin(employee.getUser().getId(),
+                com.vn.vitalcare.care.staff.service.StaffRoles.CLINIC_LEVEL.keySet(), roles);
+        return employee;
     }
 
     /**

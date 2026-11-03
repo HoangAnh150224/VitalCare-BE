@@ -26,6 +26,21 @@ public interface EmployeeService {
      */
     Employee getForCurrentUser();
 
+    /** SRS 3.18.9: the member of staff's memberships, newest first. */
+    List<com.vn.vitalcare.entity.StaffMembership> memberships(Long id);
+
+    /** Moves somebody to another clinic: their membership here ends, one there starts (the system administrator's). */
+    Employee transfer(Long id, java.util.UUID clinicId, String reason);
+
+    /** Ends their membership of the clinic: they leave, as setting them inactive does. */
+    Employee endMembership(Long id, String reason);
+
+    /** SRS 3.18.10: the roles they hold at the clinic, replacing the clinic-level ones they had. */
+    Employee setClinicRoles(Long id, java.util.Set<String> roles);
+
+    /** The clinic-level roles they hold now, read inside the transaction (the roles are loaded lazily). */
+    List<String> clinicRoles(Long id);
+
     /**
      * A new member of staff: their account, holding the role their kind of
      * staff gets, and their record — one transaction, so there is never an

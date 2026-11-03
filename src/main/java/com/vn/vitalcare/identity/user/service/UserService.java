@@ -291,6 +291,36 @@ public class UserService {
     }
 
     /**
+     * Replaces the roles an account holds among {@code scope} with {@code codes},
+     * keeping every other role it holds (SRS 3.18.10: a clinic administrator
+     * sets roles at the clinic and nothing else). The same guards, record and
+     * cache eviction as a role change on the user screen.
+     */
+    @Transactional
+    public User replaceRolesWithin(Long id, java.util.Set<String> scope, java.util.Set<String> codes) {
+        User user = get(id);
+        java.util.List<String> rolesBefore = roleCodes(user.getRoles());
+        Set<Role> roles = new LinkedHashSet<>();
+        for (Role role : user.getRoles()) {
+            if (!scope.contains(role.getCode())) {
+                roles.add(role);
+            }
+        }
+        for (String code : codes) {
+            roles.add(roleService.getByCode(code));
+        }
+        requireAdminSurvives(user, roles, user.getStatus());
+        user.setRoles(roles);
+        User saved = repository.save(user);
+        if (!rolesBefore.equals(roleCodes(saved.getRoles()))) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
+                    java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
+            events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        }
+        return saved;
+    }
+
+    /**
      * Sets somebody else's password, as an administrator.
      *
      * <p>Every session open under the account is ended, because the usual

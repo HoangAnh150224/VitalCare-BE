@@ -39,6 +39,17 @@ public interface EmployeeRepository extends SecuredRepository<Employee, Long> {
     @EntityGraph(attributePaths = "user")
     Optional<Employee> findByUserIdAndDeletedAtIsNull(Long userId);
 
+    /** Visits today or later still to be seen by this doctor (a move to another clinic waits for them). */
+    @Query(nativeQuery = true, value = "select count(*) from appointment where employee_id = :employeeId"
+            + " and deleted_at is null and appointment_date >= :today"
+            + " and status in ('SCHEDULED', 'CHECKED_IN', 'IN_EXAM')")
+    long countUpcomingVisits(@Param("employeeId") Long employeeId, @Param("today") java.time.LocalDate today);
+
+    /** Their working sessions leave the old clinic's rooms; the new clinic places them in its own. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(nativeQuery = true, value = "update doctor_working_hours set exam_room_id = null where employee_id = :employeeId")
+    int leaveRooms(@Param("employeeId") Long employeeId);
+
     /**
      * The employee, locked until the transaction ends — taken both when they
      * are added to a care team and when they leave, so somebody being set

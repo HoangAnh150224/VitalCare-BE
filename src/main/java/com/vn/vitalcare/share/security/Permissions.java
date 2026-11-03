@@ -94,6 +94,11 @@ public final class Permissions {
     public static final String MY_LICENSES_WRITE = "my_licenses:write";
     public static final String LICENSES_READ = "licenses:read";
     public static final String MONITORING_DASHBOARD_READ = "monitoring_dashboard:read";
+    public static final String STAFF_MEMBERSHIPS_READ = "staff_memberships:read";
+    public static final String STAFF_MEMBERSHIPS_WRITE = "staff_memberships:write";
+    public static final String STAFF_MEMBERSHIPS_TRANSFER = "staff_memberships:transfer";
+    public static final String CLINIC_ROLES_READ = "clinic_roles:read";
+    public static final String CLINIC_ROLES_WRITE = "clinic_roles:write";
     public static final String REPORTS_READ = "reports:read";
     public static final String REPORTS_EXPORT = "reports:export";
     public static final String MY_DEVICES_WRITE = "my_devices:write";

@@ -63,7 +63,8 @@ class StaffAndPatientsServiceTest {
         when(clinics.listAll()).thenReturn(List.of());
         when(employeeRepository.persist(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        employees = new EmployeeServiceImpl(employeeRepository, careTeams, userService, clinics, Optional::empty,
+        employees = new EmployeeServiceImpl(employeeRepository, careTeams,
+                org.mockito.Mockito.mock(com.vn.vitalcare.care.staff.repository.StaffMembershipRepository.class), userService, clinics, Optional::empty,
                 ClinicRowLevel.unrestricted(), event -> { }, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
@@ -112,7 +113,8 @@ class StaffAndPatientsServiceTest {
         otherClinic.setClinicId(other);
         ClinicService clinics = mock(ClinicService.class);
         when(clinics.get(other)).thenReturn(otherClinic);
-        EmployeeService scoped = new EmployeeServiceImpl(employeeRepository, careTeams, userService, clinics,
+        EmployeeService scoped = new EmployeeServiceImpl(employeeRepository, careTeams,
+                org.mockito.Mockito.mock(com.vn.vitalcare.care.staff.repository.StaffMembershipRepository.class), userService, clinics,
                 () -> Optional.of(own), new ClinicRowLevel(() -> own), event -> { },
                 Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
 

@@ -98,3 +98,5 @@ databaseChangeLog:
       file: db/changelog/changes/047-first-aid-videos.sql
   - include:
       file: db/changelog/changes/048-caregiver-chat.sql
+  - include:
+      file: db/changelog/changes/049-staff-membership-clinic-roles.sql
