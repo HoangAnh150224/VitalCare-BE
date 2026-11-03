@@ -132,12 +132,34 @@ public class Licenses {
         if (type == null) {
             throw new FieldValidationException("file", "Only PDF, PNG or JPEG");
         }
-        l.setFileKey(storage.store(new ByteArrayInputStream(bytes)));
+        String previous = l.getFileKey();
+        String stored = storage.store(new ByteArrayInputStream(bytes));
+        // The replaced scan goes once the new one is committed; the new one, if it never is.
+        afterCompletion(committed -> storage.delete(committed ? previous : stored));
+        l.setFileKey(stored);
         String name = file.getOriginalFilename() == null ? "giay-phep" : file.getOriginalFilename().replaceAll("[\\\\/:*?\"<>|]", "_");
         l.setFileName(name.length() > 255 ? name.substring(0, 255) : name);
         l.setFileType(type);
         l.setFileSize((long) bytes.length);
         return licenses.persist(l);
+    }
+
+    private static void afterCompletion(java.util.function.Consumer<Boolean> action) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        try {
+                            action.accept(status == STATUS_COMMITTED);
+                        } catch (RuntimeException e) {
+                            // A file left behind is not worth failing an answer already given.
+                            org.slf4j.LoggerFactory.getLogger(Licenses.class).warn("Could not remove a license scan", e);
+                        }
+                    }
+                });
     }
 
     public StoredFile ownFile(Long id) {

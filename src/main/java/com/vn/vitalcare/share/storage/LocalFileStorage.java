@@ -56,4 +56,16 @@ public class LocalFileStorage implements FileStorage {
         }
         return new PathResource(file);
     }
+
+    @Override
+    public void delete(String key) {
+        if (key == null || !KEY.matcher(key).matches()) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(root.resolve(key));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not delete a stored file", e);
+        }
+    }
 }

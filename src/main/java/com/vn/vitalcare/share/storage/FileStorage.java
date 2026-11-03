@@ -15,4 +15,7 @@ public interface FileStorage {
 
     /** The bytes under a key; a key this store did not issue is not found. */
     Resource load(String key);
+
+    /** Removes the bytes under a key; a key that is not there is no error. */
+    void delete(String key);
 }
