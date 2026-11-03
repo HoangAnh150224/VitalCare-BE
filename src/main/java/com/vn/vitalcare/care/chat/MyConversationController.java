@@ -39,6 +39,13 @@ public class MyConversationController {
         return chat.ownThread(id);
     }
 
+    /** BF-06: the clinics a caregiver may write to about a patient who shares with them. */
+    @GetMapping("/clinics")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_CONVERSATIONS_READ + "')")
+    public List<java.util.UUID> clinicsAbout(@org.springframework.web.bind.annotation.RequestParam Long aboutCustomerId) {
+        return chat.clinicsAbout(aboutCustomerId);
+    }
+
     /** Writes to a clinic: into the conversation with it if there is one, else a new one. */
     @PostMapping
     @PreAuthorize("hasAuthority('" + Permissions.MY_CONVERSATIONS_WRITE + "')")

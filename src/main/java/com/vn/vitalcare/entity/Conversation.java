@@ -70,6 +70,29 @@ public class Conversation extends BaseEntity {
     @Column(name = "contact_name", length = 100)
     private String contactName;
 
+    /**
+     * BF-06: the patient a caregiver writes about; null when the account writes
+     * for itself. The name is kept as it was, for the inbox to show without a join.
+     */
+    @Column(name = "about_customer_id")
+    private Long aboutCustomerId;
+
+    @Column(name = "about_name", length = 100)
+    private String aboutName;
+
+    public Long getAboutCustomerId() {
+        return aboutCustomerId;
+    }
+
+    public String getAboutName() {
+        return aboutName;
+    }
+
+    public void setAbout(Long customerId, String name) {
+        this.aboutCustomerId = customerId;
+        this.aboutName = name;
+    }
+
     @Column(name = "contact_phone", length = 20)
     private String contactPhone;
 

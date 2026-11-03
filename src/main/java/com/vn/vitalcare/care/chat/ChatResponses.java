@@ -27,6 +27,9 @@ public final class ChatResponses {
             String clinicName,
             String kind,
             String contactName,
+            /** BF-06: the patient a caregiver writes about; null otherwise. */
+            Long aboutCustomerId,
+            String aboutName,
             String contactPhone,
             String status,
             OffsetDateTime lastMessageAt,
@@ -38,7 +41,8 @@ public final class ChatResponses {
 
         static Inbox from(Conversation c, long unread, Map<String, Boolean> can) {
             return new Inbox(c.getId(), c.getClinicId(), c.getClinic() == null ? null : c.getClinic().getClinicName(),
-                    c.isGuest() ? "guest" : "customer", c.getContactName(), c.getContactPhone(), c.getStatus(),
+                    c.isGuest() ? "guest" : c.getAboutCustomerId() != null ? "caregiver" : "customer",
+                    c.getContactName(), c.getAboutCustomerId(), c.getAboutName(), c.getContactPhone(), c.getStatus(),
                     c.getLastMessageAt(), c.getLastMessagePreview(), c.getLastSenderKind(), unread, can);
         }
     }
@@ -56,12 +60,16 @@ public final class ChatResponses {
             OffsetDateTime lastMessageAt,
             String lastMessagePreview,
             ChatSenderKind lastSenderKind,
-            long unread) {
+            long unread,
+            /** BF-06: the patient this caregiver's conversation is about; null for the account's own. */
+            Long aboutCustomerId,
+            String aboutName) {
 
         static Own from(Conversation c, long unread) {
             return new Own(c.getId(), c.getClinicId(), c.getClinic() == null ? null : c.getClinic().getClinicName(),
                     c.getClinic() == null ? null : c.getClinic().getContactPhone(), c.getStatus(),
-                    c.getLastMessageAt(), c.getLastMessagePreview(), c.getLastSenderKind(), unread);
+                    c.getLastMessageAt(), c.getLastMessagePreview(), c.getLastSenderKind(), unread,
+                    c.getAboutCustomerId(), c.getAboutName());
         }
     }
 

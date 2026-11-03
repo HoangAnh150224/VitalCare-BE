@@ -63,6 +63,23 @@ public interface ConversationRepository extends SecuredRepository<Conversation, 
 
     /** The customer's conversation with a clinic, if there is one: writing to a clinic again continues it. */
     @Query("select c from Conversation c where c.customerUserId = :userId and c.clinicId = :clinicId "
-            + "and c.deletedAt is null order by c.id desc limit 1")
+            + "and c.aboutCustomerId is null and c.deletedAt is null order by c.id desc limit 1")
     Optional<Conversation> findOwnAt(@Param("userId") Long userId, @Param("clinicId") UUID clinicId);
+
+    /** A caregiver's conversation with a clinic about one patient (BF-06): one per patient and clinic. */
+    @Query("select c from Conversation c where c.customerUserId = :userId and c.clinicId = :clinicId "
+            + "and c.aboutCustomerId = :aboutId and c.deletedAt is null order by c.id desc limit 1")
+    Optional<Conversation> findOwnAboutAt(@Param("userId") Long userId, @Param("clinicId") UUID clinicId,
+                                          @Param("aboutId") Long aboutId);
+
+    /**
+     * The clinics that know a patient: a visit there, or one of its devices worn.
+     * Where a caregiver may write about them; not scoped (the caller checked the grant).
+     */
+    @Query(nativeQuery = true, value = "select distinct k.clinic_id from clinic k where k.deleted_at is null and ("
+            + " exists (select 1 from appointment a where a.customer_id = :customerId and a.clinic_id = k.clinic_id"
+            + "   and a.deleted_at is null)"
+            + " or exists (select 1 from device_assignment da join medical_device d on d.id = da.device_id"
+            + "   where da.customer_id = :customerId and d.clinic_id = k.clinic_id and da.deleted_at is null))")
+    List<UUID> clinicsKnowing(@Param("customerId") Long customerId);
 }

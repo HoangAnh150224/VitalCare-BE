@@ -1,6 +1,8 @@
 package com.vn.vitalcare.care.chat;
 
 import com.vn.vitalcare.care.clinic.service.ClinicService;
+import com.vn.vitalcare.care.sharing.SharedPatients;
+import com.vn.vitalcare.entity.SharingPermission;
 import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.ChatSenderKind;
 import com.vn.vitalcare.entity.Clinic;
@@ -84,6 +86,7 @@ public class SupportChat {
     private final RowLevelSecurity rowLevel;
     private final ApplicationEventPublisher events;
     private final com.vn.vitalcare.care.notification.Notifier notifier;
+    private final SharedPatients sharedPatients;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
     private final IpWindowLimiter guestStarts;
@@ -92,7 +95,7 @@ public class SupportChat {
     public SupportChat(ConversationRepository conversations, MessageRepository messages, ClinicService clinics,
                        ClinicScope clinicScope, UserService users, FileStorage storage, RowLevelSecurity rowLevel,
                        ApplicationEventPublisher events, com.vn.vitalcare.care.notification.Notifier notifier,
-                       Clock clock) {
+                       SharedPatients sharedPatients, Clock clock) {
         this.conversations = conversations;
         this.messages = messages;
         this.clinics = clinics;
@@ -102,6 +105,7 @@ public class SupportChat {
         this.rowLevel = rowLevel;
         this.events = events;
         this.notifier = notifier;
+        this.sharedPatients = sharedPatients;
         this.clock = clock;
         this.guestStarts = new IpWindowLimiter(Duration.ofHours(1), 5,
                 "Too many conversations have been started from this network; try again later", clock);
@@ -164,7 +168,11 @@ public class SupportChat {
     // ---- customers -------------------------------------------------------------------
 
     public List<ChatResponses.Own> ownList() {
-        List<Conversation> list = conversations.findOwn(me());
+        // A caregiver's conversations about a patient show only while that patient still shares with them.
+        Set<Long> shared = sharedWithMe();
+        List<Conversation> list = conversations.findOwn(me()).stream()
+                .filter(c -> c.getAboutCustomerId() == null || shared.contains(c.getAboutCustomerId()))
+                .toList();
         Map<Long, Long> unread = list.isEmpty() ? Map.of()
                 : counts(messages.countUnreadByCustomer(ids(list), ChatSenderKind.STAFF));
         return list.stream().map(c -> ChatResponses.Own.from(c, unread.getOrDefault(c.getId(), 0L))).toList();
@@ -175,6 +183,9 @@ public class SupportChat {
     public ChatResponses.Thread startAsCustomer(ChatRequests.OwnStart request) {
         Long userId = me();
         Clinic clinic = operatingClinic(request.clinicId());
+        if (request.aboutCustomerId() != null) {
+            return startAsCaregiver(userId, clinic, request);
+        }
         Conversation conversation = conversations.findOwnAt(userId, clinic.getClinicId()).orElseGet(() -> {
             User user = users.getMany(List.of(userId)).stream().findFirst()
                     .orElseThrow(() -> new ResourceNotFoundException("User", userId));
@@ -187,6 +198,40 @@ public class SupportChat {
         });
         post(conversation, ChatSenderKind.CUSTOMER, userId, request.text(), null);
         return ownThread(conversation.getId());
+    }
+
+    /**
+     * BF-06: a caregiver writes about the patient who shared with them, to a
+     * clinic that knows that patient. Any grant in force will do: writing to
+     * the patient's clinic is what being their caregiver is for.
+     */
+    private ChatResponses.Thread startAsCaregiver(Long userId, Clinic clinic, ChatRequests.OwnStart request) {
+        SharingPermission grant = sharedPatients.require(request.aboutCustomerId(), p -> true);
+        if (!conversations.clinicsKnowing(request.aboutCustomerId()).contains(clinic.getClinicId())) {
+            throw new FieldValidationException("clinicId", "That clinic does not look after this patient");
+        }
+        Conversation conversation = conversations.findOwnAboutAt(userId, clinic.getClinicId(), request.aboutCustomerId())
+                .orElseGet(() -> {
+                    User user = users.getMany(List.of(userId)).stream().findFirst()
+                            .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+                    Conversation created = new Conversation();
+                    created.setClinic(clinic);
+                    created.setCustomerUserId(userId);
+                    created.setContactName(user.getFullName());
+                    created.setContactPhone(user.getPhone());
+                    String name = grant.getCustomer().getFullName();
+                    created.setAbout(grant.getCustomer().getId(),
+                            name == null ? null : name.length() > 100 ? name.substring(0, 100) : name);
+                    return conversations.persist(created);
+                });
+        post(conversation, ChatSenderKind.CUSTOMER, userId, request.text(), null);
+        return ownThread(conversation.getId());
+    }
+
+    /** The clinics a caregiver may write to about a patient who shares with them. */
+    public List<UUID> clinicsAbout(Long customerId) {
+        sharedPatients.require(customerId, p -> true);
+        return conversations.clinicsKnowing(customerId);
     }
 
     @Transactional
@@ -419,7 +464,18 @@ public class SupportChat {
     }
 
     private Conversation own(Long id) {
-        return conversations.findOwn(id, me()).orElseThrow(() -> new ResourceNotFoundException("Conversation", id));
+        Conversation conversation = conversations.findOwn(id, me())
+                .orElseThrow(() -> new ResourceNotFoundException("Conversation", id));
+        // Checked on every read and write: a revoked or expired grant ends the caregiver's access at once (BR-22/23).
+        if (conversation.getAboutCustomerId() != null && !sharedWithMe().contains(conversation.getAboutCustomerId())) {
+            throw new ResourceNotFoundException("Conversation", id);
+        }
+        return conversation;
+    }
+
+    private Set<Long> sharedWithMe() {
+        return sharedPatients.mine().stream().map(p -> p.getCustomer().getId())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     private Conversation staff(Long id, Action action) {

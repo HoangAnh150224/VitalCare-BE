@@ -28,14 +28,19 @@ public final class ChatRequests {
             String text) {
     }
 
-    /** A signed-in customer writing to a clinic: continues their conversation with it, or starts one. */
+    /**
+     * A signed-in customer writing to a clinic: continues their conversation with it, or starts one.
+     * With {@code aboutCustomerId}, a caregiver writes about the patient who shared with them (BF-06).
+     */
     public record OwnStart(
             @NotNull(message = "Pick a clinic")
             UUID clinicId,
 
             @NotBlank(message = "Write a message")
             @Size(max = 2000, message = "A message must be at most 2000 characters")
-            String text) {
+            String text,
+
+            Long aboutCustomerId) {
     }
 
     public record Text(

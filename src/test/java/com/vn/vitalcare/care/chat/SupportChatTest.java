@@ -51,6 +51,7 @@ class SupportChatTest {
     private ClinicService clinics;
     private ApplicationEventPublisher events;
     private SupportChat chat;
+    private final com.vn.vitalcare.care.sharing.SharedPatients shared = mock(com.vn.vitalcare.care.sharing.SharedPatients.class);
     private Conversation stored;
     private final List<Message> written = new ArrayList<>();
 
@@ -97,7 +98,7 @@ class SupportChatTest {
         });
         chat = new SupportChat(conversations, messages, clinics, mock(com.vn.vitalcare.care.staff.service.ClinicScope.class),
                 mock(UserService.class), mock(FileStorage.class),
-                rowLevel, events, mock(com.vn.vitalcare.care.notification.Notifier.class), new TickingClock());
+                rowLevel, events, mock(com.vn.vitalcare.care.notification.Notifier.class), shared, new TickingClock());
     }
 
     @AfterEach
@@ -243,6 +244,47 @@ class SupportChatTest {
 
     private static ChatRequests.GuestStart guestStart(String phone) {
         return new ChatRequests.GuestStart(CLINIC, "Nguyễn Thị Lan", phone, "Cho hỏi giờ khám");
+    }
+
+    @Test
+    @DisplayName("BF-06: a caregiver writes about a patient only under a grant in force, only to a clinic that knows them, and loses the thread when the grant ends")
+    void caregiver() {
+        signIn(7L);
+        com.vn.vitalcare.entity.Customer patient = new com.vn.vitalcare.entity.Customer();
+        org.springframework.test.util.ReflectionTestUtils.setField(patient, "id", 37L);
+        patient.setFullName("Trần Thu Trang");
+        com.vn.vitalcare.entity.SharingPermission grant = new com.vn.vitalcare.entity.SharingPermission();
+        grant.setCustomer(patient);
+        com.vn.vitalcare.identity.user.entity.User caregiver = mock(com.vn.vitalcare.identity.user.entity.User.class);
+        when(caregiver.getFullName()).thenReturn("Người chăm sóc");
+        UserService users = (UserService) org.springframework.test.util.ReflectionTestUtils.getField(chat, "users");
+        when(users.getMany(List.of(7L))).thenReturn(List.of(caregiver));
+
+        // No grant: the service says so as a 404, and nothing is written.
+        when(shared.require(eq(37L), any())).thenThrow(new ResourceNotFoundException("Shared patient", 37L));
+        assertThrows(ResourceNotFoundException.class, () -> chat.startAsCustomer(new ChatRequests.OwnStart(CLINIC, "Mẹ tôi sốt", 37L)));
+        assertTrue(written.isEmpty());
+
+        // A grant, but a clinic that never saw the patient.
+        org.mockito.Mockito.reset(shared);
+        when(shared.require(eq(37L), any())).thenReturn(grant);
+        when(shared.mine()).thenReturn(List.of(grant));
+        when(conversations.clinicsKnowing(37L)).thenReturn(List.of());
+        assertThrows(FieldValidationException.class, () -> chat.startAsCustomer(new ChatRequests.OwnStart(CLINIC, "Mẹ tôi sốt", 37L)));
+
+        // The patient's clinic: a conversation of the caregiver's, about the patient.
+        when(conversations.clinicsKnowing(37L)).thenReturn(List.of(CLINIC));
+        when(conversations.findOwnAboutAt(7L, CLINIC, 37L)).thenReturn(Optional.empty());
+        when(conversations.findOwn(eq(9L), eq(7L))).thenAnswer(call -> Optional.ofNullable(stored));
+        var thread = chat.startAsCustomer(new ChatRequests.OwnStart(CLINIC, "Mẹ tôi sốt", 37L));
+        assertEquals(7L, stored.getCustomerUserId());
+        assertEquals(37L, stored.getAboutCustomerId());
+        assertEquals("Trần Thu Trang", ((ChatResponses.Own) thread.conversation()).aboutName());
+
+        // Revoked: the thread is gone at once, for reading and for writing.
+        when(shared.mine()).thenReturn(List.of());
+        assertThrows(ResourceNotFoundException.class, () -> chat.ownThread(9L));
+        assertThrows(ResourceNotFoundException.class, () -> chat.sendAsCustomer(9L, "Còn đó không?"));
     }
 
     private static void signIn(long userId) {
