@@ -24,7 +24,10 @@ public final class PhoneNumbers {
      * — which is a wrong number either way, and a thing business validation
      * can take up later if it ever matters.
      */
-    private static final Pattern PHONE = Pattern.compile("^(?:\\+84|84|0)(\\d{9})$");
+    // The one thing refused besides the shape: a nought right after the country code or the trunk zero
+    // (+84 0..., 00...). No Vietnamese subscriber number starts with it, so it is a slip, and taking it for
+    // a number sent a sign-in to "incorrect password" instead of "not a valid number".
+    private static final Pattern PHONE = Pattern.compile("^(?:\\+84|84|0)([1-9]\\d{8})$");
 
     /**
      * What people put between the digits, and nothing else.

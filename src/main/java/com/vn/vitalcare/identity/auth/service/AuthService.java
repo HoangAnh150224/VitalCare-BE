@@ -50,7 +50,9 @@ public class AuthService {
             "$2a$10$ff7CTQvwMv0Szb.qGXF3zeMUkV8Jjta52A6kYzGDeZY4YE2pyd.YS";
 
     /** The same answer for every way of failing, for the same reason. */
-    private static final String INVALID_CREDENTIALS = "Incorrect phone number or password";
+    private static final String NO_ACCOUNT = "No account uses this phone number";
+    private static final String WRONG_PASSWORD = "Incorrect password";
+    private static final String LOCKED = "This account is locked";
 
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
@@ -86,22 +88,31 @@ public class AuthService {
      * Verifies credentials and opens a session.
      *
      * @throws BadCredentialsException on an unknown number, a wrong password or
-     *                                 an account that is not active — the same
-     *                                 exception and the same message for all
-     *                                 three, so that a failed attempt reveals
-     *                                 nothing about which accounts exist
+     *                                 an account that is not active, each with
+     *                                 its own message; whether an account is
+     *                                 locked is said only to somebody who gave
+     *                                 its password
      */
     @Transactional
     public TokenResponse login(LoginRequest request) {
+        if (com.vn.vitalcare.share.phone.PhoneNumbers.normalize(request.phone()).isEmpty()) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("phone",
+                    "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567");
+        }
         Optional<User> found = userService.findForAuthentication(request.phone());
 
+        // The hash is checked whether or not the account exists, so the answer takes as long either way.
         String hash = found.map(User::getPasswordHash).orElse(DUMMY_HASH);
         boolean passwordMatches = passwordEncoder.matches(request.password(), hash);
 
-        User user = found
-                .filter(candidate -> passwordMatches)
-                .filter(User::canSignIn)
-                .orElseThrow(() -> new BadCredentialsException(INVALID_CREDENTIALS));
+        User user = found.orElseThrow(() -> new BadCredentialsException(NO_ACCOUNT));
+        if (!passwordMatches) {
+            throw new BadCredentialsException(WRONG_PASSWORD);
+        }
+        if (!user.canSignIn()) {
+            throw new BadCredentialsException(user.getStatus() == com.vn.vitalcare.identity.user.entity.UserStatus.LOCKED
+                    ? LOCKED : "This account is no longer active");
+        }
 
         Instant now = Instant.now();
         userService.recordLogin(user, now);
