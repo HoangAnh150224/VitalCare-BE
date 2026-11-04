@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,6 +55,7 @@ class PolicyCompilerTest {
         Long id;
         FixtureStatus status;
         LocalDate dueDate;
+        UUID clinicId;
         Instant createdAt;
         User assignee;
         FixtureDepartment department;
@@ -81,6 +83,7 @@ class PolicyCompilerTest {
                     FieldDescriptor.id("id"),
                     FieldDescriptor.column("status", FixtureStatus.class, false),
                     FieldDescriptor.column("dueDate", LocalDate.class),
+                    FieldDescriptor.column("clinicId", UUID.class),
                     FieldDescriptor.column("createdAt", Instant.class, false),
                     FieldDescriptor.reference("assignee", User.class),
                     FieldDescriptor.reference("department", FixtureDepartment.class));
@@ -102,7 +105,8 @@ class PolicyCompilerTest {
         List<RowLevelPolicySet<?>> policySets = List.of(new WidgetRowLevelPolicies());
         List<RowLevelContextProvider> context = List.of(
                 provider("user.id", Long.class),
-                provider("user.departmentId", Long.class));
+                provider("user.departmentId", Long.class),
+                provider("user.clinicId", UUID.class));
 
         registry = new RowLevelRegistry(policySets, context);
         compiler = new PolicyCompiler(registry);
@@ -177,6 +181,37 @@ class PolicyCompilerTest {
         ScopePlan.Operand.Literal literal =
                 assertInstanceOf(ScopePlan.Operand.Literal.class, leaf.operand());
         assertEquals(FixtureStatus.IN_PROGRESS, literal.value());
+    }
+
+    @Test
+    @DisplayName("A UUID literal is coerced to a UUID, so a policy can name one clinic")
+    void uuidLiteralsAreCoerced() {
+        ScopePlan plan = compile(Action.READ, """
+                { "field": "clinicId", "op": "eq", "value": { "lit": "c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48" } }""");
+
+        ScopePlan.Leaf leaf = assertInstanceOf(ScopePlan.Leaf.class, plan);
+        ScopePlan.Operand.Literal literal =
+                assertInstanceOf(ScopePlan.Operand.Literal.class, leaf.operand());
+        assertEquals(UUID.fromString("c2a7e4d1-3b8f-4c62-9a15-7e0d3f9b2a48"), literal.value());
+    }
+
+    @Test
+    @DisplayName("Something that is not a UUID is refused when the policy is saved")
+    void malformedUuidIsRefused() {
+        PolicyValidationException failure = assertThrows(PolicyValidationException.class, () ->
+                compile(Action.READ, """
+                        { "field": "clinicId", "op": "eq", "value": { "lit": "clinic-one" } }"""));
+        assertTrue(failure.getMessage().contains("clinic-one"));
+    }
+
+    @Test
+    @DisplayName("A UUID column compares against a UUID context key")
+    void uuidColumnTakesUuidContext() {
+        ScopePlan plan = compile(Action.READ, """
+                { "field": "clinicId", "op": "eq", "value": { "ctx": "user.clinicId" } }""");
+
+        ScopePlan.Leaf leaf = assertInstanceOf(ScopePlan.Leaf.class, plan);
+        assertInstanceOf(ScopePlan.Operand.Context.class, leaf.operand());
     }
 
     @Test

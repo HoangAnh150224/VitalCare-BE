@@ -1,0 +1,143 @@
+# When a clinic sees people, and how many at a time -- what booking by time
+# slot is cut from.
+#
+# One row is one session of one weekday: a morning and an afternoon are two
+# rows, so a lunch break needs no special case and a half day is one row. A
+# weekday with no row is a day the clinic is closed. Slots are not stored:
+# they are cut from these rows when asked for, so changing the hours never
+# leaves stale slots behind -- appointments already booked simply keep their
+# times.
+#
+# appointment.booking_code is the short code on the patient's appointment
+# slip, and what the QR on it carries. The front desk looks an appointment up
+# by it instead of searching for a name. Unique, so a code names exactly one
+# appointment; rows booked before codes existed are given one here.
+databaseChangeLog:
+  - changeSet:
+      id: 014-clinic-working-hours
+      author: vitalcare
+      changes:
+        - createTable:
+            tableName: clinic_working_hours
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_clinic_working_hours
+              - column:
+                  name: clinic_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              # ISO numbering, 1 = Monday ... 7 = Sunday, which is what
+              # java.time.DayOfWeek.getValue() returns.
+              - column:
+                  name: day_of_week
+                  type: smallint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: open_time
+                  type: time
+                  constraints:
+                    nullable: false
+              - column:
+                  name: close_time
+                  type: time
+                  constraints:
+                    nullable: false
+              - column:
+                  name: slot_minutes
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: capacity_per_slot
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # The hours are part of the clinic: they go when it goes.
+        - addForeignKeyConstraint:
+            baseTableName: clinic_working_hours
+            baseColumnNames: clinic_id
+            constraintName: fk_clinic_working_hours_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: CASCADE
+        - createIndex:
+            tableName: clinic_working_hours
+            indexName: idx_clinic_working_hours_clinic_day
+            columns:
+              - column:
+                  name: clinic_id
+              - column:
+                  name: day_of_week
+        # The service validates all of this with a message per field; these
+        # are the backstop for anything that writes around it.
+        - sql:
+            sql: >-
+              ALTER TABLE clinic_working_hours
+                ADD CONSTRAINT ck_clinic_working_hours_day CHECK (day_of_week BETWEEN 1 AND 7),
+                ADD CONSTRAINT ck_clinic_working_hours_span CHECK (close_time > open_time),
+                ADD CONSTRAINT ck_clinic_working_hours_slot CHECK (slot_minutes > 0),
+                ADD CONSTRAINT ck_clinic_working_hours_capacity CHECK (capacity_per_slot > 0)
+
+        - addColumn:
+            tableName: appointment
+            columns:
+              - column:
+                  name: booking_code
+                  type: varchar(16)
+        # Rows booked before codes existed. Hex rather than the alphabet new
+        # codes use, which is fine: they only have to be unique and typeable.
+        - sql:
+            sql: >-
+              UPDATE appointment
+              SET booking_code = upper(substr(md5(id::text || clock_timestamp()::text), 1, 8))
+              WHERE booking_code IS NULL
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: booking_code
+            columnDataType: varchar(16)
+        - addUniqueConstraint:
+            tableName: appointment
+            columnNames: booking_code
+            constraintName: uq_appointment_booking_code
+      rollback:
+        - dropUniqueConstraint:
+            tableName: appointment
+            constraintName: uq_appointment_booking_code
+        - dropColumn:
+            tableName: appointment
+            columnName: booking_code
+        - dropTable:
+            tableName: clinic_working_hours

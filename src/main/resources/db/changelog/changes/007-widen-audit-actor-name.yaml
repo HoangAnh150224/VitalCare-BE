@@ -1,0 +1,27 @@
+# The audit trail now records who acted by their full name rather than by a
+# sign-in identifier, because that identifier became a phone number and
+# "+84900000001 disabled this policy" is both harder to read than a name and a
+# piece of personal data with no reason to sit in an audit row.
+#
+# The two columns have to agree on width for that to work. actor_name was sized
+# for the old username, which validation capped at 100; full_name is capped at
+# 255. Without this, an account whose name is longer than 100 characters cannot
+# save a policy at all: Postgres rejects the insert, and the integrity-violation
+# handler answers 409 "This record is still referenced by other records", which
+# describes something else entirely.
+databaseChangeLog:
+  - changeSet:
+      id: 007-widen-audit-actor-name
+      author: vitalcare
+      changes:
+        - modifyDataType:
+            tableName: row_level_policy_audit
+            columnName: actor_name
+            newDataType: varchar(255)
+      # modifyDataType drops the NOT NULL on some databases; Postgres keeps it,
+      # but stating it again costs nothing and makes the intent survive a move.
+      rollback:
+        - modifyDataType:
+            tableName: row_level_policy_audit
+            columnName: actor_name
+            newDataType: varchar(100)

@@ -40,7 +40,7 @@ public class AuthService {
      * Hash of nothing in particular, used to keep a failed sign-in as slow as a
      * successful one.
      *
-     * <p>Without it, an unknown username returns immediately while a known one
+     * <p>Without it, an unknown number returns immediately while a known one
      * pays for a BCrypt comparison first — a difference large enough to time
      * from across a network, which turns the login form into a way to enumerate
      * accounts. Verifying against this dummy hash spends the same work either
@@ -50,7 +50,9 @@ public class AuthService {
             "$2a$10$ff7CTQvwMv0Szb.qGXF3zeMUkV8Jjta52A6kYzGDeZY4YE2pyd.YS";
 
     /** The same answer for every way of failing, for the same reason. */
-    private static final String INVALID_CREDENTIALS = "Incorrect username or password";
+    private static final String NO_ACCOUNT = "No account uses this phone number";
+    private static final String WRONG_PASSWORD = "Incorrect password";
+    private static final String LOCKED = "This account is locked";
 
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
@@ -85,24 +87,45 @@ public class AuthService {
     /**
      * Verifies credentials and opens a session.
      *
-     * @throws BadCredentialsException on a wrong username, a wrong password or
-     *                                 an account that is not active — the same
-     *                                 exception and the same message for all
-     *                                 three, so that a failed attempt reveals
-     *                                 nothing about which accounts exist
+     * @throws BadCredentialsException on an unknown number, a wrong password or
+     *                                 an account that is not active, each with
+     *                                 its own message; whether an account is
+     *                                 locked is said only to somebody who gave
+     *                                 its password
      */
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        Optional<User> found = userService.findForAuthentication(request.username());
+        com.vn.vitalcare.share.phone.PhoneNumbers.problem(request.phone()).ifPresent(problem -> {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("phone", problem);
+        });
+        Optional<User> found = userService.findForAuthentication(request.phone());
 
+        // The hash is checked whether or not the account exists, so the answer takes as long either way.
         String hash = found.map(User::getPasswordHash).orElse(DUMMY_HASH);
         boolean passwordMatches = passwordEncoder.matches(request.password(), hash);
 
-        User user = found
-                .filter(candidate -> passwordMatches)
-                .filter(User::canSignIn)
-                .orElseThrow(() -> new BadCredentialsException(INVALID_CREDENTIALS));
+        User user = found.orElseThrow(() -> new BadCredentialsException(NO_ACCOUNT));
+        if (!passwordMatches) {
+            throw new BadCredentialsException(WRONG_PASSWORD);
+        }
+        if (!user.canSignIn()) {
+            throw new BadCredentialsException(user.getStatus() == com.vn.vitalcare.identity.user.entity.UserStatus.LOCKED
+                    ? LOCKED : "This account is no longer active");
+        }
 
+        Instant now = Instant.now();
+        userService.recordLogin(user, now);
+        return issue(user, now);
+    }
+
+    /**
+     * Opens a session for an account another flow has just proved ownership
+     * of — self-registration, after its one-time code. The same pair a
+     * sign-in hands out, recorded as a sign-in, so the person lands signed in
+     * rather than being sent to type the password they chose a second ago.
+     */
+    @Transactional
+    public TokenResponse signInVerified(User user) {
         Instant now = Instant.now();
         userService.recordLogin(user, now);
         return issue(user, now);

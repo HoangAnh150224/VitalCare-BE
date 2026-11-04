@@ -81,6 +81,7 @@ public class RowLevelPrincipalResolver {
                 userId,
                 entry.organizationId(),
                 entry.departmentId(),
+                entry.clinicId(),
                 Set.copyOf(entry.roles()),
                 entry.roleIds());
     }

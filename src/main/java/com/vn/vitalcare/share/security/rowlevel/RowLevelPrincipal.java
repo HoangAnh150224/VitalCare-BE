@@ -1,6 +1,7 @@
 package com.vn.vitalcare.share.security.rowlevel;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Who the policies are being evaluated for.
@@ -16,6 +17,8 @@ import java.util.Set;
  * @param userId         the account making the request
  * @param organizationId where it sits, or null
  * @param departmentId   which unit inside that organization, or null
+ * @param clinicId       the clinic its staff record places it at, or null —
+ *                       see {@link ClinicPlacement}
  * @param roleCodes      role codes, for a policy that wants to name one
  * @param roleIds        role ids, which is what a {@code SCOPE} is keyed by
  */
@@ -23,12 +26,19 @@ public record RowLevelPrincipal(
         long userId,
         Long organizationId,
         Long departmentId,
+        UUID clinicId,
         Set<String> roleCodes,
         Set<Long> roleIds) {
 
     public RowLevelPrincipal {
         roleCodes = Set.copyOf(roleCodes);
         roleIds = Set.copyOf(roleIds);
+    }
+
+    /** A principal placed at no clinic — the framework's shape. */
+    public RowLevelPrincipal(
+            long userId, Long organizationId, Long departmentId, Set<String> roleCodes, Set<Long> roleIds) {
+        this(userId, organizationId, departmentId, null, roleCodes, roleIds);
     }
 
     public boolean hasRole(long roleId) {

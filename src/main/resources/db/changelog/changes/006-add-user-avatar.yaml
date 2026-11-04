@@ -1,0 +1,21 @@
+# Profile picture for an account, held as a URL rather than bytes: the image
+# itself lives wherever it was uploaded, and this column only has to survive a
+# change of storage provider.
+#
+# Nullable, because an account is perfectly usable without one and the screens
+# fall back to initials.
+databaseChangeLog:
+  - changeSet:
+      id: 006-add-user-avatar
+      author: vitalcare
+      changes:
+        - addColumn:
+            tableName: users
+            columns:
+              - column:
+                  name: avatar_url
+                  type: varchar(500)
+      rollback:
+        - dropColumn:
+            tableName: users
+            columnName: avatar_url

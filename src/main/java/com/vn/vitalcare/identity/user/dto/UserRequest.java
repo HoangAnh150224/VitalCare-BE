@@ -18,13 +18,17 @@ import java.util.List;
  * the database — it is never stored, echoed or logged.
  */
 public record UserRequest(
-        @NotBlank(message = "Username is required")
-        @Size(min = 3, max = 100, message = "Username must be between 3 and 100 characters")
-        @Pattern(regexp = "^[a-zA-Z0-9._-]+$",
-                message = "Username may only contain letters, digits, dots, underscores and hyphens")
-        String username,
+        /** The sign-in identifier. Stored as {@code +84...} whichever form arrives. */
+        @NotBlank(message = "Phone number is required")
+        // Mirrors what UserService accepts, so a number that can sign in can
+        // also be enrolled. A pasted number almost always carries a trailing
+        // space, and refusing it here while the sign-in form takes it is an
+        // inconsistency nobody on the other end can act on.
+        @Pattern(regexp = "^[\\s\\h.()-]*(?:\\+?84|0)(?:[\\s\\h.()-]*\\d){9}[\\s\\h.()-]*$",
+                message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
+        String phone,
 
-        @NotBlank(message = "Email is required")
+        /** Optional — nothing authenticates against it; it is for notifications. */
         @Email(message = "Email must be a valid address")
         @Size(max = 255, message = "Email must be at most 255 characters")
         String email,

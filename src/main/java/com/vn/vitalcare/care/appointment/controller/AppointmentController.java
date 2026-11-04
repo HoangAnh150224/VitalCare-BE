@@ -1,0 +1,147 @@
+package com.vn.vitalcare.care.appointment.controller;
+
+import com.vn.vitalcare.care.appointment.dto.AppointmentResponse;
+import com.vn.vitalcare.care.appointment.dto.AppointmentUpdateRequest;
+import com.vn.vitalcare.care.appointment.dto.CancelAppointmentRequest;
+import com.vn.vitalcare.care.appointment.dto.RescheduleRequest;
+import com.vn.vitalcare.care.appointment.dto.StaffBookingRequest;
+import com.vn.vitalcare.care.appointment.service.AppointmentService;
+import com.vn.vitalcare.entity.Appointment;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
+import com.vn.vitalcare.share.security.Permissions;
+import com.vn.vitalcare.share.web.ListParams;
+import com.vn.vitalcare.share.web.ListResponse;
+import jakarta.validation.Valid;
+import java.net.URI;
+import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * {@code /api/appointments} — the clinic's appointment book.
+ *
+ * <p>Cancelling is a state change, not a delete: a cancelled appointment stays
+ * on the record.
+ */
+@RestController
+@RequestMapping("/api/appointments")
+public class AppointmentController {
+
+    private final AppointmentService service;
+    private final RowLevelSecurity rowLevel;
+
+    private final com.vn.vitalcare.care.appointment.service.WalkIns walkIns;
+
+    public AppointmentController(AppointmentService service, RowLevelSecurity rowLevel,
+                                 com.vn.vitalcare.care.appointment.service.WalkIns walkIns) {
+        this.walkIns = walkIns;
+        this.service = service;
+        this.rowLevel = rowLevel;
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_READ + "')")
+    public ResponseEntity<List<AppointmentResponse>> list(@RequestParam MultiValueMap<String, String> query) {
+        ListParams params = new ListParams(query);
+
+        List<Long> ids = params.ids();
+        if (!ids.isEmpty()) {
+            List<AppointmentResponse> rows = service.getMany(ids).stream()
+                    .map(appointment -> AppointmentResponse.from(appointment, rowLevel))
+                    .toList();
+            return ListResponse.of(rows, rows.size());
+        }
+
+        Page<Appointment> page = service.list(params);
+        return ListResponse.of(page.map(appointment -> AppointmentResponse.from(appointment, rowLevel)).getContent(), page.getTotalElements());
+    }
+
+    /**
+     * The appointment a slip's code names — what the front desk scans or types.
+     * Declared before {@code /{id}} so "lookup" is never read as an id.
+     */
+    @GetMapping("/lookup")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_READ + "')")
+    public AppointmentResponse lookup(@RequestParam String code) {
+        return AppointmentResponse.from(service.getByCode(code), rowLevel);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_READ + "')")
+    public AppointmentResponse get(@PathVariable Long id) {
+        return AppointmentResponse.from(service.get(id), rowLevel);
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public ResponseEntity<AppointmentResponse> create(@Valid @RequestBody StaffBookingRequest request) {
+        Appointment created = service.bookFor(request);
+        return ResponseEntity
+                .created(URI.create("/api/appointments/" + created.getId()))
+                .body(AppointmentResponse.from(created, rowLevel));
+    }
+
+    /**
+     * Somebody who walked in: registered for today with the doctor chosen and
+     * checked in at once, given the next number of the day. The examination
+     * fee is taken next; the visit queues once it is paid (BF-02).
+     */
+    @PostMapping("/walk-in")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "') and hasAuthority('"
+            + Permissions.APPOINTMENTS_CHECK_IN + "')")
+    public ResponseEntity<AppointmentResponse> walkIn(
+            @Valid @RequestBody com.vn.vitalcare.care.appointment.dto.WalkInRequest request) {
+        Appointment created = walkIns.register(request);
+        return ResponseEntity
+                .created(URI.create("/api/appointments/" + created.getId()))
+                .body(AppointmentResponse.from(created, rowLevel));
+    }
+
+    /** Records the arrival; a neutral customer becomes a patient in the same step. */
+    @PostMapping("/{id}/check-in")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_CHECK_IN + "')")
+    public AppointmentResponse checkIn(@PathVariable Long id) {
+        return AppointmentResponse.from(service.checkIn(id), rowLevel);
+    }
+
+    /** Corrects the reason and the desk's note. */
+    @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse update(@PathVariable Long id, @Valid @RequestBody AppointmentUpdateRequest request) {
+        return AppointmentResponse.from(service.update(id, request), rowLevel);
+    }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse complete(@PathVariable Long id) {
+        return AppointmentResponse.from(service.complete(id), rowLevel);
+    }
+
+    @PostMapping("/{id}/no-show")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse noShow(@PathVariable Long id) {
+        return AppointmentResponse.from(service.markNoShow(id), rowLevel);
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse cancel(@PathVariable Long id, @Valid @RequestBody CancelAppointmentRequest request) {
+        return AppointmentResponse.from(service.cancel(id, request.reason()), rowLevel);
+    }
+
+    @PostMapping("/{id}/reschedule")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse reschedule(@PathVariable Long id, @Valid @RequestBody RescheduleRequest request) {
+        return AppointmentResponse.from(service.reschedule(id, request), rowLevel);
+    }
+}

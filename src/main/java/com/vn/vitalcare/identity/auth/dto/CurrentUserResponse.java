@@ -17,14 +17,14 @@ import com.vn.vitalcare.identity.user.entity.User;
  */
 public record CurrentUserResponse(
         Long id,
-        String username,
+        String phone,
         String email,
         String fullName) {
 
     public static CurrentUserResponse from(User user) {
         return new CurrentUserResponse(
                 user.getId(),
-                user.getUsername(),
+                user.getPhone(),
                 user.getEmail(),
                 user.getFullName());
     }

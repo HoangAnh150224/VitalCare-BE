@@ -46,6 +46,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class PredicateCompiler {
 
+    /** Escapes a literal's own {@code %} and {@code _} in a {@code like}; see {@link #pattern}. */
+    private static final char LIKE_ESCAPE = '\\';
+
     /**
      * @param query never null in practice — every {@code JpaSpecificationExecutor}
      *              path passes one — but a subquery cannot be built without it,
@@ -168,8 +171,8 @@ public class PredicateCompiler {
             case LTE -> cb.lessThanOrEqualTo(comparablePath(path), comparable(value));
             case GT -> cb.greaterThan(comparablePath(path), comparable(value));
             case GTE -> cb.greaterThanOrEqualTo(comparablePath(path), comparable(value));
-            case LIKE -> cb.like(lower(cb, path), pattern(value));
-            case NOT_LIKE -> cb.notLike(lower(cb, path), pattern(value));
+            case LIKE -> cb.like(lower(cb, path), pattern(value), LIKE_ESCAPE);
+            case NOT_LIKE -> cb.notLike(lower(cb, path), pattern(value), LIKE_ESCAPE);
             // BETWEEN was expanded by the compiler; the two nullary operators
             // and the two set operators were handled above.
             default -> throw new IllegalStateException("Unhandled operator " + op);
@@ -194,8 +197,20 @@ public class PredicateCompiler {
         return cb.lower(path.as(String.class));
     }
 
+    /**
+     * {@code like} means "contains", case-insensitively — what
+     * {@code EntityEvaluator} answers in memory. So the value is a plain
+     * substring, and its own {@code %} and {@code _} are escaped: left as
+     * wildcards, {@code WRIST_MONITOR} would also match {@code WRISTXMONITOR}
+     * in SQL and not in memory, which is exactly the disagreement
+     * {@code CompilerAgreementTest} exists to catch.
+     */
     private static String pattern(Object value) {
-        return "%" + value.toString().toLowerCase(Locale.ROOT) + "%";
+        String literal = value.toString().toLowerCase(Locale.ROOT)
+                .replace(String.valueOf(LIKE_ESCAPE), String.valueOf(LIKE_ESCAPE) + LIKE_ESCAPE)
+                .replace("%", LIKE_ESCAPE + "%")
+                .replace("_", LIKE_ESCAPE + "_");
+        return "%" + literal + "%";
     }
 
     @SuppressWarnings("unchecked")

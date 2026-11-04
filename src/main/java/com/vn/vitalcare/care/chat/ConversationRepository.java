@@ -1,0 +1,85 @@
+package com.vn.vitalcare.care.chat;
+
+import com.vn.vitalcare.entity.Conversation;
+import com.vn.vitalcare.share.data.SecuredRepository;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+/**
+ * Conversations. Staff reach them through their row-level scope; the three
+ * queries declared here are the other two sides' doors, each pinned to who is
+ * asking: a customer's own account, or a guest's token (checked by the caller
+ * against the hash on the row it finds).
+ */
+public interface ConversationRepository extends SecuredRepository<Conversation, Long> {
+
+    @Override
+    @EntityGraph(attributePaths = {"clinic"})
+    Page<Conversation> findAll(Specification<Conversation> spec, Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"clinic"})
+    Optional<Conversation> findOne(Specification<Conversation> spec);
+
+    /** A guest's conversation by id; the token is compared by the caller. */
+    @Query("select c from Conversation c left join fetch c.clinic "
+            + "where c.id = :id and c.customerUserId is null and c.guestTokenHash is not null and c.deletedAt is null")
+    Optional<Conversation> findGuest(@Param("id") Long id);
+
+    /** A customer's conversations, latest first. */
+    @Query("select c from Conversation c left join fetch c.clinic "
+            + "where c.customerUserId = :userId and c.deletedAt is null "
+            + "order by c.lastMessageAt desc nulls last, c.id desc")
+    List<Conversation> findOwn(@Param("userId") Long userId);
+
+    @Query("select c from Conversation c left join fetch c.clinic "
+            + "where c.id = :id and c.customerUserId = :userId and c.deletedAt is null")
+    Optional<Conversation> findOwn(@Param("id") Long id, @Param("userId") Long userId);
+
+    /**
+     * Read marks, written without touching the row's version: reading must
+     * never make somebody's message fail on an optimistic lock. Each only
+     * moves forward, and only when the other side wrote since; the count says
+     * whether anything changed.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Conversation c set c.staffReadAt = :now where c.id = :id "
+            + "and (c.staffReadAt is null or c.lastMessageAt > c.staffReadAt)")
+    int markStaffRead(@Param("id") Long id, @Param("now") OffsetDateTime now);
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("update Conversation c set c.customerReadAt = :now where c.id = :id "
+            + "and (c.customerReadAt is null or c.lastMessageAt > c.customerReadAt)")
+    int markCustomerRead(@Param("id") Long id, @Param("now") OffsetDateTime now);
+
+    /** The customer's conversation with a clinic, if there is one: writing to a clinic again continues it. */
+    @Query("select c from Conversation c where c.customerUserId = :userId and c.clinicId = :clinicId "
+            + "and c.aboutCustomerId is null and c.deletedAt is null order by c.id desc limit 1")
+    Optional<Conversation> findOwnAt(@Param("userId") Long userId, @Param("clinicId") UUID clinicId);
+
+    /** A caregiver's conversation with a clinic about one patient (BF-06): one per patient and clinic. */
+    @Query("select c from Conversation c where c.customerUserId = :userId and c.clinicId = :clinicId "
+            + "and c.aboutCustomerId = :aboutId and c.deletedAt is null order by c.id desc limit 1")
+    Optional<Conversation> findOwnAboutAt(@Param("userId") Long userId, @Param("clinicId") UUID clinicId,
+                                          @Param("aboutId") Long aboutId);
+
+    /**
+     * The clinics that know a patient: a visit there, or one of its devices worn.
+     * Where a caregiver may write about them; not scoped (the caller checked the grant).
+     */
+    @Query(nativeQuery = true, value = "select distinct k.clinic_id from clinic k where k.deleted_at is null and ("
+            + " exists (select 1 from appointment a where a.customer_id = :customerId and a.clinic_id = k.clinic_id"
+            + "   and a.deleted_at is null)"
+            + " or exists (select 1 from device_assignment da join medical_device d on d.id = da.device_id"
+            + "   where da.customer_id = :customerId and d.clinic_id = k.clinic_id and da.deleted_at is null))")
+    List<UUID> clinicsKnowing(@Param("customerId") Long customerId);
+}

@@ -92,10 +92,38 @@ public class SecurityConfig {
                         // definition; rejecting it would fail every
                         // cross-origin request before the real one is sent.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        // Railway's health check has no bearer token. The
+                        // actuator exposes health status only to anonymous
+                        // callers; detailed component data remains protected.
+                        .requestMatchers("/actuator/health").permitAll()
                         // Signing in, renewing and signing out are the three
                         // things you must be able to do without a valid access
                         // token. Everything else needs one.
                         .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+                        // Self-registration happens before there is a token to
+                        // hold.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
+                        // Recovering a forgotten password, for the same reason;
+                        // its one-time-code limits (resend cooldown, per-hour
+                        // cap) are what guard it instead.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/password-reset", "/api/auth/password-reset/otp",
+                                "/api/auth/password-reset/otp/check").permitAll()
+                        // VNPay's answers: the customer's browser coming back,
+                        // and VNPay's own server. Neither holds a token; the
+                        // signature on the parameters is checked instead.
+                        .requestMatchers(HttpMethod.GET, "/api/payments/vnpay/return", "/api/payments/vnpay/ipn").permitAll()
+                        // SePay's webhook: proven by its HMAC signature, checked in SepayController.
+                        .requestMatchers(HttpMethod.POST, "/api/payments/sepay/webhook").permitAll()
+                        // The public site: what a visitor reads before signing
+                        // in (clinics, prices, first aid) and the guest chat.
+                        // Every endpoint under it answers public DTOs only;
+                        // the guest chat proves itself with its own token.
+                        .requestMatchers("/api/public/**").permitAll()
+                        // A device and the MQTT broker, which have no user sign-in: the
+                        // device proves itself with its own secret, the broker with
+                        // its hook secret (DeviceDataController).
+                        .requestMatchers(HttpMethod.POST, "/api/device_data/batch", "/api/mqtt/auth",
+                                "/api/mqtt/acl").permitAll()
                         // The WebSocket handshake, and only the handshake. The
                         // browser cannot put an Authorization header on it, so
                         // there is nothing here for this chain to check;

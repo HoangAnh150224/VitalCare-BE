@@ -1,0 +1,245 @@
+package com.vn.vitalcare.care.assignment.service.impl;
+
+import com.vn.vitalcare.care.staff.service.ClinicScope;
+import com.vn.vitalcare.share.data.BaseEntitySpecifications;
+import com.vn.vitalcare.share.security.rowlevel.Action;
+import com.vn.vitalcare.share.web.ListParams;
+import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import com.vn.vitalcare.care.assignment.dto.AssignmentRequests;
+import com.vn.vitalcare.care.assignment.repository.DeviceAssignmentRepository;
+import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentRepository;
+import com.vn.vitalcare.care.assignment.repository.MonitoringAssignmentSpecifications;
+import com.vn.vitalcare.care.assignment.service.CareAssignmentService;
+import com.vn.vitalcare.care.customer.service.CustomerService;
+import com.vn.vitalcare.care.device.service.DeviceService;
+import com.vn.vitalcare.care.staff.service.EmployeeService;
+import com.vn.vitalcare.entity.Customer;
+import com.vn.vitalcare.entity.CustomerStatus;
+import com.vn.vitalcare.entity.DeviceAssignment;
+import com.vn.vitalcare.entity.DeviceStatus;
+import com.vn.vitalcare.entity.Employee;
+import com.vn.vitalcare.entity.EmployeeStatus;
+import com.vn.vitalcare.entity.MedicalDevice;
+import com.vn.vitalcare.entity.MonitoringAssignment;
+import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
+import com.vn.vitalcare.share.exception.ConflictException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.security.CurrentUser;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/** The {@link CareAssignmentService} the application runs on. */
+@Service
+@Transactional(readOnly = true)
+public class CareAssignmentServiceImpl implements CareAssignmentService {
+
+    private final MonitoringAssignmentRepository careTeams;
+    private final DeviceAssignmentRepository deviceAssignments;
+    private final CustomerService customerService;
+    private final EmployeeService employeeService;
+    private final DeviceService deviceService;
+    // Handing a device out and taking it back changes the device's status, so
+    // the "devices" write policy is checked on the state that leaves it in.
+    // DeviceService.lockForUpdate has already checked the other half.
+    private final RowLevelSecurity rowLevel;
+    private final ClinicScope clinicScope;
+    private final Clock clock;
+
+    private final com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders;
+
+    public CareAssignmentServiceImpl(MonitoringAssignmentRepository careTeams,
+                                     DeviceAssignmentRepository deviceAssignments,
+                                     CustomerService customerService,
+                                     EmployeeService employeeService,
+                                     DeviceService deviceService,
+                                     RowLevelSecurity rowLevel,
+                                     ClinicScope clinicScope,
+                                     com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders,
+                                     Clock clock) {
+        this.monitoringOrders = monitoringOrders;
+        this.careTeams = careTeams;
+        this.deviceAssignments = deviceAssignments;
+        this.customerService = customerService;
+        this.employeeService = employeeService;
+        this.deviceService = deviceService;
+        this.rowLevel = rowLevel;
+        this.clinicScope = clinicScope;
+        this.clock = clock;
+    }
+
+    // --- the clinic's assignments --------------------------------------------
+
+    private static final Set<String> SORTABLE = Set.of("id", "assignedAt", "unassignedAt", "status");
+
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("assignedAt"), Sort.Order.desc("id"));
+
+    @Override
+    public Page<MonitoringAssignment> assignments(ListParams params) {
+        return careTeams.findAll(
+                inClinic().and(MonitoringAssignmentSpecifications.from(params)),
+                params.pageable(SORTABLE, DEFAULT_SORT));
+    }
+
+    @Override
+    public MonitoringAssignment assignment(Long id) {
+        return careTeams.findOne(Specification.allOf(
+                        inClinic(), BaseEntitySpecifications.notDeleted(), MonitoringAssignmentSpecifications.byId(id)))
+                .orElseThrow(() -> new ResourceNotFoundException("Care team assignment", id));
+    }
+
+    /**
+     * Applied before the caller's own filters, so nothing in a query string
+     * widens it. Somebody with no clinic sees every clinic's only if their
+     * staff scope does too, and nothing otherwise -- as
+     * {@code CustomerServiceImpl.boundScope}.
+     */
+    private Specification<MonitoringAssignment> inClinic() {
+        if (rowLevel.hasUnrestrictedScope(Employee.class, Action.READ)) {
+            return (root, query, cb) -> cb.conjunction();
+        }
+        return clinicScope.currentClinicId()
+                .map(MonitoringAssignmentSpecifications::ofClinic)
+                .orElse((root, query, cb) -> cb.disjunction());
+    }
+
+    // --- care team -----------------------------------------------------------
+
+    @Override
+    public List<MonitoringAssignment> careTeam(Long customerId) {
+        customerService.get(customerId);
+        return careTeams.findByCustomerIdAndDeletedAtIsNullOrderByAssignedAtDesc(customerId);
+    }
+
+    @Override
+    @Transactional
+    public MonitoringAssignment assignStaff(Long customerId, AssignmentRequests.AssignStaff request) {
+        Customer patient = requirePatient(customerId);
+        Employee employee = employeeService.lockForUpdate(request.employeeId());
+        if (!employee.getStaffType().isClinical()) {
+            throw new FieldValidationException("employeeId", "Only a doctor or a nurse can be on a care team");
+        }
+        if (employee.getStatus() != EmployeeStatus.ACTIVE) {
+            throw new FieldValidationException("employeeId", "That member of staff is no longer active");
+        }
+        if (careTeams.existsByCustomerIdAndEmployeeIdAndUnassignedAtIsNullAndDeletedAtIsNull(
+                patient.getId(), employee.getId())) {
+            throw new ConflictException("That member of staff is already following this patient");
+        }
+
+        MonitoringAssignment assignment = new MonitoringAssignment();
+        assignment.start(patient, employee, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        assignment.setNote(blankToNull(request.note()));
+        return careTeams.save(assignment);
+    }
+
+    @Override
+    @Transactional
+    public MonitoringAssignment endStaff(Long customerId, Long assignmentId, AssignmentRequests.End request) {
+        customerService.get(customerId);
+        MonitoringAssignment assignment = careTeams.findByIdAndCustomerIdAndDeletedAtIsNull(assignmentId, customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Care team assignment", assignmentId));
+        if (!assignment.isActive()) {
+            throw new ConflictException("This assignment has already ended");
+        }
+        assignment.end(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        assignment.setNote(appendNote(assignment.getNote(), request == null ? null : request.note()));
+        return careTeams.save(assignment);
+    }
+
+    // --- devices -------------------------------------------------------------
+
+    @Override
+    public List<DeviceAssignment> devices(Long customerId) {
+        customerService.get(customerId);
+        return deviceAssignments.findByCustomerIdAndDeletedAtIsNullOrderByAssignedAtDesc(customerId);
+    }
+
+    @Override
+    public Optional<DeviceAssignment> currentDevice(Long customerId) {
+        return deviceAssignments.findFirstByCustomerIdAndUnassignedAtIsNullAndDeletedAtIsNull(customerId);
+    }
+
+    @Override
+    @Transactional
+    public DeviceAssignment assignDevice(Long customerId, AssignmentRequests.AssignDevice request) {
+        Customer patient = requirePatient(customerId);
+        MedicalDevice device = deviceService.lockForUpdate(request.deviceId());
+
+        if (device.getStatus() != DeviceStatus.AVAILABLE) {
+            throw new ConflictException("That device is not available");
+        }
+        if (currentDevice(patient.getId()).isPresent()) {
+            throw new ConflictException("This patient is already wearing a device; take it back first");
+        }
+        // BF-04: monitoring is the patient's choice; without their recorded consent there is no device.
+        if (!monitoringOrders.hasActive(patient.getId())) {
+            throw new ConflictException("This patient has no accepted monitoring order; the doctor records their consent first");
+        }
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (request.expectedReturnAt() != null && !request.expectedReturnAt().isAfter(now)) {
+            throw new FieldValidationException("expectedReturnAt", "The return date must be in the future");
+        }
+
+        DeviceAssignment assignment = new DeviceAssignment();
+        assignment.start(patient, device, CurrentUser.id().orElse(null), now);
+        assignment.setExpectedReturnAt(request.expectedReturnAt());
+        assignment.setNote(blankToNull(request.note()));
+        device.setStatus(DeviceStatus.ASSIGNED);
+        rowLevel.checkWritable(device);
+        return deviceAssignments.save(assignment);
+    }
+
+    @Override
+    @Transactional
+    public DeviceAssignment returnDevice(Long customerId, Long assignmentId, AssignmentRequests.End request) {
+        customerService.get(customerId);
+        DeviceAssignment assignment = deviceAssignments.findByIdAndCustomerIdAndDeletedAtIsNull(assignmentId, customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Device assignment", assignmentId));
+        if (!assignment.isActive()) {
+            throw new ConflictException("This device has already been returned");
+        }
+        MedicalDevice device = deviceService.lockForUpdate(assignment.getDevice().getId());
+
+        assignment.end(CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        assignment.setNote(appendNote(assignment.getNote(), request == null ? null : request.note()));
+        device.setStatus(DeviceStatus.AVAILABLE);
+        // The next wearer's phone pairs afresh; this one's must not keep uploading as if it still wore it.
+        device.unpair();
+        rowLevel.checkWritable(device);
+        return deviceAssignments.save(assignment);
+    }
+
+    private Customer requirePatient(Long customerId) {
+        // Locked: the "already on the team" and "already wearing a device" checks
+        // that follow must not be raced by a second desk or a double click.
+        Customer customer = customerService.getForUpdate(customerId);
+        if (customer.getStatus() != CustomerStatus.PATIENT) {
+            throw new ConflictException("Only a patient can be assigned staff or a device; activate them first");
+        }
+        return customer;
+    }
+
+    private static String appendNote(String existing, String addition) {
+        String extra = blankToNull(addition);
+        if (extra == null) {
+            return existing;
+        }
+        return existing == null ? extra : existing + "\n" + extra;
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+}

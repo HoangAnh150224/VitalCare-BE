@@ -20,7 +20,7 @@ import java.util.List;
  */
 public record UserResponse(
         Long id,
-        String username,
+        String phone,
         String email,
         String fullName,
         UserStatus status,
@@ -47,7 +47,7 @@ public record UserResponse(
     public static UserResponse from(User user) {
         return new UserResponse(
                 user.getId(),
-                user.getUsername(),
+                user.getPhone(),
                 user.getEmail(),
                 user.getFullName(),
                 user.getStatus(),

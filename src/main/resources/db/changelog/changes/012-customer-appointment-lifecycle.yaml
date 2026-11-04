@@ -1,0 +1,127 @@
+# The rules the "become a patient" flow depends on, moved into the schema.
+#
+# customer: created at self-registration as NEUTRAL and turned into a PATIENT
+# by an eligible check-in or by a member of staff. The activation columns
+# record which of the two it was, when, and by whom -- activating a patient is
+# a clinical-administrative act somebody has to be able to answer for.
+#
+# customer.user_id moves from ON DELETE CASCADE to RESTRICT. With CASCADE,
+# deleting an account silently deleted the customer, and every appointment,
+# encounter and medical record pointing at it was SET NULL: clinical history
+# with nobody attached. Deleting such an account now fails, and the answer is
+# to deactivate it instead.
+#
+# appointment: the columns no booking can exist without become NOT NULL, and
+# the foreign keys that can no longer be set to null become RESTRICT so a
+# delete fails cleanly rather than with a NOT NULL violation. Both tables were
+# created empty by 008, so there is nothing to backfill.
+databaseChangeLog:
+  - changeSet:
+      id: 012-customer-appointment-lifecycle
+      author: vitalcare
+      changes:
+        - addDefaultValue:
+            tableName: customer
+            columnName: status
+            defaultValue: NEUTRAL
+        - addNotNullConstraint:
+            tableName: customer
+            columnName: status
+            columnDataType: varchar(32)
+            defaultNullValue: NEUTRAL
+        - addColumn:
+            tableName: customer
+            columns:
+              - column:
+                  name: patient_activated_at
+                  type: timestamp with time zone
+              # A bare users.id, like the audit columns: no FK, for the reason
+              # given on BaseEntity.
+              - column:
+                  name: patient_activated_by_id
+                  type: bigint
+              - column:
+                  name: patient_activation_source
+                  type: varchar(32)
+        - addUniqueConstraint:
+            tableName: customer
+            columnNames: customer_code
+            constraintName: uq_customer_code
+        - dropForeignKeyConstraint:
+            baseTableName: customer
+            constraintName: fk_customer_user
+        - addForeignKeyConstraint:
+            baseTableName: customer
+            baseColumnNames: user_id
+            constraintName: fk_customer_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: RESTRICT
+
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: customer_id
+            columnDataType: bigint
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: clinic_id
+            columnDataType: uuid
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: appointment_date
+            columnDataType: date
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: start_time
+            columnDataType: time
+        - addNotNullConstraint:
+            tableName: appointment
+            columnName: status
+            columnDataType: varchar(32)
+        - addColumn:
+            tableName: appointment
+            columns:
+              - column:
+                  name: checked_in_by_id
+                  type: bigint
+              - column:
+                  name: cancelled_by_id
+                  type: bigint
+        - dropForeignKeyConstraint:
+            baseTableName: appointment
+            constraintName: fk_appointment_customer
+        - addForeignKeyConstraint:
+            baseTableName: appointment
+            baseColumnNames: customer_id
+            constraintName: fk_appointment_customer
+            referencedTableName: customer
+            referencedColumnNames: id
+            onDelete: RESTRICT
+        - dropForeignKeyConstraint:
+            baseTableName: appointment
+            constraintName: fk_appointment_clinic
+        - addForeignKeyConstraint:
+            baseTableName: appointment
+            baseColumnNames: clinic_id
+            constraintName: fk_appointment_clinic
+            referencedTableName: clinic
+            referencedColumnNames: clinic_id
+            onDelete: RESTRICT
+        # A customer's own list, and a clinic's day sheet -- the two ways
+        # appointments are read.
+        - createIndex:
+            tableName: appointment
+            indexName: idx_appointment_customer_date
+            columns:
+              - column:
+                  name: customer_id
+              - column:
+                  name: appointment_date
+        - createIndex:
+            tableName: appointment
+            indexName: idx_appointment_clinic_date
+            columns:
+              - column:
+                  name: clinic_id
+              - column:
+                  name: appointment_date

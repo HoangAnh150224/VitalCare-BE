@@ -1,0 +1,1028 @@
+# Audit columns for every business table: who wrote the row, when, and whether
+# it is still there.
+#
+# Written by BaseEntity through Spring Data's AuditingEntityListener, with
+# the exception of the deleted pair, which the application sets. See that class
+# for why the author columns hold a bare users.id and carry no foreign key.
+#
+# created_at is NOT NULL and version defaults to 0: these tables were created
+# empty by 008, so there is nothing to backfill. Everything else is nullable --
+# a row that has never been updated has no updated_at, and a write with no
+# signed-in author (a seed, a scheduled job) has no author id.
+#
+# message.deleted_at is deliberately absent below: 008 already created it as
+# the chat's own soft-delete column, and BaseEntity adopts it rather than
+# adding a second one.
+databaseChangeLog:
+  - changeSet:
+      id: 009-add-audit-columns
+      author: vitalcare
+      changes:
+        - addColumn:
+            tableName: alert
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: appointment
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: audit_log
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: clinic
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: clinic_service
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: clinical_encounter
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: conversation
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: customer
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: device_assignment
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: doctor_schedule
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: employee
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: first_aid_guide
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: invoice
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: invoice_item
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: medical_device
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: medical_record
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: message
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: monitoring_assignment
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: notification
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: payment
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: vital_signs
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: vital_threshold
+            columns:
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_by_id
+                  type: bigint
+              - column:
+                  name: updated_at
+                  type: timestamp with time zone
+              - column:
+                  name: updated_by_id
+                  type: bigint
+              - column:
+                  name: deleted_at
+                  type: timestamp with time zone
+              - column:
+                  name: deleted_by_id
+                  type: bigint
+              - column:
+                  name: version
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: alert
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: appointment
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: audit_log
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: clinic
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: clinic_service
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: clinical_encounter
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: conversation
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: customer
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: device_assignment
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: doctor_schedule
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: employee
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: first_aid_guide
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: invoice
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: invoice_item
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: medical_device
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: medical_record
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: message
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: monitoring_assignment
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: notification
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: payment
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: vital_signs
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version
+        - dropColumn:
+            tableName: vital_threshold
+            columns:
+              - column:
+                  name: created_at
+              - column:
+                  name: created_by_id
+              - column:
+                  name: updated_at
+              - column:
+                  name: updated_by_id
+              - column:
+                  name: deleted_at
+              - column:
+                  name: deleted_by_id
+              - column:
+                  name: version

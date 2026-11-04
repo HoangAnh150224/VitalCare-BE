@@ -4,6 +4,7 @@ import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
+import com.vn.vitalcare.share.security.rowlevel.ClinicPlacement;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelGeneration;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -12,7 +13,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.core.GrantedAuthority;
@@ -77,9 +80,23 @@ public class AuthorityCache {
      */
     private final RowLevelGeneration policies;
 
-    public AuthorityCache(UserService userService, RowLevelGeneration policies) {
+    /**
+     * Where the care domain places an account — its clinic.
+     *
+     * <p>Same one-way direction as {@link #policies}: an interface from
+     * {@code share/}, implemented in the care domain, which this slice never
+     * names. Looked up lazily so the implementation may depend on anything
+     * without closing a construction cycle through this cache; absent, every
+     * account is placed nowhere.
+     */
+    private final ObjectProvider<ClinicPlacement> clinics;
+
+    public AuthorityCache(UserService userService,
+                          RowLevelGeneration policies,
+                          ObjectProvider<ClinicPlacement> clinics) {
         this.userService = userService;
         this.policies = policies;
+        this.clinics = clinics;
     }
 
     /**
@@ -171,7 +188,9 @@ public class AuthorityCache {
     private Entry load(long userId) {
         try {
             User user = userService.get(userId);
-            return Entry.of(user, policies.generation());
+            ClinicPlacement placement = clinics.getIfAvailable();
+            UUID clinicId = placement == null ? null : placement.clinicOf(userId).orElse(null);
+            return Entry.of(user, clinicId, policies.generation());
         } catch (ResourceNotFoundException e) {
             return null;
         }
@@ -196,6 +215,8 @@ public class AuthorityCache {
      *                    a future one needs no shape change here, only a real
      *                    value.
      * @param departmentId always {@code null}, for the same reason
+     * @param clinicId    the clinic the account's staff record places it at,
+     *                    from {@link ClinicPlacement}; null for anybody else
      * @param version     the stamp described on {@link #versionFor(long)}
      * @param loadedAt    when this was read, for the expiry
      */
@@ -207,10 +228,11 @@ public class AuthorityCache {
             Set<Long> roleIds,
             Long organizationId,
             Long departmentId,
+            UUID clinicId,
             String version,
             long loadedAt) {
 
-        static Entry of(User user, String policyGeneration) {
+        static Entry of(User user, UUID clinicId, String policyGeneration) {
             // Sorted so the stamp does not depend on the order the database
             // happened to return rows in; two nodes must agree on it.
             List<String> codes = List.copyOf(new TreeSet<>(user.permissionCodes()));
@@ -241,6 +263,7 @@ public class AuthorityCache {
                     Set.copyOf(roleIds),
                     null,
                     null,
+                    clinicId,
                     stamp,
                     System.nanoTime());
         }

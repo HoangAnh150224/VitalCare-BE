@@ -12,6 +12,7 @@ import com.vn.vitalcare.identity.user.repository.UserRepository;
 import com.vn.vitalcare.identity.user.repository.UserSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.web.ListParams;
@@ -43,7 +44,7 @@ public class UserService {
 
     /** Sort properties the list endpoint accepts; anything else is ignored. */
     private static final Set<String> SORTABLE =
-            Set.of("id", "username", "email", "fullName", "status", "createdAt", "lastLoginAt");
+            Set.of("id", "phone", "email", "fullName", "status", "createdAt", "lastLoginAt");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
 
@@ -54,7 +55,8 @@ public class UserService {
     // role endpoints would.
     private final RoleService roleService;
 
-    // Disabling an account or resetting its password has to end the sessions
+    // Disabling an account, resetting its password or moving its sign-in
+    // number has to end the sessions
     // already open under it, or the change would not take effect until the
     // refresh token expired days later.
     private final RefreshTokenService refreshTokenService;
@@ -95,23 +97,122 @@ public class UserService {
     }
 
     /**
-     * Resolves the identifier typed into the sign-in form, which may be a
-     * username or an email address. Used by the auth domain.
+     * Resolves the phone number typed into the sign-in form. Used by the auth
+     * domain.
+     *
+     * <p>Normalised first, so that someone who enrolled as {@code +84901234567}
+     * can sign in having typed {@code 0901234567}. A number this method cannot
+     * make sense of resolves to empty rather than throwing: the caller must not
+     * be able to tell a malformed number from an unknown one.
      */
-    public Optional<User> findForAuthentication(String identifier) {
-        return repository.findByUsernameOrEmail(identifier.trim());
+    public Optional<User> findForAuthentication(String phone) {
+        return PhoneNumbers.normalize(phone).flatMap(repository::findByPhone);
+    }
+
+    /** Whether an account already signs in with this (normalised) number. */
+    public boolean phoneInUse(String normalizedPhone) {
+        return repository.findByPhone(normalizedPhone).isPresent();
+    }
+
+    /**
+     * Creates the account behind a self-registration.
+     *
+     * <p>Separate from {@link #create} because nothing about it is the
+     * caller's choice: the role is fixed by the flow and the account is
+     * active from the start. The email is where a forgotten password is
+     * recovered through, and like the number it may not belong to another
+     * account.
+     *
+     * @param roleCode the system role the flow assigns; see
+     *                 {@link RoleService#getByCode}
+     */
+    @Transactional
+    public User createSelfRegistered(String phone, String email, String rawPassword, String fullName,
+                                     String roleCode) {
+        return createWithSystemRole(phone, email, rawPassword, fullName, roleCode);
+    }
+
+    /**
+     * Creates the account behind a new member of staff, holding the system
+     * role their kind of staff gets. Same shape as a self-registration — the
+     * role is decided by the caller's workflow, not chosen on a form.
+     */
+    @Transactional
+    public User createStaffAccount(String phone, String rawPassword, String fullName, String roleCode) {
+        return createWithSystemRole(phone, null, rawPassword, fullName, roleCode);
+    }
+
+    /**
+     * Lets an account sign in, or stops it — for workflows that own an
+     * account's lifecycle, such as a member of staff leaving.
+     *
+     * <p>Stopping it ends every session open under it and drops its cached
+     * authorities, the same as disabling it on the user screen, so a token it
+     * already holds stops working on the next request.
+     */
+    @Transactional
+    public User setSignInAllowed(Long id, boolean allowed) {
+        User user = get(id);
+        boolean wasActive = user.canSignIn();
+        UserStatus before = user.getStatus();
+        if (allowed) {
+            // Only undoes what this workflow did. A LOCKED account was locked
+            // for a security reason by an administrator; somebody coming back
+            // to work does not clear that.
+            if (user.getStatus() == UserStatus.INACTIVE) {
+                user.setStatus(UserStatus.ACTIVE);
+            }
+        } else {
+            // The same guard the user screen applies: a staff account can
+            // also hold ADMIN, and it must not be the last one switched off.
+            requireAdminSurvives(user, user.getRoles(), UserStatus.INACTIVE);
+            if (user.getStatus() == UserStatus.ACTIVE) {
+                user.setStatus(UserStatus.INACTIVE);
+            }
+        }
+        User saved = repository.save(user);
+        if (wasActive && !saved.canSignIn()) {
+            refreshTokenService.revokeAllFor(saved, Instant.now());
+        }
+        events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        if (before != saved.getStatus()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "status_change",
+                    java.util.Map.of("status", String.valueOf(before)), java.util.Map.of("status", String.valueOf(saved.getStatus()))));
+        }
+        return saved;
+    }
+
+    private static java.util.List<String> roleCodes(java.util.Collection<Role> roles) {
+        return roles.stream().map(Role::getCode).sorted().toList();
+    }
+
+    private User createWithSystemRole(String phone, String rawEmail, String rawPassword, String fullName,
+                                      String roleCode) {
+        String normalized = requireNormalizedPhone(phone);
+        String email = normalizeEmail(rawEmail);
+        requirePhoneAvailable(normalized, null);
+        requireEmailAvailable(email, null);
+
+        User user = new User(
+                normalized,
+                email,
+                passwordEncoder.encode(rawPassword),
+                fullName.trim(),
+                UserStatus.ACTIVE);
+        user.setRoles(new LinkedHashSet<>(List.of(roleService.getByCode(roleCode))));
+        return repository.save(user);
     }
 
     @Transactional
     public User create(UserRequest request) {
-        String username = request.username().trim();
-        String email = request.email().trim().toLowerCase();
+        String phone = requireNormalizedPhone(request.phone());
+        String email = normalizeEmail(request.email());
 
-        requireUsernameAvailable(username, null);
+        requirePhoneAvailable(phone, null);
         requireEmailAvailable(email, null);
 
         User user = new User(
-                username,
+                phone,
                 email,
                 passwordEncoder.encode(request.password()),
                 request.fullName().trim(),
@@ -125,13 +226,21 @@ public class UserService {
     public User update(Long id, UserPatchRequest request) {
         User user = get(id);
 
-        if (request.username() != null) {
-            String username = request.username().trim();
-            requireUsernameAvailable(username, user.getId());
-            user.setUsername(username);
+        boolean phoneChanged = false;
+        if (request.phone() != null) {
+            String phone = requireNormalizedPhone(request.phone());
+            requirePhoneAvailable(phone, user.getId());
+            // Compared normalised, so a form re-sending the same number in
+            // another spelling does not count as a change.
+            phoneChanged = !phone.equals(user.getPhone());
+            user.setPhone(phone);
         }
+        // Absent means "leave it alone"; an empty string means "remove it",
+        // which normalizeEmail turns into the null the column holds. That is
+        // the only way to clear an address, and it is what the edit screen
+        // sends once the field has been emptied.
         if (request.email() != null) {
-            String email = request.email().trim().toLowerCase();
+            String email = normalizeEmail(request.email());
             requireEmailAvailable(email, user.getId());
             user.setEmail(email);
         }
@@ -146,17 +255,29 @@ public class UserService {
         UserStatus status = request.status() == null ? user.getStatus() : request.status();
         requireAdminSurvives(user, roles, status);
 
+        boolean wasActive = user.canSignIn();
+        java.util.List<String> rolesBefore = roleCodes(user.getRoles());
+        UserStatus statusBefore = user.getStatus();
         if (request.roles() != null) {
             user.setRoles(roles);
         }
-
-        boolean wasActive = user.canSignIn();
         user.setStatus(status);
         User saved = repository.save(user);
+        if (request.roles() != null && !rolesBefore.equals(roleCodes(saved.getRoles()))) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
+                    java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
+        }
+        if (statusBefore != saved.getStatus()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "status_change",
+                    java.util.Map.of("status", String.valueOf(statusBefore)), java.util.Map.of("status", String.valueOf(saved.getStatus()))));
+        }
 
         // An account that just stopped being able to sign in must also stop
-        // being able to renew a token it already holds.
-        if (wasActive && !saved.canSignIn()) {
+        // being able to renew a token it already holds. So must one whose
+        // sign-in number moved: the usual reason is that the old number went
+        // to somebody else or the account was taken over, the same reasons a
+        // password reset ends every session.
+        if ((wasActive && !saved.canSignIn()) || phoneChanged) {
             refreshTokenService.revokeAllFor(saved, Instant.now());
         }
 
@@ -164,6 +285,36 @@ public class UserService {
         // Correcting a surname changes nothing about what the account may do,
         // and evicting on it would throw away a cache entry for no reason.
         if (request.roles() != null || request.status() != null) {
+            events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        }
+        return saved;
+    }
+
+    /**
+     * Replaces the roles an account holds among {@code scope} with {@code codes},
+     * keeping every other role it holds (SRS 3.18.10: a clinic administrator
+     * sets roles at the clinic and nothing else). The same guards, record and
+     * cache eviction as a role change on the user screen.
+     */
+    @Transactional
+    public User replaceRolesWithin(Long id, java.util.Set<String> scope, java.util.Set<String> codes) {
+        User user = get(id);
+        java.util.List<String> rolesBefore = roleCodes(user.getRoles());
+        Set<Role> roles = new LinkedHashSet<>();
+        for (Role role : user.getRoles()) {
+            if (!scope.contains(role.getCode())) {
+                roles.add(role);
+            }
+        }
+        for (String code : codes) {
+            roles.add(roleService.getByCode(code));
+        }
+        requireAdminSurvives(user, roles, user.getStatus());
+        user.setRoles(roles);
+        User saved = repository.save(user);
+        if (!rolesBefore.equals(roleCodes(saved.getRoles()))) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
+                    java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
             events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
         }
         return saved;
@@ -181,6 +332,7 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         User saved = repository.save(user);
         refreshTokenService.revokeAllFor(saved, Instant.now());
+        events.publishEvent(com.vn.vitalcare.share.audit.AuditEvent.of("users", saved.getId(), "password_reset"));
         return saved;
     }
 
@@ -226,6 +378,8 @@ public class UserService {
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
         repository.delete(user);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", user.getId(), "delete",
+                java.util.Map.of("phone", user.getPhone(), "fullName", user.getFullName()), null));
         // The cache would find no row and drop the entry on its own, but only
         // when something next asks for it. Saying so outright means a token
         // held by the deleted account stops working immediately rather than at
@@ -259,18 +413,53 @@ public class UserService {
         }
     }
 
-    private void requireUsernameAvailable(String username, Long selfId) {
-        repository.findByUsernameIgnoreCase(username).ifPresent(existing -> {
+    /**
+     * {@link PhoneNumbers#normalize}, for a write, where a number that cannot
+     * be read must not be stored at all.
+     *
+     * <p>Unreachable from an HTTP request on purpose: the DTO pattern accepts a
+     * subset of what {@link PhoneNumbers#normalize} does, so anything that clears
+     * validation also normalises. What it guarantees is that the two cannot
+     * drift apart quietly — if an edit to either ever opens a gap, this fails
+     * loudly rather than writing a second spelling of one number into a column
+     * whose whole purpose is that there is only ever one.
+     *
+     * <p>The offending value is not echoed back: it is unbounded caller input,
+     * and validation's per-field message is the better answer anyway.
+     */
+    private static String requireNormalizedPhone(String raw) {
+        return PhoneNumbers.normalize(raw)
+                .orElseThrow(() -> new IllegalArgumentException("Not a valid Vietnamese phone number"));
+    }
+
+    /** Null stays null — an account without an email address is a valid one. */
+    private static String normalizeEmail(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        return trimmed.isEmpty() ? null : trimmed.toLowerCase();
+    }
+
+    // Neither of these echoes the value back. The caller supplied it, so
+    // repeating it says nothing they do not know, while putting a patient's
+    // phone number or address into an error body puts it into every client log
+    // and monitoring tool that error passes through.
+    private void requirePhoneAvailable(String phone, Long selfId) {
+        repository.findByPhone(phone).ifPresent(existing -> {
             if (!existing.getId().equals(selfId)) {
-                throw new ConflictException("The username %s is already taken".formatted(username));
+                throw new ConflictException("That phone number is already in use");
             }
         });
     }
 
     private void requireEmailAvailable(String email, Long selfId) {
+        if (email == null) {
+            return;
+        }
         repository.findByEmailIgnoreCase(email).ifPresent(existing -> {
             if (!existing.getId().equals(selfId)) {
-                throw new ConflictException("The email %s is already in use".formatted(email));
+                throw new ConflictException("That email address is already in use");
             }
         });
     }

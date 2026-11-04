@@ -66,8 +66,12 @@ public class RowLevelPolicyAudit {
     @JoinColumn(name = "actor_id")
     private User actor;
 
-    /** Captured rather than joined, so the entry survives the account being deleted. */
-    @Column(name = "actor_name", nullable = false, length = 100)
+    /**
+     * Captured rather than joined, so the entry survives the account being
+     * deleted. Sized to match {@code users.full_name}, which is where it comes
+     * from — a narrower column here would reject the write outright.
+     */
+    @Column(name = "actor_name", nullable = false, length = 255)
     private String actorName;
 
     @Column(name = "occurred_at", nullable = false)

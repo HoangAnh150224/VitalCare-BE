@@ -136,6 +136,7 @@ public class RowLevelPolicyInsights {
                         principal.userId(),
                         principal.organizationId(),
                         principal.departmentId(),
+                        principal.clinicId(),
                         List.copyOf(principal.roleCodes())),
                 managed.resource(),
                 parsed.code(),

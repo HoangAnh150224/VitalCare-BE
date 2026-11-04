@@ -32,9 +32,14 @@ public final class CurrentUser {
         });
     }
 
-    /** The signed-in user's username, for messages and audit text. */
-    public static Optional<String> username() {
-        return jwt().map(token -> token.getClaimAsString(JwtService.CLAIM_USERNAME));
+    /**
+     * The signed-in user's display name, for messages and audit text.
+     *
+     * <p>Empty for a token minted before this claim existed, which is why
+     * callers supply their own fallback rather than relying on it being there.
+     */
+    public static Optional<String> displayName() {
+        return jwt().map(token -> token.getClaimAsString(JwtService.CLAIM_NAME));
     }
 
     /** True when the request carries a specific permission code. */

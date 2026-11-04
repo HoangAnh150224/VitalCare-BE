@@ -4,7 +4,10 @@ import com.vn.vitalcare.share.security.rowlevel.RowLevelContextProvider;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelPrincipal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Set;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -36,6 +39,12 @@ public class RowLevelContextProviders {
     @Bean
     RowLevelContextProvider currentDepartmentId() {
         return provider("user.departmentId", Long.class, RowLevelPrincipal::departmentId);
+    }
+
+    /** The clinic the caller's staff record places them at; see {@code ClinicPlacement}. */
+    @Bean
+    RowLevelContextProvider currentClinicId() {
+        return provider("user.clinicId", UUID.class, RowLevelPrincipal::clinicId);
     }
 
     /** A set, so it is usable only with {@code in} and {@code notIn}. */
@@ -70,10 +79,14 @@ public class RowLevelContextProviders {
      * <p>Resolved here rather than sent by the client: a browser in another
      * timezone must not be able to disagree with a security policy about what
      * day it is.
+     *
+     * <p>In the configured business zone, not the JVM's: the JVM runs in UTC
+     * (see {@code AppBeApplication.main}), and its date is yesterday's in
+     * Vietnam until 07:00.
      */
     @Bean
-    RowLevelContextProvider today() {
-        return provider("today", LocalDate.class, principal -> LocalDate.now());
+    RowLevelContextProvider today(@Value("${app.clinic.time-zone:UTC}") ZoneId zone) {
+        return provider("today", LocalDate.class, principal -> LocalDate.now(zone));
     }
 
     @Bean
