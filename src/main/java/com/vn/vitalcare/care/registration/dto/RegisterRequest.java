@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Size;
  */
 public record RegisterRequest(
         @NotBlank(message = "Phone number is required")
-        @Pattern(regexp = "^[\\s\\h.()-]*(?:\\+?84|0)[\\s\\h.()-]*[1-9](?:[\\s\\h.()-]*\\d){8}[\\s\\h.()-]*$",
+        @Pattern(regexp = "^[\\s\\h.()-]*(?:\\+?84|0)(?:[\\s\\h.()-]*\\d){9}[\\s\\h.()-]*$",
                 message = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567")
         String phone,
 

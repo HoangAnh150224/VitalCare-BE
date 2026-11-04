@@ -148,15 +148,15 @@ class PhoneNormalizationTest {
     }
 
     @Test
-    @DisplayName("unissued prefixes are accepted on purpose; a nought after the country code is not")
+    @DisplayName("structurally valid but unissued prefixes are accepted on purpose")
     void prefixesAreNotPoliced() {
         // Carrier prefixes are deliberately not enumerated -- a list of them
-        // needs editing every time one is allocated.
+        // needs editing every time one is allocated. Accounts exist under such
+        // numbers: the test team's seed customer is 0000000131, and every
+        // spelling of it reaches that account.
+        assertLooksUp("0000000000", "+84000000000");
         assertLooksUp("0111111111", "+84111111111");
-        // But no subscriber number starts with 0: "+84 000 000 131" is a slip,
-        // and is now refused as "not a valid number" instead of looked up.
-        assertRejected("0000000000");
-        assertRejected("+84 000 000 131");
+        assertLooksUp("+84 000 000 131", "+84000000131");
     }
 
     @Test
