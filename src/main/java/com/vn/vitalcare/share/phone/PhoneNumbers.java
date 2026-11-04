@@ -62,6 +62,47 @@ public final class PhoneNumbers {
     }
 
     /**
+     * Why a number is refused, said precisely (the test team's ST-REG-011..017):
+     * a character that is not a digit, too few digits, or too many; or, for
+     * anything else this system cannot key on, that it is no Vietnamese number.
+     * Empty for a number {@link #normalize} accepts.
+     */
+    public static Optional<String> problem(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.of("Phone number is required");
+        }
+        if (normalize(raw).isPresent()) {
+            return Optional.empty();
+        }
+        String compact = SEPARATORS.matcher(raw).replaceAll("");
+        boolean plus = compact.startsWith("+");
+        String digits = plus ? compact.substring(1) : compact;
+        if (!digits.matches("\\d+")) {
+            return Optional.of(NOT_DIGITS);
+        }
+        String significant;
+        if (plus || digits.startsWith("84")) {
+            significant = digits.startsWith("84") ? digits.substring(2) : null;
+        } else if (digits.startsWith("0")) {
+            significant = digits.substring(1);
+        } else {
+            // No country code and no trunk zero: short is short; ten digits or more is just not one of ours.
+            return Optional.of(digits.length() < 10 ? TOO_FEW : NOT_VIETNAMESE);
+        }
+        // The country code and the trunk zero both (+84 0912...): not a count of digits gone wrong but a
+        // number written two ways at once (ST-REG-024).
+        if (significant == null || (significant.length() == 10 && significant.startsWith("0"))) {
+            return Optional.of(NOT_VIETNAMESE);
+        }
+        return Optional.of(significant.length() < 9 ? TOO_FEW : significant.length() > 9 ? TOO_MANY : NOT_VIETNAMESE);
+    }
+
+    public static final String NOT_DIGITS = "Phone number may only contain digits, spaces and a leading +";
+    public static final String TOO_FEW = "Phone number has too few digits";
+    public static final String TOO_MANY = "Phone number has too many digits";
+    public static final String NOT_VIETNAMESE = "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567";
+
+    /**
      * A search term reduced to the digits that appear in a stored number.
      *
      * <p>Drops the separators and then the trunk zero or country code, so

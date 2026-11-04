@@ -38,6 +38,12 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Override
     @Transactional
     public TokenResponse register(RegisterRequest request) {
+        com.vn.vitalcare.share.phone.PhoneNumbers.problem(request.phone()).ifPresent(problem -> {
+            throw new FieldValidationException("phone", problem);
+        });
+        if (request.password().isBlank()) {
+            throw new FieldValidationException("password", "Password cannot contain only spaces");
+        }
         if (request.password().getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
             throw new FieldValidationException("password", "Password is too long; use fewer accented letters");
         }

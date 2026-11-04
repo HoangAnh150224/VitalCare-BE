@@ -95,10 +95,9 @@ public class AuthService {
      */
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        if (com.vn.vitalcare.share.phone.PhoneNumbers.normalize(request.phone()).isEmpty()) {
-            throw new com.vn.vitalcare.share.exception.FieldValidationException("phone",
-                    "Phone number must be a Vietnamese number, such as 0901234567 or +84901234567");
-        }
+        com.vn.vitalcare.share.phone.PhoneNumbers.problem(request.phone()).ifPresent(problem -> {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("phone", problem);
+        });
         Optional<User> found = userService.findForAuthentication(request.phone());
 
         // The hash is checked whether or not the account exists, so the answer takes as long either way.
