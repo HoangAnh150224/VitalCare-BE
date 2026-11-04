@@ -34,8 +34,12 @@ public class VisitNotifications {
     public void onRegistered(VisitEvents.Registered event) {
         visit(event.appointmentId()).ifPresent(visit -> tell(visit, NotificationLevel.INFO, "appointment",
                 "Đăng ký khám thành công",
-                "Số khám %s với %s ngày %s. Thanh toán phí khám trước để được xếp hàng chờ khám.".formatted(
-                        number(visit), doctor(visit), visit.getAppointmentDate().format(DAY)),
+                // A visit in the shared line has no doctor yet: the room that calls it in gives one.
+                (visit.getEmployee() == null
+                        ? "Số khám %s ngày %s. Thanh toán phí khám trước để được xếp hàng chờ khám; bác sĩ được xếp khi gọi vào phòng."
+                                .formatted(number(visit), visit.getAppointmentDate().format(DAY))
+                        : "Số khám %s với %s ngày %s. Thanh toán phí khám trước để được xếp hàng chờ khám.".formatted(
+                                number(visit), doctor(visit), visit.getAppointmentDate().format(DAY))),
                 "/my-appointments/show/" + visit.getId()));
     }
 

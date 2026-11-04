@@ -8,8 +8,10 @@ import java.time.LocalDate;
 /**
  * {@code POST /my_appointments}: a customer registering a visit for themselves.
  *
- * <p>A doctor and a day, nothing finer: the visit gets that doctor's next
- * queue number for the day, and the clinic is the doctor's. Whose account it
+ * <p>A day, and the clinic when there is more than one: no doctor. The visit
+ * takes the clinic's next number for the day and waits in the clinic's one
+ * line; whichever room comes free calls the first in line, and that room's
+ * doctor becomes the visit's (BF-02, shared queue). Whose account it
  * is comes from the access token; {@code patientId} only chooses among that
  * account's own profiles, so nothing a client sends registers for a stranger.
  */
@@ -20,8 +22,11 @@ public record BookingRequest(
          */
         Long patientId,
 
-        @NotNull(message = "A doctor is required")
+        /** Older clients only: nobody chooses the doctor now; it names the clinic when clinicId is left out. */
         Long employeeId,
+
+        /** Which clinic, when there is more than one. */
+        java.util.UUID clinicId,
 
         @NotNull(message = "A date is required")
         LocalDate appointmentDate,

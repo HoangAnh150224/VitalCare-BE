@@ -19,8 +19,11 @@ public record WalkInRequest(
         @Valid
         NewPatient newPatient,
 
-        @NotNull(message = "A doctor is required")
+        /** Ignored: a walk-in waits in the clinic's shared line; the room that calls it in gives its doctor. */
         Long employeeId,
+
+        /** Which clinic, when there is more than one. */
+        java.util.UUID clinicId,
 
         @NotBlank(message = "A reason for the visit is required")
         @Size(max = 255, message = "Reason must be at most 255 characters")
@@ -49,6 +52,6 @@ public record WalkInRequest(
     }
 
     public StaffBookingRequest booking(Long customer, LocalDate today) {
-        return new StaffBookingRequest(customer, employeeId, today, reason, note);
+        return new StaffBookingRequest(customer, employeeId, clinicId, today, reason, note);
     }
 }

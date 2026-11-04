@@ -57,6 +57,29 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "where a.employee.id = :employeeId and a.appointmentDate = :date and a.deletedAt is null")
     int maxQueueNumber(@Param("employeeId") Long employeeId, @Param("date") LocalDate date);
 
+    /** Whether the patient already has another visit registered (not yet checked in) at that clinic that day. */
+    @Query("select count(a) > 0 from Appointment a where a.customer.id = :customerId and a.clinicId = :clinicId"
+            + " and a.appointmentDate = :date and a.status = com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED"
+            + " and a.id <> :excludeId and a.deletedAt is null")
+    boolean existsScheduledAtClinic(@Param("customerId") Long customerId, @Param("clinicId") java.util.UUID clinicId,
+                                    @Param("date") LocalDate date, @Param("excludeId") Long excludeId);
+
+    /** The highest number the clinic's day has issued (cancelled ones count: a number given out is not given again). */
+    @Query("select coalesce(max(a.queueNumber), 0) from Appointment a "
+            + "where a.clinicId = :clinicId and a.appointmentDate = :date and a.deletedAt is null")
+    int maxQueueNumberAtClinic(@Param("clinicId") java.util.UUID clinicId, @Param("date") LocalDate date);
+
+    /** Visits the clinic's day holds (not cancelled or missed), what its doctors' turns must cover. */
+    @Query("select count(a) from Appointment a where a.clinicId = :clinicId and a.appointmentDate = :date "
+            + "and a.status not in (com.vn.vitalcare.entity.AppointmentStatus.CANCELLED, "
+            + "com.vn.vitalcare.entity.AppointmentStatus.NO_SHOW) and a.id <> :excludeId and a.deletedAt is null")
+    long countActiveAtClinic(@Param("clinicId") java.util.UUID clinicId, @Param("date") LocalDate date,
+                             @Param("excludeId") Long excludeId);
+
+    /** Serialises numbering of one clinic's day (namespace 4207), so two registrations never share a number. */
+    @Query(value = "select pg_advisory_xact_lock(4207, hashtext(:key))", nativeQuery = true)
+    Object lockClinicDay(@Param("key") String key);
+
     /** How many people the doctor still has to see that day: registered, checked in, being seen or away and coming back. */
     @Query("select count(a) from Appointment a where a.employee.id = :employeeId and a.appointmentDate = :date "
             + "and a.status in (com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED, "
@@ -93,14 +116,17 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
      * length of that edit; the next call or sweep picks it up.
      */
     @Query(nativeQuery = true, value = "select * from appointment "
-            + "where employee_id = :employeeId and appointment_date = :date and status = 'CHECKED_IN' "
+            // The doctor's own (a referral, or a visit from before the shared line), and the clinic's shared line.
+            + "where (employee_id = :employeeId or (employee_id is null and clinic_id = :clinicId)) "
+            + "and appointment_date = :date and status = 'CHECKED_IN' "
             // BF-02: only a visit whose examination fee is paid queues, in the order it was paid.
             + "and paid_at is not null "
             + "and deleted_at is null and (skipped_at is null or skipped_at <= :recallAfter) "
             // Keep in step with findWaitingAt: the board shows the order this calls in.
             + "order by returned_at nulls last, skipped_at nulls first, paid_at, queue_number nulls last, checked_in_at "
             + "limit 1 for no key update skip locked")
-    Optional<Appointment> lockNextInQueue(@Param("employeeId") Long employeeId, @Param("date") LocalDate date,
+    Optional<Appointment> lockNextInQueue(@Param("employeeId") Long employeeId, @Param("clinicId") UUID clinicId,
+                                          @Param("date") LocalDate date,
                                           @Param("recallAfter") OffsetDateTime recallAfter);
 
     /**
@@ -109,11 +135,12 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
      * number on a tie), for the board. Not scoped: the board has already
      * checked the caller may see this clinic.
      */
-    @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
+    @Query("select a from Appointment a join fetch a.customer left join fetch a.employee e left join fetch e.user "
             + "where a.clinicId = :clinicId and a.appointmentDate = :date "
             + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.paidAt is not null "
             + "and a.deletedAt is null "
-            + "order by e.id, a.returnedAt asc nulls last, a.skippedAt asc nulls first, a.paidAt asc, "
+            // The shared line (no doctor yet) first, then each doctor's own.
+            + "order by e.id asc nulls first, a.returnedAt asc nulls last, a.skippedAt asc nulls first, a.paidAt asc, "
             + "a.queueNumber asc nulls last, a.checkedInAt")
     List<Appointment> findWaitingAt(@Param("clinicId") UUID clinicId, @Param("date") LocalDate date);
 
@@ -126,7 +153,7 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     Optional<Appointment> findForNotice(@Param("id") Long id);
 
     /** Checked in today but the examination fee is not paid yet: not in the queue until it is. Not scoped, as findWaitingAt. */
-    @Query("select a from Appointment a join fetch a.customer join fetch a.employee e join fetch e.user "
+    @Query("select a from Appointment a join fetch a.customer left join fetch a.employee e left join fetch e.user "
             + "where a.clinicId = :clinicId and a.appointmentDate = :date "
             + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN and a.paidAt is null "
             + "and a.deletedAt is null order by e.id, a.checkedInAt")

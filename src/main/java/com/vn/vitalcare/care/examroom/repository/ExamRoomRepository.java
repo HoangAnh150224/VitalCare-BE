@@ -49,6 +49,11 @@ public interface ExamRoomRepository extends SecuredRepository<ExamRoom, Long> {
             + "and r.deletedAt is null order by r.id")
     List<Long> findAvailableIds();
 
+    /** A clinic's free rooms, any of which may call the first of its shared line. */
+    @Query("select r.id from ExamRoom r where r.status = com.vn.vitalcare.entity.ExamRoomStatus.AVAILABLE "
+            + "and r.clinicId = :clinicId and r.deletedAt is null order by r.id")
+    List<Long> findAvailableIdsAt(@Param("clinicId") java.util.UUID clinicId);
+
     /** Rooms still holding a visit from an earlier day: nobody finished it before closing. */
     @Query("select r.id from ExamRoom r join r.currentAppointment a "
             + "where a.appointmentDate < :today and r.deletedAt is null order by r.id")

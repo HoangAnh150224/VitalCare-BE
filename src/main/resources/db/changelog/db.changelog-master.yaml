@@ -102,3 +102,5 @@ databaseChangeLog:
       file: db/changelog/changes/049-staff-membership-clinic-roles.sql
   - include:
       file: db/changelog/changes/050-seed-test-caregiver-clinic-admin.sql
+  - include:
+      file: db/changelog/changes/051-shared-clinic-queue.sql

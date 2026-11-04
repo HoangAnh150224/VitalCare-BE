@@ -13,8 +13,11 @@ public record StaffBookingRequest(
         @NotNull(message = "A customer is required")
         Long customerId,
 
-        @NotNull(message = "A doctor is required")
+        /** Ignored, as on the customer's side: the room that calls the visit in gives it its doctor. */
         Long employeeId,
+
+        /** Which clinic, when there is more than one. */
+        java.util.UUID clinicId,
 
         @NotNull(message = "A date is required")
         LocalDate appointmentDate,
@@ -27,6 +30,6 @@ public record StaffBookingRequest(
         String note) {
 
     public BookingRequest booking() {
-        return new BookingRequest(null, employeeId, appointmentDate, reason);
+        return new BookingRequest(null, employeeId, clinicId, appointmentDate, reason);
     }
 }

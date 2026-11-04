@@ -20,7 +20,9 @@ public record RoomBoardResponse(
         OffsetDateTime at,
         List<RoomCard> rooms,
         List<DoctorQueue> withoutRoom,
-        List<UnpaidVisit> awaitingPayment) {
+        List<UnpaidVisit> awaitingPayment,
+        /** BF-02 shared line: paid, checked in, no doctor yet; the first free room calls the first of them. */
+        List<Visit> sharedQueue) {
 
     /** Checked in, fee not paid yet: who, and which doctor they will queue for. */
     public record UnpaidVisit(Visit visit, DoctorRef doctor) {
@@ -51,6 +53,9 @@ public record RoomBoardResponse(
     public record DoctorRef(Long id, String fullName, String specialty) {
 
         public static DoctorRef of(Employee doctor) {
+            if (doctor == null) {
+                return null;
+            }
             return new DoctorRef(doctor.getId(), doctor.getUser().getFullName(), doctor.getSpecialty());
         }
     }

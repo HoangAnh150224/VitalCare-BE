@@ -107,7 +107,7 @@ class ExamRoomDispatchTest {
     void dispatchFillsAFreeRoom() {
         onDuty();
         Appointment next = checkedIn(101L, 3);
-        when(appointments.lockNextInQueue(eq(11L), eq(TODAY), any())).thenReturn(Optional.of(next));
+        when(appointments.lockNextInQueue(eq(11L), any(), eq(TODAY), any())).thenReturn(Optional.of(next));
 
         Optional<Appointment> called = dispatcher.dispatch(7L);
 
@@ -121,6 +121,57 @@ class ExamRoomDispatchTest {
     }
 
     @Test
+    @DisplayName("BF-02: a visit from the clinic's shared line, with no doctor yet, gets the room's doctor when called in")
+    void sharedVisitGetsTheRoomsDoctor() {
+        onDuty();
+        Appointment shared = checkedIn(102L, 4);
+        shared.setEmployee(null);
+        when(appointments.lockNextInQueue(eq(11L), eq(CLINIC), eq(TODAY), any())).thenReturn(Optional.of(shared));
+
+        dispatcher.dispatch(7L);
+
+        assertSame(doctor, shared.getEmployee());
+        assertEquals(AppointmentStatus.IN_EXAM, shared.getStatus());
+        assertSame(shared, room.getCurrentAppointment());
+    }
+
+    @Test
+    @DisplayName("BF-02: the room asks for its doctor's own visits and its clinic's shared line, today, sparing who was just passed over")
+    void dispatchAsksForTheRoomsClinic() {
+        onDuty();
+        when(appointments.lockNextInQueue(anyLong(), any(), any(), any())).thenReturn(Optional.empty());
+
+        dispatcher.dispatch(7L);
+
+        // 09:00 at the clinic, three minutes' grace for somebody passed over.
+        verify(appointments).lockNextInQueue(11L, CLINIC, TODAY,
+                java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).minus(Duration.ofMinutes(3)));
+    }
+
+    @Test
+    @DisplayName("BF-02: joining the shared line (no doctor) tries every free room of the clinic; a doctor's visit, that doctor's room")
+    void queueJoinedTriesTheClinicsFreeRooms() {
+        RoomDispatcher mockDispatcher = mock(RoomDispatcher.class);
+        AutoDispatch auto = new AutoDispatch(mockDispatcher, rooms, Runnable::run);
+        when(rooms.findAvailableIdsAt(CLINIC)).thenReturn(List.of(7L, 8L));
+        // One room failing does not stop the others.
+        when(mockDispatcher.dispatch(7L)).thenThrow(new IllegalStateException("lock timeout"));
+
+        auto.onQueueJoined(new ExamRoomEvents.QueueJoined(CLINIC, null));
+
+        verify(mockDispatcher).dispatch(7L);
+        verify(mockDispatcher).dispatch(8L);
+        verify(mockDispatcher, never()).roomOfDoctor(any(), any());
+
+        when(mockDispatcher.now()).thenReturn(java.time.LocalDateTime.of(TODAY, LocalTime.of(9, 0)));
+        when(mockDispatcher.roomOfDoctor(eq(11L), any())).thenReturn(Optional.of(room));
+        org.mockito.Mockito.clearInvocations(rooms, mockDispatcher);
+        auto.onQueueJoined(new ExamRoomEvents.QueueJoined(CLINIC, 11L));
+        verify(mockDispatcher).dispatch(7L);
+        verify(rooms, never()).findAvailableIdsAt(any());
+    }
+
+    @Test
     @DisplayName("an occupied or paused room takes nobody, and the queue is not even read")
     void dispatchLeavesABusyRoomAlone() {
         onDuty();
@@ -131,7 +182,7 @@ class ExamRoomDispatchTest {
         room.pause();
         assertTrue(dispatcher.dispatch(7L).isEmpty());
 
-        verify(appointments, never()).lockNextInQueue(anyLong(), any(), any());
+        verify(appointments, never()).lockNextInQueue(anyLong(), any(), any(), any());
     }
 
     @Test
@@ -141,7 +192,7 @@ class ExamRoomDispatchTest {
         assertTrue(dispatcher.dispatch(7L).isEmpty());
 
         onDuty();
-        when(appointments.lockNextInQueue(eq(11L), eq(TODAY), any())).thenReturn(Optional.empty());
+        when(appointments.lockNextInQueue(eq(11L), any(), eq(TODAY), any())).thenReturn(Optional.empty());
         assertTrue(dispatcher.dispatch(7L).isEmpty());
         assertEquals(ExamRoomStatus.AVAILABLE, room.getStatus());
     }

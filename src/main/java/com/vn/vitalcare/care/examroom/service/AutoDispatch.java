@@ -41,6 +41,13 @@ public class AutoDispatch {
     @Async(DispatchConfig.EXECUTOR)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void onQueueJoined(ExamRoomEvents.QueueJoined event) {
+        if (event.doctorId() == null) {
+            // Joined the clinic's shared line: any free room of the clinic may take them.
+            for (Long roomId : rooms.findAvailableIdsAt(event.clinicId())) {
+                dispatchQuietly(roomId);
+            }
+            return;
+        }
         dispatcher.roomOfDoctor(event.doctorId(), dispatcher.now())
                 .ifPresent(room -> dispatchQuietly(room.getId()));
     }

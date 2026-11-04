@@ -153,7 +153,13 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         // queue, and whatever is left over waits with no room.
         Map<Long, List<Appointment>> queues = new LinkedHashMap<>();
         Map<Long, Employee> doctors = new LinkedHashMap<>();
+        // BF-02 shared line: no doctor yet, whichever room comes free calls the first.
+        List<Appointment> shared = new ArrayList<>();
         for (Appointment waiting : appointments.findWaitingAt(clinic, now.toLocalDate())) {
+            if (waiting.getEmployee() == null) {
+                shared.add(waiting);
+                continue;
+            }
             queues.computeIfAbsent(waiting.getEmployee().getId(), id -> new ArrayList<>()).add(waiting);
             doctors.putIfAbsent(waiting.getEmployee().getId(), waiting.getEmployee());
         }
@@ -202,7 +208,8 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         List<RoomBoardResponse.UnpaidVisit> unpaid = appointments.findUnpaidAt(clinic, now.toLocalDate()).stream()
                 .map(visit -> new RoomBoardResponse.UnpaidVisit(Visit.of(visit), DoctorRef.of(visit.getEmployee())))
                 .toList();
-        return new RoomBoardResponse(clinic, OffsetDateTime.now(clock), cards, withoutRoom, unpaid);
+        return new RoomBoardResponse(clinic, OffsetDateTime.now(clock), cards, withoutRoom, unpaid,
+                shared.stream().map(Visit::of).toList());
     }
 
     @Override

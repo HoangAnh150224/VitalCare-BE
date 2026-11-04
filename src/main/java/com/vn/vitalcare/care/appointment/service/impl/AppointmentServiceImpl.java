@@ -145,11 +145,13 @@ public class AppointmentServiceImpl implements AppointmentService {
                 || !appointment.getAppointmentDate().equals(today())) {
             return null;
         }
-        Long doctorId = appointment.getEmployee().getId();
+        // The line it is in: the clinic's shared one for a visit with no doctor yet,
+        // that doctor's for a referral (or a visit registered before the shared line).
+        Long doctorId = doctorIdOf(appointment);
         // ponytail: reads the clinic's whole waiting list for the day (tens of
         // rows) and finds this one in it; a positional count query if it grows.
         List<Appointment> line = repository.findWaitingAt(appointment.getClinicId(), today()).stream()
-                .filter(waiting -> doctorId.equals(waiting.getEmployee().getId()))
+                .filter(waiting -> java.util.Objects.equals(doctorId, doctorIdOf(waiting)))
                 .toList();
         for (int i = 0; i < line.size(); i++) {
             if (line.get(i).getId().equals(appointment.getId())) {
@@ -188,6 +190,29 @@ public class AppointmentServiceImpl implements AppointmentService {
         return book(patient, request, false);
     }
 
+    /**
+     * The clinic a customer registers at: the one asked for, or the only one
+     * taking visits. Several and none named is a question for the customer.
+     * A client from before the shared line names a doctor instead: the visit
+     * goes to that doctor's clinic, still in its shared line.
+     */
+    private java.util.UUID clinicFor(java.util.UUID asked, Long doctorId) {
+        if (asked != null) {
+            return asked;
+        }
+        if (doctorId != null) {
+            return employeeService.doctor(doctorId).getClinicId();
+        }
+        List<java.util.UUID> open = clinicService.listAll().stream()
+                .filter(c -> !"INACTIVE".equals(c.getOperatingStatus()))
+                .map(com.vn.vitalcare.entity.Clinic::getClinicId)
+                .toList();
+        if (open.size() != 1) {
+            throw new FieldValidationException("clinicId", "Pick a clinic");
+        }
+        return open.getFirst();
+    }
+
     @Override
     @Transactional
     public Appointment update(Long id, AppointmentUpdateRequest request) {
@@ -219,7 +244,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         customerService.activateIfNeutral(appointment.getCustomer(), PatientActivationSource.CHECK_IN);
         Appointment saved = repository.persist(appointment);
         // The doctor's room may be free and waiting for exactly this person.
-        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), saved.getEmployee().getId()));
+        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), doctorIdOf(saved)));
         return saved;
     }
 
@@ -254,6 +279,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         return saved;
     }
 
+    /** The doctor a visit waits for: null while it waits in the clinic's shared line. */
+    private static Long doctorIdOf(Appointment appointment) {
+        return appointment.getEmployee() == null ? null : appointment.getEmployee().getId();
+    }
+
     @Override
     @Transactional
     public Appointment referFrom(Appointment origin, Long doctorId, String reason) {
@@ -270,11 +300,8 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         Appointment referral = new Appointment();
         referral.setCustomer(origin.getCustomer());
-        // The same checks as a registration: the doctor sees patients today and has a turn left.
-        assign(referral, origin.getCustomer(), doctorId, today());
-        if (!origin.getClinicId().equals(referral.getClinicId())) {
-            throw new FieldValidationException("employeeId", "Pick a doctor of the same clinic");
-        }
+        // Option A: the referral names its doctor and waits for that doctor's room only.
+        assignReferral(referral, origin, doctorId);
         referral.setReason(reason.trim());
         referral.setBookingCode(newBookingCode());
         referral.setReferredFrom(origin);
@@ -288,7 +315,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (origin.getStatus() == AppointmentStatus.IN_EXAM) {
             sendAway(origin);
         }
-        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), saved.getEmployee().getId()));
+        events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), doctorIdOf(saved)));
         return saved;
     }
 
@@ -305,7 +332,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             // Already at the desk: paying is what puts the patient in the line now.
             if (wasUnpaid && appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
                 events.publishEvent(new ExamRoomEvents.QueueJoined(appointment.getClinicId(),
-                        appointment.getEmployee().getId()));
+                        doctorIdOf(appointment)));
             }
         });
     }
@@ -389,27 +416,22 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Override
     @Transactional
     public Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request) {
-        return reschedule(getOwn(customer, id), request, false);
+        Appointment own = getOwn(customer, id);
+        return reschedule(own, request, false);
     }
+
 
     /** @param byStaff as in {@link #cancel(Appointment, String, boolean)}. */
     private Appointment reschedule(Appointment appointment, RescheduleRequest request, boolean byStaff) {
         requireChangeable(appointment, "rescheduled");
 
-        Employee current = appointment.getEmployee();
-        Long employeeId = request.employeeId() != null ? request.employeeId()
-                : current != null ? current.getId() : null;
-        if (employeeId == null) {
-            throw new FieldValidationException("employeeId", "A doctor is required");
-        }
         // Refused rather than given a second number in the day it already has one.
-        if (current != null && employeeId.equals(current.getId())
-                && request.appointmentDate().equals(appointment.getAppointmentDate())) {
-            throw new FieldValidationException("appointmentDate",
-                    "The appointment is already with that doctor on that day");
+        if (request.appointmentDate().equals(appointment.getAppointmentDate())) {
+            throw new FieldValidationException("appointmentDate", "The appointment is already on that day");
         }
-
-        assign(appointment, appointment.getCustomer(), employeeId, request.appointmentDate());
+        // Another day at the same clinic, in its shared line: no doctor until a room calls it in.
+        assignToClinic(appointment, appointment.getCustomer(), appointment.getClinicId(), request.appointmentDate(),
+                appointment.getId());
         if (byStaff) {
             rowLevel.checkWritable(appointment);
         }
@@ -425,6 +447,13 @@ public class AppointmentServiceImpl implements AppointmentService {
     private void requireChangeable(Appointment appointment, String change) {
         if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
             throw new ConflictException("Only a registered appointment can be " + change);
+        }
+        // A visit in the shared line has no expected time: it changes until it is checked in.
+        if (appointment.getStartTime() == null) {
+            if (appointment.getAppointmentDate().isBefore(today())) {
+                throw new ConflictException("That appointment's day has passed");
+            }
+            return;
         }
         LocalDateTime start = LocalDateTime.of(appointment.getAppointmentDate(), appointment.getStartTime());
         if (LocalDateTime.now(clock.withZone(clinicTimeZone())).isAfter(start.minusHours(2))) {
@@ -454,7 +483,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private Appointment book(Customer customer, BookingRequest request, boolean byStaff) {
         Appointment appointment = new Appointment();
         appointment.setCustomer(customer);
-        assign(appointment, customer, request.employeeId(), request.appointmentDate());
+        assignToClinic(appointment, customer, clinicFor(request.clinicId(), request.employeeId()), request.appointmentDate(), null);
         appointment.setReason(request.reason().trim());
         appointment.setBookingCode(newBookingCode());
         Appointment saved = repository.persist(appointment);
@@ -470,15 +499,19 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     /**
-     * Puts the appointment in a doctor's day: the clinic, the next queue
-     * number, and about when that number is called. What a registration and a
-     * reschedule share.
+     * Puts a visit in a clinic's day (BF-02, shared line): the clinic's next
+     * number, no doctor and no expected time. Refused when no doctor of the
+     * clinic sees patients that day, or the day's visits already fill every
+     * doctor's turns; and a patient has one registered visit a day at a clinic.
      *
-     * <p>The doctor's row is locked before the day is counted, so the last
-     * turn of a day goes to exactly one of two people asking for it at once,
-     * and no number is issued twice.
+     * <p>Serialised per clinic and day by an advisory lock, so two people
+     * registering at once never get the same number.
      */
-    private void assign(Appointment appointment, Customer customer, Long employeeId, LocalDate date) {
+    private void assignToClinic(Appointment appointment, Customer customer, java.util.UUID clinicId, LocalDate date,
+                                Long excludeId) {
+        if (date == null) {
+            throw new FieldValidationException("appointmentDate", "A date is required");
+        }
         if (date.isBefore(clinicService.today())) {
             throw new FieldValidationException("appointmentDate", "The date cannot be in the past");
         }
@@ -486,40 +519,70 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new FieldValidationException("appointmentDate", "Registration is open up to %s".formatted(
                     clinicService.lastBookableDate()));
         }
+        com.vn.vitalcare.entity.Clinic clinic;
+        try {
+            clinic = clinicService.get(clinicId);
+        } catch (ResourceNotFoundException e) {
+            throw new FieldValidationException("clinicId", "Pick a clinic");
+        }
+        // SRS 3.18: a clinic that has stopped operating takes no new visits.
+        if ("INACTIVE".equals(clinic.getOperatingStatus())) {
+            throw new FieldValidationException("clinicId", "That clinic is not taking visits");
+        }
+        repository.lockClinicDay(clinicId + "/" + date);
+        if (repository.existsScheduledAtClinic(customer.getId(), clinicId, date, excludeId == null ? -1L : excludeId)) {
+            throw new ConflictException("There is already a visit registered at that clinic on that day");
+        }
+        int capacity = 0;
+        // Today, somebody has to be still to come: no registering after the last session has ended.
+        boolean stillOpen = !date.equals(clinicService.today());
+        java.time.LocalTime nowHere = java.time.LocalTime.now(clock.withZone(clinicTimeZone()));
+        for (Employee doctor : employeeService.doctorsOf(clinicId)) {
+            List<Turn> turns = availability.turns(doctor, date);
+            capacity += turns.size();
+            stillOpen = stillOpen || turns.stream().anyMatch(turn -> turn.end().isAfter(nowHere));
+        }
+        if (!stillOpen) {
+            throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
+        }
+        if (capacity == 0
+                || repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId) >= capacity) {
+            throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
+        }
+        appointment.setEmployee(null);
+        // Loaded, not a lazy reference: the response names the clinic after the transaction ends.
+        appointment.setClinic(clinic);
+        appointment.setAppointmentDate(date);
+        appointment.setQueueNumber(repository.maxQueueNumberAtClinic(clinicId, date) + 1);
+        appointment.setStartTime(null);
+        appointment.setEndTime(null);
+    }
 
+    /**
+     * A referral (option A): the named doctor, of the visit's own clinic and
+     * seeing patients today; the clinic's next number, no expected time. It
+     * waits for that doctor's room, ahead of the shared line.
+     */
+    private void assignReferral(Appointment referral, Appointment origin, Long doctorId) {
         Employee doctor;
         try {
-            doctor = employeeService.lockDoctor(employeeId);
+            doctor = employeeService.lockDoctor(doctorId);
         } catch (ResourceNotFoundException e) {
             throw new FieldValidationException("employeeId", "Pick one of the clinic's doctors");
         }
-        if (doctor.getClinicId() == null) {
-            throw new FieldValidationException("employeeId", "That doctor is not tied to a clinic");
+        if (doctor.getClinicId() == null || !doctor.getClinicId().equals(origin.getClinicId())) {
+            throw new FieldValidationException("employeeId", "Pick a doctor of the same clinic");
         }
-
-        List<Turn> turns = availability.turns(doctor, date);
-        if (turns.isEmpty()) {
-            throw new FieldValidationException("appointmentDate", "That doctor does not see patients on that day");
+        if (availability.turns(doctor, today()).isEmpty()) {
+            throw new FieldValidationException("employeeId", "That doctor does not see patients on that day");
         }
-        if (repository.existsByCustomerIdAndEmployeeIdAndAppointmentDateAndStatusAndDeletedAtIsNull(
-                customer.getId(), doctor.getId(), date, AppointmentStatus.SCHEDULED)) {
-            throw new ConflictException("There is already a visit registered with that doctor on that day");
-        }
-        int number = repository.maxQueueNumber(doctor.getId(), date) + 1;
-        Turn turn = availability.turnFor(turns, date, number, repository.countWaiting(doctor.getId(), date))
-                .orElseThrow(() -> new ConflictException("That doctor has no turn left on that day"));
-
-        appointment.setEmployee(doctor);
-        // SRS 3.18: a clinic that has stopped operating takes no new visits.
-        if ("INACTIVE".equals(clinicService.get(doctor.getClinicId()).getOperatingStatus())) {
-            throw new FieldValidationException("employeeId", "That doctor's clinic is not taking visits");
-        }
-        // Loaded, not the doctor's lazy reference: the response names the clinic after the transaction ends.
-        appointment.setClinic(clinicService.get(doctor.getClinicId()));
-        appointment.setAppointmentDate(date);
-        appointment.setQueueNumber(number);
-        appointment.setStartTime(turn.start());
-        appointment.setEndTime(turn.end());
+        repository.lockClinicDay(origin.getClinicId() + "/" + today());
+        referral.setEmployee(doctor);
+        referral.setClinic(clinicService.get(origin.getClinicId()));
+        referral.setAppointmentDate(today());
+        referral.setQueueNumber(repository.maxQueueNumberAtClinic(origin.getClinicId(), today()) + 1);
+        referral.setStartTime(null);
+        referral.setEndTime(null);
     }
 
     private String newBookingCode() {
