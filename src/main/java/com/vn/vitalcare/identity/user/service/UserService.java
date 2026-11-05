@@ -448,7 +448,7 @@ public class UserService {
     private void requirePhoneAvailable(String phone, Long selfId) {
         repository.findByPhone(phone).ifPresent(existing -> {
             if (!existing.getId().equals(selfId)) {
-                throw new ConflictException("That phone number is already in use");
+                throw new ConflictException("Số điện thoại đã được sử dụng. Xin vui lòng nhập một số khác.");
             }
         });
     }
