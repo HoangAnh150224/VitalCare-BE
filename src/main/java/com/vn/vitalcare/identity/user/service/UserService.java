@@ -89,11 +89,14 @@ public class UserService {
 
     public User get(Long id) {
         return repository.findById(id)
+                .filter(user -> user.getDeletedAt() == null)
                 .orElseThrow(() -> new ResourceNotFoundException("User", id));
     }
 
     public List<User> getMany(List<Long> ids) {
-        return repository.findAllById(ids);
+        return repository.findAllById(ids).stream()
+                .filter(user -> user.getDeletedAt() == null)
+                .toList();
     }
 
     /**
@@ -377,17 +380,18 @@ public class UserService {
         }
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
-        repository.delete(user);
-        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", user.getId(), "delete",
-                java.util.Map.of("phone", user.getPhone(), "fullName", user.getFullName()), null));
-        // The cache would find no row and drop the entry on its own, but only
-        // when something next asks for it. Saying so outright means a token
-        // held by the deleted account stops working immediately rather than at
-        // the next lookup.
-        events.publishEvent(new AuthoritiesChanged.ForUser(user.getId()));
+        Instant deletedAt = Instant.now();
+        user.setStatus(UserStatus.INACTIVE);
+        user.setDeletedAt(deletedAt);
+        User archived = repository.save(user);
+        refreshTokenService.revokeAllFor(archived, deletedAt);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", archived.getId(), "delete",
+                java.util.Map.of("phone", archived.getPhone(), "fullName", archived.getFullName()), null));
+        events.publishEvent(new AuthoritiesChanged.ForUser(archived.getId()));
 
-        // Returned so the controller can echo the deleted row.
-        return user;
+        // Keep referenced customer and employee rows intact; the tombstone
+        // removes the account from user administration and authentication.
+        return archived;
     }
 
     private Set<Role> resolveRoles(List<RoleRef> refs) {

@@ -106,3 +106,5 @@ databaseChangeLog:
       file: db/changelog/changes/051-shared-clinic-queue.sql
   - include:
       file: db/changelog/changes/052-system-administrator-scope.sql
+  - include:
+      file: db/changelog/changes/053-soft-delete-user-accounts.sql
