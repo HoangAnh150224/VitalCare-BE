@@ -6,10 +6,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
+import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
 import com.vn.vitalcare.care.registration.service.impl.RegistrationServiceImpl;
 import com.vn.vitalcare.identity.auth.service.AuthService;
 import com.vn.vitalcare.identity.user.entity.User;
@@ -31,6 +33,7 @@ class RegistrationServiceTest {
     private UserService userService;
     private CustomerService customerService;
     private AuthService authService;
+    private PhoneCodes codes;
     private RegistrationService service;
 
     @BeforeEach
@@ -38,20 +41,32 @@ class RegistrationServiceTest {
         userService = mock(UserService.class);
         customerService = mock(CustomerService.class);
         authService = mock(AuthService.class);
-        service = new RegistrationServiceImpl(userService, customerService, authService);
+        codes = mock(PhoneCodes.class);
+        service = new RegistrationServiceImpl(userService, customerService, authService, codes);
     }
 
     @Test
     @DisplayName("creates the account with its email, a neutral customer and a session")
     void registers() {
         User user = mock(User.class);
-        when(userService.createSelfRegistered("0912345678", "an@example.com", "Passw0rd!", "Nguyen Van A",
+        when(userService.createSelfRegistered("+84912345678", "an@example.com", "Passw0rd!", "Nguyen Van A",
                 RegistrationServiceImpl.CUSTOMER_ROLE)).thenReturn(user);
 
         service.register(request("Passw0rd!"));
 
+        verify(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
         verify(customerService).createNeutral(user);
         verify(authService).signInVerified(user);
+    }
+
+    @Test
+    @DisplayName("does not create an account when the phone code is invalid")
+    void invalidCodeStopsRegistration() {
+        doThrow(new InvalidVerificationCodeException())
+                .when(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
+
+        assertThrows(InvalidVerificationCodeException.class, () -> service.register(request("Passw0rd!")));
+        verifyNoInteractions(userService, customerService, authService);
     }
 
     @Test
@@ -72,7 +87,7 @@ class RegistrationServiceTest {
     }
 
     private static RegisterRequest request(String password) {
-        return new RegisterRequest("0912345678", "an@example.com", "Nguyen Van A", password);
+        return new RegisterRequest("0912345678", "123456", "an@example.com", "Nguyen Van A", password);
     }
 
     /** A clock a test can move forward, so expiry and cooldown need no waiting. */

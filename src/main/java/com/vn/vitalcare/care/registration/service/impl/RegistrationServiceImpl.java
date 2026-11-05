@@ -1,13 +1,18 @@
 package com.vn.vitalcare.care.registration.service.impl;
 
 import com.vn.vitalcare.care.customer.service.CustomerService;
+import com.vn.vitalcare.care.registration.dto.OtpResponse;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
+import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
+import com.vn.vitalcare.care.registration.service.InvalidVerificationCodeException;
+import com.vn.vitalcare.care.registration.service.PhoneCodes;
 import com.vn.vitalcare.care.registration.service.RegistrationService;
 import com.vn.vitalcare.identity.auth.dto.TokenResponse;
 import com.vn.vitalcare.identity.auth.service.AuthService;
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.phone.PhoneNumbers;
 import java.nio.charset.StandardCharsets;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,21 +31,29 @@ public class RegistrationServiceImpl implements RegistrationService {
     private final UserService userService;
     private final CustomerService customerService;
     private final AuthService authService;
+    private final PhoneCodes codes;
 
     public RegistrationServiceImpl(UserService userService,
                                    CustomerService customerService,
-                                   AuthService authService) {
+                                   AuthService authService,
+                                   PhoneCodes codes) {
         this.userService = userService;
         this.customerService = customerService;
         this.authService = authService;
+        this.codes = codes;
     }
 
     @Override
     @Transactional
+    public OtpResponse requestCode(String rawPhone) {
+        String phone = normalize(rawPhone);
+        return codes.issue(phone, VerificationPurpose.REGISTER, phone);
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public TokenResponse register(RegisterRequest request) {
-        com.vn.vitalcare.share.phone.PhoneNumbers.problem(request.phone()).ifPresent(problem -> {
-            throw new FieldValidationException("phone", problem);
-        });
+        String phone = normalize(request.phone());
         if (request.password().isBlank()) {
             throw new FieldValidationException("password", "Password cannot contain only spaces");
         }
@@ -48,10 +61,12 @@ public class RegistrationServiceImpl implements RegistrationService {
             throw new FieldValidationException("password", "Password is too long; use fewer accented letters");
         }
 
+        codes.verify(phone, VerificationPurpose.REGISTER, request.otp());
+
         // UserService normalises the number and any email, and refuses either if
         // another account already holds it.
         User user = userService.createSelfRegistered(
-                request.phone(), request.email(), request.password(), request.fullName(), CUSTOMER_ROLE);
+                phone, request.email(), request.password(), request.fullName(), CUSTOMER_ROLE);
         customerService.createNeutral(user);
         return authService.signInVerified(user);
     }
@@ -68,5 +83,11 @@ public class RegistrationServiceImpl implements RegistrationService {
         customer.setDateOfBirth(dateOfBirth);
         customer.setGender(gender);
         return customer;
+    }
+
+    private static String normalize(String rawPhone) {
+        return PhoneNumbers.normalize(rawPhone)
+                .orElseThrow(() -> new FieldValidationException(
+                        "phone", PhoneNumbers.problem(rawPhone).orElse("Not a valid Vietnamese phone number")));
     }
 }

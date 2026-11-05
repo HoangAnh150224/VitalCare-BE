@@ -1,14 +1,12 @@
 package com.vn.vitalcare.care.registration.service;
 
+import com.vn.vitalcare.care.registration.dto.OtpResponse;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
 import com.vn.vitalcare.identity.auth.dto.TokenResponse;
 
 /**
- * Self-registration: create the account and its neutral customer record, then
- * sign the person in.
- *
- * <p>No one-time code: the number is not proved, by decision. A forgotten
- * password is recovered by a code texted to it; the email is optional.
+ * Self-registration: prove control of the phone by SMS before creating the
+ * account and its neutral customer record, then sign the person in.
  *
  * <p>Lives with the care domain rather than identity because what it creates
  * is a customer; it uses identity's services to make the account behind one,
@@ -16,11 +14,10 @@ import com.vn.vitalcare.identity.auth.dto.TokenResponse;
  */
 public interface RegistrationService {
 
-    /**
-     * Creates the account, its neutral customer record and a session — all or
-     * nothing. A phone number or email already on another account is refused
-     * (409).
-     */
+    /** Sends a registration code to a validated number, subject to the OTP limits. */
+    OtpResponse requestCode(String rawPhone);
+
+    /** Creates the account, customer record and session after consuming a valid OTP. */
     TokenResponse register(RegisterRequest request);
 
     /**

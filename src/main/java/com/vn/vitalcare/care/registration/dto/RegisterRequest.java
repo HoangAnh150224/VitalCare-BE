@@ -7,14 +7,18 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * {@code POST /auth/register}: the account to create. The phone number is
- * what it signs in with and where a password-recovery code is sent by SMS.
+ * {@code POST /auth/register}: the account to create after proving control of
+ * its phone number with a one-time code.
  * The email is optional; when given it must be valid and not another account's.
  */
 public record RegisterRequest(
         // The shape is checked by the service, which says which way it is wrong (PhoneNumbers.problem).
         @NotBlank(message = "Phone number is required")
         String phone,
+
+        @NotBlank(message = "The code is required")
+        @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the SMS")
+        String otp,
 
         @Email(message = "Email must be a valid address")
         @Size(max = 255, message = "Email must be at most 255 characters")

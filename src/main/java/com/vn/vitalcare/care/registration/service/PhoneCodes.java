@@ -17,8 +17,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
- * One-time codes for the phone number an account signs in with, sent to that
- * number by SMS: recovering a forgotten password.
+ * One-time codes sent by SMS to prove control of a phone number during
+ * self-registration or password recovery.
  *
  * <p>A code belongs to the number — that is what the person types and what
  * the limits count.
