@@ -54,6 +54,9 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public TokenResponse register(RegisterRequest request) {
         String phone = normalizeRegistrationPhone(request.phone());
+        if (request.fullName().trim().length() < 2) {
+            throw new FieldValidationException("fullName", "Full name must contain at least 2 characters");
+        }
         if (request.password().isBlank()) {
             throw new FieldValidationException("password", "Password cannot contain only spaces");
         }

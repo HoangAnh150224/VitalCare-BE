@@ -102,6 +102,21 @@ class RegistrationServiceTest {
     }
 
     @Test
+    @DisplayName("does not create an account with a one-character name")
+    void oneCharacterNameIsRefused() {
+        for (String name : java.util.List.of("A", " A ")) {
+            RegisterRequest request = new RegisterRequest("0912345678", "123456", "an@example.com",
+                    name, "Passw0rd!");
+
+            FieldValidationException exception = assertThrows(FieldValidationException.class,
+                    () -> service.register(request));
+
+            assertEquals("fullName", exception.field());
+        }
+        verifyNoInteractions(codes, userService, customerService, authService);
+    }
+
+    @Test
     @DisplayName("a number or email another account holds stops it before anything else")
     void takenIsRefused() {
         when(userService.createSelfRegistered(any(), any(), any(), any(), any()))
