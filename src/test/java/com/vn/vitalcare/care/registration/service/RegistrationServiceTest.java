@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.registration.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -67,6 +68,37 @@ class RegistrationServiceTest {
 
         assertThrows(InvalidVerificationCodeException.class, () -> service.register(request("Passw0rd!")));
         verifyNoInteractions(userService, customerService, authService);
+    }
+
+    @Test
+    @DisplayName("does not send a registration code to an all-zero phone number")
+    void allZeroPhoneIsRefused() {
+        FieldValidationException exception = assertThrows(
+                FieldValidationException.class, () -> service.requestCode("0000000000"));
+
+        assertEquals("phone", exception.field());
+        verifyNoInteractions(codes);
+    }
+
+    @Test
+    @DisplayName("does not register an all-zero phone even if an OTP is supplied")
+    void registrationWithAllZeroPhoneIsRefused() {
+        RegisterRequest request = new RegisterRequest("0000000000", "123456", "an@example.com",
+                "Nguyen Van A", "Passw0rd!");
+
+        FieldValidationException exception = assertThrows(FieldValidationException.class,
+                () -> service.register(request));
+
+        assertEquals("phone", exception.field());
+        verifyNoInteractions(codes, userService, customerService, authService);
+    }
+
+    @Test
+    @DisplayName("keeps an existing structurally valid seed phone eligible for registration")
+    void numberWithNonZeroSignificantDigitsIsAllowed() {
+        service.requestCode("+84 000 000 131");
+
+        verify(codes).issue("+84000000131", VerificationPurpose.REGISTER, "+84000000131");
     }
 
     @Test

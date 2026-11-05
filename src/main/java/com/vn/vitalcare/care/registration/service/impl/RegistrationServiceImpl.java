@@ -46,14 +46,14 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Override
     @Transactional
     public OtpResponse requestCode(String rawPhone) {
-        String phone = normalize(rawPhone);
+        String phone = normalizeRegistrationPhone(rawPhone);
         return codes.issue(phone, VerificationPurpose.REGISTER, phone);
     }
 
     @Override
     @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public TokenResponse register(RegisterRequest request) {
-        String phone = normalize(request.phone());
+        String phone = normalizeRegistrationPhone(request.phone());
         if (request.password().isBlank()) {
             throw new FieldValidationException("password", "Password cannot contain only spaces");
         }
@@ -89,5 +89,13 @@ public class RegistrationServiceImpl implements RegistrationService {
         return PhoneNumbers.normalize(rawPhone)
                 .orElseThrow(() -> new FieldValidationException(
                         "phone", PhoneNumbers.problem(rawPhone).orElse("Not a valid Vietnamese phone number")));
+    }
+
+    private static String normalizeRegistrationPhone(String rawPhone) {
+        String normalized = normalize(rawPhone);
+        if (normalized.substring(3).chars().allMatch(digit -> digit == '0')) {
+            throw new FieldValidationException("phone", "Phone number cannot be all zeros");
+        }
+        return normalized;
     }
 }
