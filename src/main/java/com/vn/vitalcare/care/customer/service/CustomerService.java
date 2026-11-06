@@ -67,6 +67,13 @@ public interface CustomerService {
      */
     Customer createNeutral(User user);
 
+    /** A walk-in profile with no sign-in account or guardian. */
+    Customer createWalkInProfile(String fullName, String phone, java.time.LocalDate dateOfBirth,
+                                 String gender, String nationalId);
+
+    /** Links a verified self-registration to one matching walk-in, or creates a neutral profile. */
+    Customer registerAccountProfile(User user, java.time.LocalDate dateOfBirth);
+
     Customer update(Long id, CustomerPatchRequest request);
 
     /**

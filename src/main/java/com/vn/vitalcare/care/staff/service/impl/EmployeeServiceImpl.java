@@ -19,6 +19,7 @@ import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
@@ -106,6 +107,19 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public Employee create(EmployeeCreateRequest request) {
+        boolean clinicAdministrator = request.staffType() == StaffType.CLINIC_ADMIN;
+        if (clinicAdministrator && !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.CLINICS_WRITE)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Only the System Administrator can create a Clinic Administrator");
+        }
+        if (!clinicAdministrator && !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.EMPLOYEES_WRITE)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Only a Clinic Administrator can create clinic staff");
+        }
+        if (clinicAdministrator && request.clinicId() == null) {
+            throw new FieldValidationException("clinicId", "Choose the clinic this administrator will manage");
+        }
+
         Employee employee = new Employee();
         employee.setStaffType(request.staffType());
         employee.setSpecialty(blankToNull(request.specialty()));
@@ -124,7 +138,12 @@ public class EmployeeServiceImpl implements EmployeeService {
         // caller's scope throws here, and the rollback takes the sign-in
         // account created above with it -- it is the same transaction.
         repository.flush();
-        rowLevel.checkWritable(saved);
+        // System administrators may create only clinic administrators. Their
+        // system scope is checked by clinics:write and the required clinic id;
+        // employee row-level write access remains clinic-admin-only.
+        if (!clinicAdministrator) {
+            rowLevel.checkWritable(saved);
+        }
         // Derived from the id, like the customer code.
         saved.setEmployeeCode("NV%06d".formatted(saved.getId()));
         // Joining is the first membership.

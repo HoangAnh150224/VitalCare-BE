@@ -17,15 +17,6 @@ public interface RegistrationService {
     /** Sends a registration code to a validated number, subject to the OTP limits. */
     OtpResponse requestCode(String rawPhone);
 
-    /** Creates the account, customer record and session after consuming a valid OTP. */
+    /** Creates the account, links a matching walk-in profile or creates a guest profile, then signs in. */
     TokenResponse register(RegisterRequest request);
-
-    /**
-     * An account and a customer record taken down at the desk for somebody who
-     * walked in, with a password nobody knows: they set their own through
-     * "forgot password" when they want to sign in. A phone number already on
-     * an account is refused (409): the desk picks that customer instead.
-     */
-    com.vn.vitalcare.entity.Customer registerAtDesk(String fullName, String phone, java.time.LocalDate dateOfBirth,
-                                                   String gender);
 }

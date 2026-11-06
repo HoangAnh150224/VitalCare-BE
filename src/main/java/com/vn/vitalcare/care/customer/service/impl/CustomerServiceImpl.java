@@ -16,6 +16,7 @@ import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.PatientActivationSource;
 import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.identity.user.entity.User;
+import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,21 +57,33 @@ public class CustomerServiceImpl implements CustomerService {
     // read from it. See scope().
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
+    private final UserService userService;
 
+    @Autowired
     public CustomerServiceImpl(CustomerRepository repository,
                                ClinicScope clinicScope,
                                RowLevelSecurity rowLevel,
-                               Clock clock) {
+                               Clock clock,
+                               UserService userService) {
         this.repository = repository;
         this.clinicScope = clinicScope;
         this.rowLevel = rowLevel;
         this.clock = clock;
+        this.userService = userService;
+    }
+
+    /** Compatibility constructor for existing service-level callers. */
+    public CustomerServiceImpl(CustomerRepository repository,
+                               ClinicScope clinicScope,
+                               RowLevelSecurity rowLevel,
+                               Clock clock) {
+        this(repository, clinicScope, rowLevel, clock, null);
     }
 
     @Override
     public Page<Customer> list(ListParams params) {
         // A receptionist sees their clinic's customers, plus whoever a full
-        // phone number or customer code names exactly — somebody walking in
+        // phone number, customer code or identity number names exactly — somebody walking in
         // from another clinic.
         Specification<Customer> visible = params.search()
                 .filter(term -> clinicScope.currentClinicId().isPresent())
@@ -238,6 +252,70 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     @Transactional
+    public Customer createWalkInProfile(String fullName, String phone, java.time.LocalDate dateOfBirth,
+                                        String gender, String nationalId) {
+        String name = fullName == null ? "" : fullName.trim();
+        String normalizedPhone = PhoneNumbers.normalize(phone)
+                .orElseThrow(() -> new FieldValidationException("phone", "A valid phone number is required"));
+        String normalizedNationalId = blankToNull(nationalId);
+
+        if (!repository.findWalkInDuplicates(normalizedPhone, name, dateOfBirth, normalizedNationalId).isEmpty()) {
+            throw new ConflictException(
+                    "A matching patient profile already exists. Search and select it instead of creating another one");
+        }
+
+        Customer customer = new Customer();
+        customer.setFullName(name);
+        customer.setPhone(normalizedPhone);
+        customer.setNationalId(normalizedNationalId);
+        customer.setDateOfBirth(dateOfBirth);
+        customer.setGender(gender);
+        Customer saved = repository.save(customer);
+        saved.setCustomerCode("KH%06d".formatted(saved.getId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Customer registerAccountProfile(User user, java.time.LocalDate dateOfBirth) {
+        List<Customer> sameIdentity = repository.findUnclaimedWalkInsByPhoneAndName(
+                user.getPhone(), user.getFullName());
+
+        if (!sameIdentity.isEmpty() && dateOfBirth == null) {
+            throw new FieldValidationException("dateOfBirth",
+                    "Enter your date of birth to securely link your existing patient profile");
+        }
+
+        List<Customer> matching = sameIdentity.stream()
+                .filter(profile -> dateOfBirth.equals(profile.getDateOfBirth()))
+                .toList();
+        if (matching.size() > 1) {
+            throw new ConflictException(
+                    "More than one patient profile matches. Contact the clinic to verify and link your account");
+        }
+
+        Customer profile;
+        if (matching.size() == 1) {
+            profile = matching.get(0);
+            profile.setUser(user);
+            profile.setFullName(null);
+            profile.setPhone(null);
+        } else {
+            profile = new Customer();
+            profile.setUser(user);
+            profile.setDateOfBirth(dateOfBirth);
+            profile = repository.save(profile);
+            profile.setCustomerCode("KH%06d".formatted(profile.getId()));
+        }
+
+        if (userService != null) {
+            userService.synchronizeCustomerRole(user, profile.getStatus() == CustomerStatus.PATIENT);
+        }
+        return repository.save(profile);
+    }
+
+    @Override
+    @Transactional
     public Customer update(Long id, CustomerPatchRequest request) {
         Customer customer = get(id);
 
@@ -297,6 +375,9 @@ public class CustomerServiceImpl implements CustomerService {
 
     private void activate(Customer customer, PatientActivationSource source) {
         customer.activateAsPatient(source, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        if (customer.getUser() != null && userService != null) {
+            userService.synchronizeCustomerRole(customer.getUser(), true);
+        }
     }
 
     /** The caller's customers as a filter; see {@link #boundScope()}. */
@@ -327,6 +408,9 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }

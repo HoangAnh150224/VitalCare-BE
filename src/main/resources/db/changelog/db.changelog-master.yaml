@@ -108,3 +108,7 @@ databaseChangeLog:
       file: db/changelog/changes/052-system-administrator-scope.sql
   - include:
       file: db/changelog/changes/053-soft-delete-user-accounts.sql
+  - include:
+      file: db/changelog/changes/054-account-profile-role-rules.sql
+  - include:
+      file: db/changelog/changes/055-single-system-admin.sql

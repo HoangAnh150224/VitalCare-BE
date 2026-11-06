@@ -34,7 +34,7 @@ class SelfRegisteredAccountTest {
         when(repository.findByEmailIgnoreCase(any())).thenReturn(Optional.empty());
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         RoleService roles = mock(RoleService.class);
-        when(roles.getByCode("CUSTOMER")).thenReturn(mock(Role.class));
+        when(roles.getByCode("GUEST")).thenReturn(mock(Role.class));
         service = new UserService(repository, roles, mock(RefreshTokenService.class),
                 mock(PasswordEncoder.class), mock(ApplicationEventPublisher.class));
     }
@@ -42,7 +42,7 @@ class SelfRegisteredAccountTest {
     @Test
     @DisplayName("the email is stored trimmed and lower-cased, the number in +84 form")
     void storesEmail() {
-        User user = service.createSelfRegistered("0912345678", "  An@Example.COM ", "Passw0rd!", "An", "CUSTOMER");
+        User user = service.createSelfRegistered("0912345678", "  An@Example.COM ", "Passw0rd!", "An", "GUEST");
 
         assertEquals("an@example.com", user.getEmail());
         assertEquals("+84912345678", user.getPhone());
@@ -51,7 +51,7 @@ class SelfRegisteredAccountTest {
     @Test
     @DisplayName("no email is fine: the account is created without one")
     void emailIsOptional() {
-        User user = service.createSelfRegistered("0912345678", null, "Passw0rd!", "An", "CUSTOMER");
+        User user = service.createSelfRegistered("0912345678", null, "Passw0rd!", "An", "GUEST");
 
         assertEquals(null, user.getEmail());
         verify(repository, never()).findByEmailIgnoreCase(any());
@@ -65,7 +65,7 @@ class SelfRegisteredAccountTest {
         when(repository.findByEmailIgnoreCase("an@example.com")).thenReturn(Optional.of(other));
 
         assertThrows(ConflictException.class,
-                () -> service.createSelfRegistered("0912345678", "an@example.com", "Passw0rd!", "An", "CUSTOMER"));
+                () -> service.createSelfRegistered("0912345678", "an@example.com", "Passw0rd!", "An", "GUEST"));
         verify(repository, never()).save(any());
     }
 }

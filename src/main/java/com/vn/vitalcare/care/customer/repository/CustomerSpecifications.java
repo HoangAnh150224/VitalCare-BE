@@ -55,7 +55,8 @@ public final class CustomerSpecifications {
                     cb.like(user.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(root.get("fullName")), ListParams.likePattern(term)),
                     cb.like(root.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
-                    cb.like(cb.lower(root.get("customerCode")), ListParams.likePattern(term)));
+                    cb.like(cb.lower(root.get("customerCode")), ListParams.likePattern(term)),
+                    cb.like(cb.lower(root.get("nationalId")), ListParams.likePattern(term)));
         }));
 
         List<Long> ids = params.ids();
@@ -144,22 +145,24 @@ public final class CustomerSpecifications {
     }
 
     /**
-     * The one customer a term names exactly: their whole phone number, or
-     * their customer code. What a receptionist has when somebody from another
-     * clinic walks in — knowing it is what identifies them, so it reaches past
-     * the clinic's own list.
+     * The one customer a term names exactly: their whole phone number,
+     * customer code or identity number. A clinic may use these exact
+     * identifiers to find somebody who has previously visited another clinic;
+     * name and partial searches remain within its own scope.
      */
     public static Specification<Customer> exactly(String term) {
         String code = term.trim();
         var phone = PhoneNumbers.normalize(term);
         return (root, query, cb) -> {
             var byCode = cb.equal(cb.lower(root.get("customerCode")), code.toLowerCase(Locale.ROOT));
+            var user = root.join("user", JoinType.LEFT);
+            var byNationalId = cb.equal(cb.lower(root.get("nationalId")), code.toLowerCase(Locale.ROOT));
             return phone
-                    .map(normalized -> cb.or(byCode,
-                            cb.equal(root.join("user", JoinType.LEFT).get("phone"), normalized),
+                    .map(normalized -> cb.or(byCode, byNationalId,
+                            cb.equal(user.get("phone"), normalized),
                             // A relative has no account; the number is their own.
                             cb.equal(root.get("phone"), normalized)))
-                    .orElse(byCode);
+                    .orElse(cb.or(byCode, byNationalId));
         };
     }
 

@@ -38,6 +38,30 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     Optional<Customer> findByUserIdAndDeletedAtIsNull(Long userId);
 
+    /**
+     * A profile taken down at the desk, before its owner has an account.
+     * Matching name and phone is only a candidate; registration also checks
+     * date of birth before it links the account.
+     */
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
+    @Query("select c from Customer c where c.deletedAt is null and c.user is null and c.guardian is null "
+            + "and c.phone = :phone and lower(trim(c.fullName)) = lower(trim(:fullName))")
+    List<Customer> findUnclaimedWalkInsByPhoneAndName(@Param("phone") String phone,
+                                                      @Param("fullName") String fullName);
+
+    /** Duplicate guard for a newly entered walk-in; phone alone never identifies a person. */
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
+    @Query("select c from Customer c left join c.user u where c.deletedAt is null and ("
+            + "(:nationalId is not null and lower(trim(c.nationalId)) = lower(trim(:nationalId))) or ("
+            + "(:nationalId is null or c.nationalId is null or trim(c.nationalId) = '') and "
+            + "lower(trim(coalesce(c.fullName, u.fullName))) = lower(trim(:fullName)) "
+            + "and c.dateOfBirth = :dateOfBirth "
+            + "and coalesce(c.phone, u.phone) = :phone))")
+    List<Customer> findWalkInDuplicates(@Param("phone") String phone,
+                                        @Param("fullName") String fullName,
+                                        @Param("dateOfBirth") java.time.LocalDate dateOfBirth,
+                                        @Param("nationalId") String nationalId);
+
     /** The relatives an account's owner registers visits for, oldest first. */
     List<Customer> findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(Long guardianId);
 

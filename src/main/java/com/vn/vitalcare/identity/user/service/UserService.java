@@ -15,6 +15,7 @@ import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
+import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import java.time.Instant;
 import java.util.LinkedHashSet;
@@ -24,6 +25,7 @@ import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,14 +35,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     /**
-     * The role the system cannot afford to have nobody holding.
+     * The one System Administrator account provisioned for the deployment.
      *
-     * <p>Only {@code users:write} and {@code roles:write} can restore access
-     * once they are gone, and both are granted through this role in the seed
-     * data — so the last active holder of it is protected from being demoted,
-     * disabled or deleted.
+     * <p>It cannot be created, reassigned, disabled, demoted or deleted through
+     * ordinary account and role management. The database also enforces that no
+     * second account can hold this role.
      */
     private static final String ADMIN_ROLE_CODE = "ADMIN";
+    private static final String GUEST_ROLE_CODE = "GUEST";
+    private static final String PATIENT_ROLE_CODE = "PATIENT";
+    private static final Set<String> WORKFLOW_ROLE_CODES = Set.of(
+            ADMIN_ROLE_CODE, "CLINIC_ADMIN", "DOCTOR", "MANAGER", "NURSE", "MEDICAL_STAFF", "USER",
+            "CARE_GIVER", "CAREGIVER", GUEST_ROLE_CODE, PATIENT_ROLE_CODE);
 
     /** Sort properties the list endpoint accepts; anything else is ignored. */
     private static final Set<String> SORTABLE =
@@ -132,6 +138,9 @@ public class UserService {
     @Transactional
     public User createSelfRegistered(String phone, String email, String rawPassword, String fullName,
                                      String roleCode) {
+        if (!GUEST_ROLE_CODE.equals(roleCode)) {
+            throw new AccessDeniedException("Self-registration can only create a Guest account");
+        }
         return createWithSystemRole(phone, email, rawPassword, fullName, roleCode);
     }
 
@@ -142,6 +151,19 @@ public class UserService {
      */
     @Transactional
     public User createStaffAccount(String phone, String rawPassword, String fullName, String roleCode) {
+        if ("CLINIC_ADMIN".equals(roleCode)) {
+            requireAuthority(Permissions.CLINICS_WRITE,
+                    "Only the System Administrator can create a Clinic Administrator");
+            requireActorRole(ADMIN_ROLE_CODE,
+                    "Only the System Administrator can create a Clinic Administrator");
+        } else if (Set.of("DOCTOR", "MANAGER", "NURSE", "MEDICAL_STAFF").contains(roleCode)) {
+            requireAuthority(Permissions.EMPLOYEES_WRITE,
+                    "Only a Clinic Administrator can create clinic staff");
+            requireActorRole("CLINIC_ADMIN",
+                    "Only a Clinic Administrator can create clinic staff");
+        } else {
+            throw new AccessDeniedException("This role cannot be assigned through staff creation");
+        }
         return createWithSystemRole(phone, null, rawPassword, fullName, roleCode);
     }
 
@@ -191,6 +213,9 @@ public class UserService {
 
     private User createWithSystemRole(String phone, String rawEmail, String rawPassword, String fullName,
                                       String roleCode) {
+        if (ADMIN_ROLE_CODE.equals(roleCode)) {
+            throw new AccessDeniedException("The System Administrator account is provisioned during deployment");
+        }
         String normalized = requireNormalizedPhone(phone);
         String email = normalizeEmail(rawEmail);
         requirePhoneAvailable(normalized, null);
@@ -220,7 +245,9 @@ public class UserService {
                 passwordEncoder.encode(request.password()),
                 request.fullName().trim(),
                 request.status() == null ? UserStatus.ACTIVE : request.status());
-        user.setRoles(resolveRoles(request.roles()));
+        Set<Role> roles = resolveRoles(request.roles());
+        requireRoleCreationWorkflow(roles);
+        user.setRoles(roles);
 
         return repository.save(user);
     }
@@ -255,6 +282,9 @@ public class UserService {
         // checked against the state the request is asking for, not the state
         // the row is currently in.
         Set<Role> roles = request.roles() == null ? user.getRoles() : resolveRoles(request.roles());
+        if (request.roles() != null) {
+            requireRoleChangeWorkflow(user, roles);
+        }
         UserStatus status = request.status() == null ? user.getStatus() : request.status();
         requireAdminSurvives(user, roles, status);
 
@@ -368,6 +398,20 @@ public class UserService {
         repository.save(user);
     }
 
+    /** Keeps the account's Guest/Patient role aligned with its patient profile lifecycle. */
+    @Transactional
+    public void synchronizeCustomerRole(User user, boolean isPatient) {
+        Set<Role> roles = new LinkedHashSet<>(user.getRoles());
+        List<String> before = roleCodes(roles);
+        roles.removeIf(role -> GUEST_ROLE_CODE.equals(role.getCode()) || PATIENT_ROLE_CODE.equals(role.getCode()));
+        roles.add(roleService.getByCode(isPatient ? PATIENT_ROLE_CODE : GUEST_ROLE_CODE));
+        if (!before.equals(roleCodes(roles))) {
+            user.setRoles(roles);
+            User saved = repository.save(user);
+            events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
+        }
+    }
+
     @Transactional
     public User delete(Long id) {
         User user = get(id);
@@ -407,13 +451,45 @@ public class UserService {
      * @param status the status it would have afterwards
      */
     private void requireAdminSurvives(User user, Set<Role> roles, UserStatus status) {
-        boolean wasAdmin = user.roleCodes().contains(ADMIN_ROLE_CODE) && user.canSignIn();
+        boolean wasAdmin = user.roleCodes().contains(ADMIN_ROLE_CODE);
         boolean staysAdmin = roles.stream().anyMatch(role -> ADMIN_ROLE_CODE.equals(role.getCode()))
                 && status == UserStatus.ACTIVE;
 
-        if (wasAdmin && !staysAdmin && repository.countActiveWithRole(ADMIN_ROLE_CODE) <= 1) {
+        if (wasAdmin && !staysAdmin) {
             throw new ConflictException(
-                    "This is the last active administrator; promote another account first");
+                    "The single System Administrator account cannot be demoted, disabled or deleted through account management");
+        }
+    }
+
+    /** Core roles are assigned by registration, patient activation or clinic staff creation. */
+    private static void requireRoleCreationWorkflow(Set<Role> roles) {
+        if (roles.stream().anyMatch(role -> WORKFLOW_ROLE_CODES.contains(role.getCode()))) {
+            throw new AccessDeniedException(
+                    "System roles are assigned by registration or the authorized clinic staff workflow");
+        }
+    }
+
+    /** Generic user editing cannot grant or remove a core role. */
+    private static void requireRoleChangeWorkflow(User user, Set<Role> roles) {
+        Set<String> before = user.roleCodes().stream().filter(WORKFLOW_ROLE_CODES::contains)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<String> after = roles.stream().map(Role::getCode).filter(WORKFLOW_ROLE_CODES::contains)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!before.equals(after)) {
+            throw new AccessDeniedException("System roles can only be changed through their designated workflow");
+        }
+    }
+
+    private static void requireAuthority(String authority, String message) {
+        if (!CurrentUser.has(authority)) {
+            throw new AccessDeniedException(message);
+        }
+    }
+
+    private void requireActorRole(String roleCode, String message) {
+        Long actorId = CurrentUser.id().orElseThrow(() -> new AccessDeniedException(message));
+        if (!get(actorId).roleCodes().contains(roleCode)) {
+            throw new AccessDeniedException(message);
         }
     }
 

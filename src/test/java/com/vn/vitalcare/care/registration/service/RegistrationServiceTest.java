@@ -47,16 +47,16 @@ class RegistrationServiceTest {
     }
 
     @Test
-    @DisplayName("creates the account with its email, a neutral customer and a session")
+    @DisplayName("creates a Guest account, its linked patient profile, and a session")
     void registers() {
         User user = mock(User.class);
         when(userService.createSelfRegistered("+84912345678", "an@example.com", "Passw0rd!", "Nguyen Van A",
-                RegistrationServiceImpl.CUSTOMER_ROLE)).thenReturn(user);
+                RegistrationServiceImpl.GUEST_ROLE)).thenReturn(user);
 
         service.register(request("Passw0rd!"));
 
         verify(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
-        verify(customerService).createNeutral(user);
+        verify(customerService).registerAccountProfile(user, null);
         verify(authService).signInVerified(user);
     }
 

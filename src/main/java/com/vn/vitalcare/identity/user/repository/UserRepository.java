@@ -29,6 +29,7 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
      * client to repair.
      */
     @Query("select count(u) from User u join u.roles r "
-            + "where r.code = :roleCode and u.status = com.vn.vitalcare.identity.user.entity.UserStatus.ACTIVE")
+            + "where r.code = :roleCode and u.status = com.vn.vitalcare.identity.user.entity.UserStatus.ACTIVE "
+            + "and u.deletedAt is null")
     long countActiveWithRole(@Param("roleCode") String roleCode);
 }
