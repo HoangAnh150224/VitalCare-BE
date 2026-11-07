@@ -171,10 +171,24 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @Query("select a from Appointment a where a.id = :id and a.deletedAt is null")
     Optional<Appointment> lockById(@Param("id") Long id);
 
-    /** Visits still booked on a day up to {@code today}: what J-01 may mark as no-shows. Not scoped: the sweep's. */
-    @Query("select a from Appointment a where a.status = com.vn.vitalcare.entity.AppointmentStatus.BOOKED "
-            + "and a.appointmentDate <= :today and a.deletedAt is null")
-    List<Appointment> findBookedUpTo(@Param("today") LocalDate today);
+    /**
+     * Ids of visits still booked on a day up to {@code today}: what J-01 may mark as no-shows. Ids, not rows,
+     * so each is read fresh under its lock, not from a copy this query left in the persistence context.
+     * Not scoped: the sweep's.
+     */
+    @Query("select a.id from Appointment a where a.status = com.vn.vitalcare.entity.AppointmentStatus.BOOKED "
+            + "and a.appointmentDate <= :today and a.deletedAt is null order by a.id")
+    List<Long> findBookedUpTo(@Param("today") LocalDate today);
+
+    /** Whether the patient already has a visit at the clinic that day that is booked or under way (not over). */
+    @Query("select count(a) > 0 from Appointment a where a.customer.id = :customerId and a.clinicId = :clinicId"
+            + " and a.appointmentDate = :date and a.status in (com.vn.vitalcare.entity.AppointmentStatus.BOOKED,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.READY_FOR_EXAMINATION,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS) and a.deletedAt is null")
+    boolean existsOpenAtClinic(@Param("customerId") Long customerId, @Param("clinicId") java.util.UUID clinicId,
+                               @Param("date") LocalDate date);
 
     /** BR-11: how many visits of an account (its owner's and the relatives') ended as no-shows. */
     @Query("select count(a) from Appointment a join a.customer c left join c.guardian g "

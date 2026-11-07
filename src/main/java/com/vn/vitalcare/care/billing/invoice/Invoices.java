@@ -203,9 +203,20 @@ public class Invoices {
         invoices.findExamOf(event.appointmentId()).ifPresent(found -> {
             Invoice invoice = lock(found.getId());
             Appointment appointment = invoice.getAppointment();
-            if (invoice.getStatus() == InvoiceStatus.UNPAID && appointment != null
-                    && !appointment.getClinicId().equals(invoice.getClinicId())) {
+            if (invoice.getStatus() != InvoiceStatus.UNPAID || appointment == null) {
+                return;
+            }
+            boolean changed = false;
+            if (!appointment.getClinicId().equals(invoice.getClinicId())) {
                 invoice.setClinic(appointment.getClinic());
+                changed = true;
+            }
+            // Given to another profile of the account at the desk (UC-02 B1).
+            if (!appointment.getCustomer().getId().equals(invoice.getCustomer().getId())) {
+                invoice.setCustomer(appointment.getCustomer());
+                changed = true;
+            }
+            if (changed) {
                 invoices.persist(invoice);
             }
         });

@@ -408,6 +408,11 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    public boolean hasOpenVisitAt(Customer customer, java.util.UUID clinicId, LocalDate date) {
+        return repository.existsOpenAtClinic(customer.getId(), clinicId, date);
+    }
+
+    @Override
     public long noShowsOfAccount(Customer owner) {
         return repository.countNoShowsOfAccount(accountOf(owner).getId());
     }
@@ -436,7 +441,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         appointment.setCustomer(other);
         rowLevel.checkWritable(appointment);
-        return repository.persist(appointment);
+        Appointment saved = repository.persist(appointment);
+        // Its unpaid exam bill follows the visit to the new profile.
+        events.publishEvent(new VisitEvents.Rescheduled(saved.getId()));
+        return saved;
     }
 
     /** The account a profile belongs to: its own owner's profile, or its guardian's for a relative. */
@@ -632,22 +640,28 @@ public class AppointmentServiceImpl implements AppointmentService {
         LocalDate today = today();
         java.util.Map<java.util.UUID, Boolean> openToday = new java.util.HashMap<>();
         int marked = 0;
-        for (Appointment due : repository.findBookedUpTo(today)) {
-            if (due.getAppointmentDate().equals(today)
-                    && openToday.computeIfAbsent(due.getClinicId(), clinic -> supply(clinic, today).stillOpen())) {
-                continue;
-            }
-            // The bill first, then the visit, as every cancellation takes them; then
-            // read again under the lock: the desk may have checked them in meanwhile.
-            events.publishEvent(new VisitEvents.Cancelling(due.getId()));
-            var locked = repository.lockById(due.getId())
+        for (Long id : repository.findBookedUpTo(today)) {
+            // The bill first, then the visit, as every cancellation takes them; the visit is
+            // read under its lock, so one the desk checked in meanwhile is left alone.
+            events.publishEvent(new VisitEvents.Cancelling(id));
+            var locked = repository.lockById(id)
                     .filter(appointment -> appointment.getStatus() == AppointmentStatus.BOOKED);
             if (locked.isEmpty()) {
                 continue;
             }
-            locked.get().markNoShow();
-            repository.persist(locked.get());
-            events.publishEvent(new VisitEvents.Cancelled(due.getId()));
+            Appointment due = locked.get();
+            // Today only once the day's last turn is over; a day with no turns at all is left to
+            // tomorrow's sweep rather than turning everybody away before they could come.
+            if (due.getAppointmentDate().equals(today)
+                    && openToday.computeIfAbsent(due.getClinicId(), clinic -> {
+                        DaySupply supply = supply(clinic, today);
+                        return supply.stillOpen() || supply.capacity() == 0;
+                    })) {
+                continue;
+            }
+            due.markNoShow();
+            repository.persist(due);
+            events.publishEvent(new VisitEvents.Cancelled(id));
             marked++;
         }
         return marked;

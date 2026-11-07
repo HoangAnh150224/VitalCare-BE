@@ -67,11 +67,19 @@ public class WalkIns {
         if (!over) {
             throw new ConflictException("This appointment can be checked in as it is, or is already under way");
         }
+        // Converted once: a second press (or a second desk) finds today's visit and stops.
+        if (appointments.hasOpenVisitAt(old.getCustomer(), old.getClinicId(), clinics.today())) {
+            throw new ConflictException("There is already a visit registered at that clinic on that day");
+        }
         Appointment fresh = appointments.walkIn(new StaffBookingRequest(old.getCustomer().getId(), null,
                 old.getClinicId(), clinics.today(), old.getReason() == null ? "Khám" : old.getReason(),
                 "Thay cho lịch " + old.getBookingCode()));
-        // The bill moves before the old visit is closed, so closing it finds no paid bill to flag for a refund.
-        invoices.carryExamPaid(old.getId(), fresh);
+        // A fee paid on a visit that was late or missed pays for this one (UC-02 B1). A cancelled
+        // visit's paid fee is not carried: its cancellation already flagged it for a refund.
+        if (old.getStatus() != AppointmentStatus.CANCELLED) {
+            // Before the old visit is closed, so closing it finds no paid bill to flag.
+            invoices.carryExamPaid(old.getId(), fresh);
+        }
         if (old.getStatus() == AppointmentStatus.BOOKED) {
             appointments.markNoShow(old.getId());
         }

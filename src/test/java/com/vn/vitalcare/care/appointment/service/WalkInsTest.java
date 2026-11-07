@@ -3,6 +3,7 @@ package com.vn.vitalcare.care.appointment.service;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -56,15 +57,25 @@ class WalkInsTest {
     }
 
     @Test
-    @DisplayName("a cancelled visit is replaced and left as it is")
+    @DisplayName("a cancelled visit is replaced and left as it is; its paid fee, flagged for a refund, is not reused")
     void replacesACancelledVisit() {
         Appointment cancelled = visit(TODAY);
         cancelled.cancel(null, null, "Đổi ý");
 
         walkIns.replace(1L);
 
-        verify(invoices).carryExamPaid(1L, fresh);
+        verify(invoices, never()).carryExamPaid(any(), any());
         verify(appointments, never()).markNoShow(any());
+    }
+
+    @Test
+    @DisplayName("converted once: a second press finds today's visit and makes no other")
+    void replacesOnce() {
+        visit(TODAY.minusDays(1));
+        when(appointments.hasOpenVisitAt(any(), any(), eq(TODAY))).thenReturn(true);
+
+        assertThrows(ConflictException.class, () -> walkIns.replace(1L));
+        verify(appointments, never()).walkIn(any());
     }
 
     @Test

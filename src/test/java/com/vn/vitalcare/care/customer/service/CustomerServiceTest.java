@@ -160,7 +160,7 @@ class CustomerServiceTest {
     }
 
     @Test
-    @DisplayName("UC-04 \"not me\": a new profile, and the walk-ins with the number still join as relatives")
+    @DisplayName("UC-04 \"not me\": a new profile, and the walk-ins with the number are left alone")
     void notMeCreatesProfile() {
         User account = user();
         Customer other = walkIn(21L, "Nguyen Van C", null);
@@ -170,7 +170,8 @@ class CustomerServiceTest {
 
         assertEquals(account, created.getUser());
         assertEquals(LocalDate.of(1995, 2, 3), created.getDateOfBirth());
-        assertEquals(created, other.getGuardian());
+        assertNull(other.getGuardian());
+        assertNull(other.getUser());
     }
 
     private static Customer walkIn(Long id, String name, LocalDate birthDate) {

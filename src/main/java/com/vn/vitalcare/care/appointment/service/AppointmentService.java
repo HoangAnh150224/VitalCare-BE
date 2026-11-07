@@ -142,6 +142,9 @@ public interface AppointmentService {
      */
     Appointment changeExaminee(Long id, Long customerId);
 
+    /** Whether the profile has a visit at the clinic that day that is booked or under way. */
+    boolean hasOpenVisitAt(Customer customer, java.util.UUID clinicId, java.time.LocalDate date);
+
     /** BR-11: an account with this many no-shows pays online when it books; "pay at the desk" is not offered. */
     int NO_SHOWS_FOR_ONLINE_ONLY = 3;
 

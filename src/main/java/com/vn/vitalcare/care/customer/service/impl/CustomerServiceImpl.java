@@ -304,8 +304,15 @@ public class CustomerServiceImpl implements CustomerService {
             profile.setCustomerCode("KH%06d".formatted(profile.getId()));
         }
 
-        // The others with the number are relatives who share it (BR-09); beyond what an
-        // account holds they stay unclaimed, for the desk to find as before.
+        // Having found themselves, the others with the number are relatives who share it (UC-04
+        // step 11b); beyond what an account holds they stay unclaimed, for the desk as before.
+        // "Not me" takes none of them: somebody none of these is gets nobody's history.
+        if (claimProfileId == null) {
+            if (userService != null) {
+                userService.synchronizeCustomerRole(user, false);
+            }
+            return repository.save(profile);
+        }
         Customer owner = profile;
         matches.stream()
                 .filter(match -> !match.getId().equals(owner.getId()))

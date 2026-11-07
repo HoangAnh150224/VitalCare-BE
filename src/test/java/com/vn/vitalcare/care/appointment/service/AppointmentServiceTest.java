@@ -799,7 +799,7 @@ class AppointmentServiceTest {
         ReflectionTestUtils.setField(yesterday, "id", 1L);
         Appointment today = appointmentOn(TODAY);
         ReflectionTestUtils.setField(today, "id", 2L);
-        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(yesterday, today));
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(1L, 2L));
         when(repository.lockById(1L)).thenReturn(Optional.of(yesterday));
         when(repository.lockById(2L)).thenReturn(Optional.of(today));
 
@@ -811,10 +811,19 @@ class AppointmentServiceTest {
         setUp(Clock.fixed(Instant.parse("2026-10-05T11:00:00Z"), ZoneOffset.UTC));
         Appointment late = appointmentOn(TODAY);
         ReflectionTestUtils.setField(late, "id", 3L);
-        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(late));
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(3L));
         when(repository.lockById(3L)).thenReturn(Optional.of(late));
         assertEquals(1, service.markNoShowsDue());
         assertEquals(AppointmentStatus.NO_SHOW, late.getStatus());
+
+        // A day with no turns at all (the schedule changed): today's visits are left for tomorrow's sweep.
+        when(employees.doctorsOf(CLINIC)).thenReturn(List.of());
+        Appointment noTurns = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(noTurns, "id", 4L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(4L));
+        when(repository.lockById(4L)).thenReturn(Optional.of(noTurns));
+        assertEquals(0, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.BOOKED, noTurns.getStatus());
     }
 
     @Test
@@ -822,7 +831,7 @@ class AppointmentServiceTest {
     void sweepSkipsCheckedIn() {
         Appointment yesterday = appointmentOn(TODAY.minusDays(1));
         ReflectionTestUtils.setField(yesterday, "id", 1L);
-        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(yesterday));
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(1L));
         Appointment meanwhile = appointmentOn(TODAY.minusDays(1));
         meanwhile.checkIn(7L, null);
         when(repository.lockById(1L)).thenReturn(Optional.of(meanwhile));
