@@ -122,42 +122,64 @@ class CustomerServiceTest {
     }
 
     @Test
-    @DisplayName("an account links only to a walk-in profile matching phone, name and birth date")
-    void linksAccountToMatchingWalkIn() {
+    @DisplayName("UC-04: the claimed walk-in becomes the owner's profile; the others with the number its relatives")
+    void claimsWalkInAndAttachesRelatives() {
         LocalDate birthDate = LocalDate.of(1990, 4, 12);
         User account = user();
-        Customer walkIn = new Customer();
-        walkIn.setFullName("Nguyen Van A");
-        walkIn.setPhone("+84912345678");
-        walkIn.setDateOfBirth(birthDate);
-        when(repository.findUnclaimedWalkInsByPhoneAndName(account.getPhone(), account.getFullName()))
-                .thenReturn(List.of(walkIn));
+        Customer mine = walkIn(21L, "Nguyen Van A", birthDate);
+        Customer mother = walkIn(22L, "Tran Thi B", LocalDate.of(1960, 1, 1));
+        when(repository.findUnclaimedByPhone(account.getPhone())).thenReturn(List.of(mine, mother));
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Customer linked = service.registerAccountProfile(account, birthDate);
+        Customer linked = service.registerAccountProfile(account, 21L, null);
 
+        assertEquals(mine, linked);
         assertEquals(account, linked.getUser());
         assertNull(ReflectionTestUtils.getField(linked, "fullName"));
         assertNull(ReflectionTestUtils.getField(linked, "phone"));
         assertEquals(account.getFullName(), linked.getFullName());
-        assertEquals(account.getPhone(), linked.getPhone());
-        assertEquals(birthDate, linked.getDateOfBirth());
+        assertEquals(birthDate, linked.getDateOfBirth(), "a claimed profile keeps its own birth date");
+        assertEquals(mine, mother.getGuardian());
+        assertEquals("other", mother.getRelationship());
+        assertEquals("Tran Thi B", mother.getFullName(), "a relative keeps their own name and number");
         verify(users).synchronizeCustomerRole(account, false);
     }
 
     @Test
-    @DisplayName("linking a walk-in requires birth date when phone and name match")
-    void walkInLinkRequiresBirthDate() {
+    @DisplayName("UC-04: a profile not among those with the number cannot be claimed; nothing changes")
+    void claimOutsideTheMatchesIsRefused() {
         User account = user();
-        Customer walkIn = new Customer();
-        when(repository.findUnclaimedWalkInsByPhoneAndName(account.getPhone(), account.getFullName()))
-                .thenReturn(List.of(walkIn));
+        Customer walkIn = walkIn(21L, "Nguyen Van A", null);
+        when(repository.findUnclaimedByPhone(account.getPhone())).thenReturn(List.of(walkIn));
 
-        assertThrows(FieldValidationException.class, () -> service.registerAccountProfile(account, null));
+        assertThrows(FieldValidationException.class, () -> service.registerAccountProfile(account, 99L, null));
 
         assertNull(walkIn.getUser());
         verify(repository, never()).save(any());
         verify(users, never()).synchronizeCustomerRole(any(), any(Boolean.class));
+    }
+
+    @Test
+    @DisplayName("UC-04 \"not me\": a new profile, and the walk-ins with the number still join as relatives")
+    void notMeCreatesProfile() {
+        User account = user();
+        Customer other = walkIn(21L, "Nguyen Van C", null);
+        when(repository.findUnclaimedByPhone(account.getPhone())).thenReturn(List.of(other));
+
+        Customer created = service.registerAccountProfile(account, null, LocalDate.of(1995, 2, 3));
+
+        assertEquals(account, created.getUser());
+        assertEquals(LocalDate.of(1995, 2, 3), created.getDateOfBirth());
+        assertEquals(created, other.getGuardian());
+    }
+
+    private static Customer walkIn(Long id, String name, LocalDate birthDate) {
+        Customer walkIn = new Customer();
+        ReflectionTestUtils.setField(walkIn, "id", id);
+        walkIn.setFullName(name);
+        walkIn.setPhone("+84912345678");
+        walkIn.setDateOfBirth(birthDate);
+        return walkIn;
     }
 
     private Customer stored(Customer customer) {

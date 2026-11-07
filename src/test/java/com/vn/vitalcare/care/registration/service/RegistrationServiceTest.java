@@ -56,8 +56,48 @@ class RegistrationServiceTest {
         service.register(request("Passw0rd!"));
 
         verify(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
-        verify(customerService).registerAccountProfile(user, null);
+        verify(customerService).registerAccountProfile(user, null, null);
         verify(authService).signInVerified(user);
+    }
+
+    @Test
+    @DisplayName("UC-04 D2: a number that already has an account gets no code")
+    void registeredNumberGetsNoCode() {
+        doThrow(new ConflictException("Số điện thoại đã được sử dụng. Xin vui lòng nhập một số khác."))
+                .when(userService).requirePhoneUnregistered("+84912345678");
+
+        assertThrows(ConflictException.class, () -> service.requestCode("0912345678"));
+        verifyNoInteractions(codes);
+    }
+
+    @Test
+    @DisplayName("UC-04: a right code answers with the number's unclaimed profiles, masked; a wrong one with none")
+    void checkCodeListsMaskedMatches() {
+        com.vn.vitalcare.entity.Customer walkIn = new com.vn.vitalcare.entity.Customer();
+        walkIn.setFullName("Nguyễn Văn A");
+        walkIn.setDateOfBirth(java.time.LocalDate.of(1985, 3, 1));
+        when(customerService.unclaimedWithPhone("+84912345678")).thenReturn(java.util.List.of(walkIn));
+
+        var matches = service.checkCode("0912345678", "123456");
+
+        verify(codes).check("+84912345678", VerificationPurpose.REGISTER, "123456");
+        assertEquals("Nguyễn V*** A", matches.getFirst().maskedName());
+        assertEquals(1985, matches.getFirst().birthYear());
+
+        doThrow(new InvalidVerificationCodeException())
+                .when(codes).check("+84912345678", VerificationPurpose.REGISTER, "000000");
+        assertThrows(InvalidVerificationCodeException.class, () -> service.checkCode("0912345678", "000000"));
+    }
+
+    @Test
+    @DisplayName("BR-14: the masked name keeps the first and last words, the ones between as their initial")
+    void masksNames() {
+        assertEquals("Nguyễn V*** A", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Nguyễn Văn A"));
+        assertEquals("Lê T*** T*** Hoa", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask(" Lê  Thị Thu Hoa "));
+        assertEquals("Trần B***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Trần Bình"));
+        assertEquals("Đ***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Đức"));
+        // A decomposed accent (U+0301) stays with its letter.
+        assertEquals("Lê Á***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Lê Ánh"));
     }
 
     @Test

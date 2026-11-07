@@ -68,10 +68,11 @@ public class PhoneCodes {
                 throw new ConflictException("Please wait %d seconds before asking for another code".formatted(wait));
             }
         }
-        long sentLastHour = verifications.countByPhoneAndPurposeAndCreatedAtAfter(
-                phone, purpose, now.minus(Duration.ofHours(1)));
-        if (sentLastHour >= properties.maxPerHour()) {
-            throw new ConflictException("Too many codes have been sent to this number; try again later");
+        // BR-13: a rolling day. The lock lifts by itself once the oldest of them is a day old (J-03).
+        long sentLastDay = verifications.countByPhoneAndPurposeAndCreatedAtAfter(
+                phone, purpose, now.minus(Duration.ofHours(24)));
+        if (sentLastDay >= properties.maxPerDay()) {
+            throw new ConflictException("Too many codes have been sent to this number; it is locked for 24 hours");
         }
 
         String code = generateCode();

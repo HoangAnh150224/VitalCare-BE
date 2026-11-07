@@ -71,8 +71,16 @@ public interface CustomerService {
     Customer createWalkInProfile(String fullName, String phone, java.time.LocalDate dateOfBirth,
                                  String gender, String nationalId);
 
-    /** Links a verified self-registration to one matching walk-in, or creates a neutral profile. */
-    Customer registerAccountProfile(User user, java.time.LocalDate dateOfBirth);
+    /** Profiles with this number and no account yet, oldest first: what a registration offers to claim. */
+    List<Customer> unclaimedWithPhone(String phone);
+
+    /**
+     * The owner's profile for a verified self-registration (UC-04 steps 9–11):
+     * the unclaimed profile with the account's number that {@code claimProfileId}
+     * names, or a new neutral one when it is null ("not me"). Every other
+     * unclaimed profile with that number joins the account as a relative.
+     */
+    Customer registerAccountProfile(User user, Long claimProfileId, java.time.LocalDate dateOfBirth);
 
     Customer update(Long id, CustomerPatchRequest request);
 

@@ -33,7 +33,7 @@ public record RegisterRequest(
                 message = "Full name may only contain letters and spaces")
         String fullName,
 
-        /** Optional unless a patient profile already exists for this verified phone and name. */
+        /** Optional: kept on a new profile; a claimed one keeps its own. */
         @Past(message = "Date of birth must be in the past")
         LocalDate dateOfBirth,
 
@@ -42,10 +42,22 @@ public record RegisterRequest(
         // Not @NotBlank: a password of spaces is refused for what it is, by the service.
         @NotEmpty(message = "Password is required")
         @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
-        String password) {
+        String password,
+
+        /**
+         * The profile, among those {@code /otp/check} listed for the number, that
+         * is the person registering; null for "not me" or when none was listed (UC-04).
+         */
+        Long claimProfileId) {
+
+    /** Keeps callers compiled against the request shape before a profile could be claimed. */
+    public RegisterRequest(String phone, String otp, String email, String fullName, LocalDate dateOfBirth,
+                           String password) {
+        this(phone, otp, email, fullName, dateOfBirth, password, null);
+    }
 
     /** Keeps callers compiled against the pre-profile-link request shape working. */
     public RegisterRequest(String phone, String otp, String email, String fullName, String password) {
-        this(phone, otp, email, fullName, null, password);
+        this(phone, otp, email, fullName, null, password, null);
     }
 }

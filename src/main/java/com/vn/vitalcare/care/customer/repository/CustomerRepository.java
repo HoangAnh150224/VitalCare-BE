@@ -39,15 +39,13 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     Optional<Customer> findByUserIdAndDeletedAtIsNull(Long userId);
 
     /**
-     * A profile taken down at the desk, before its owner has an account.
-     * Matching name and phone is only a candidate; registration also checks
-     * date of birth before it links the account.
+     * Profiles taken down at the desk with this number, before anybody has an
+     * account for them (UC-04): the person registering picks their own, the
+     * others join the account as relatives sharing the number.
      */
-    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     @Query("select c from Customer c where c.deletedAt is null and c.user is null and c.guardian is null "
-            + "and c.phone = :phone and lower(trim(c.fullName)) = lower(trim(:fullName))")
-    List<Customer> findUnclaimedWalkInsByPhoneAndName(@Param("phone") String phone,
-                                                      @Param("fullName") String fullName);
+            + "and c.phone = :phone order by c.id")
+    List<Customer> findUnclaimedByPhone(@Param("phone") String phone);
 
     /** Duplicate guard for a newly entered walk-in; phone alone never identifies a person. */
     @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})

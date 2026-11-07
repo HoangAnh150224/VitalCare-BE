@@ -277,26 +277,22 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     @Transactional
-    public Customer registerAccountProfile(User user, java.time.LocalDate dateOfBirth) {
-        List<Customer> sameIdentity = repository.findUnclaimedWalkInsByPhoneAndName(
-                user.getPhone(), user.getFullName());
+    public List<Customer> unclaimedWithPhone(String phone) {
+        return repository.findUnclaimedByPhone(phone);
+    }
 
-        if (!sameIdentity.isEmpty() && dateOfBirth == null) {
-            throw new FieldValidationException("dateOfBirth",
-                    "Enter your date of birth to securely link your existing patient profile");
-        }
-
-        List<Customer> matching = sameIdentity.stream()
-                .filter(profile -> dateOfBirth.equals(profile.getDateOfBirth()))
-                .toList();
-        if (matching.size() > 1) {
-            throw new ConflictException(
-                    "More than one patient profile matches. Contact the clinic to verify and link your account");
-        }
+    @Override
+    @Transactional
+    public Customer registerAccountProfile(User user, Long claimProfileId, java.time.LocalDate dateOfBirth) {
+        // The account's number is proven by the code just spent: whoever holds it
+        // may take any of these, which is why the list was only shown after the code.
+        List<Customer> matches = repository.findUnclaimedByPhone(user.getPhone());
 
         Customer profile;
-        if (matching.size() == 1) {
-            profile = matching.get(0);
+        if (claimProfileId != null) {
+            profile = matches.stream().filter(match -> match.getId().equals(claimProfileId)).findFirst()
+                    .orElseThrow(() -> new FieldValidationException("claimProfileId", "Pick one of the profiles shown"));
+            // The owner's name and number are the account's from now on (see Customer).
             profile.setUser(user);
             profile.setFullName(null);
             profile.setPhone(null);
@@ -307,6 +303,18 @@ public class CustomerServiceImpl implements CustomerService {
             profile = repository.save(profile);
             profile.setCustomerCode("KH%06d".formatted(profile.getId()));
         }
+
+        // The others with the number are relatives who share it (BR-09); beyond what an
+        // account holds they stay unclaimed, for the desk to find as before.
+        Customer owner = profile;
+        matches.stream()
+                .filter(match -> !match.getId().equals(owner.getId()))
+                .limit(MAX_DEPENDENTS)
+                .forEach(relative -> {
+                    relative.setGuardian(owner);
+                    relative.setRelationship("other");
+                    repository.save(relative);
+                });
 
         if (userService != null) {
             userService.synchronizeCustomerRole(user, profile.getStatus() == CustomerStatus.PATIENT);

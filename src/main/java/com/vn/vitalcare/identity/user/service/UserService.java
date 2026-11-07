@@ -521,6 +521,11 @@ public class UserService {
         return trimmed.isEmpty() ? null : trimmed.toLowerCase();
     }
 
+    /** Refuses a number another account signs in with: registration asks before sending a code (UC-04 D2). */
+    public void requirePhoneUnregistered(String phone) {
+        requirePhoneAvailable(phone, null);
+    }
+
     // Neither of these echoes the value back. The caller supplied it, so
     // repeating it says nothing they do not know, while putting a patient's
     // phone number or address into an error body puts it into every client log

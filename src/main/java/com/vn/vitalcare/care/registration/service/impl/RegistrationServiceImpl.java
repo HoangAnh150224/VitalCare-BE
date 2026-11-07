@@ -2,6 +2,7 @@ package com.vn.vitalcare.care.registration.service.impl;
 
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.registration.dto.OtpResponse;
+import com.vn.vitalcare.care.registration.dto.ProfileMatch;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
 import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
 import com.vn.vitalcare.care.registration.service.InvalidVerificationCodeException;
@@ -14,6 +15,7 @@ import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +49,17 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Transactional
     public OtpResponse requestCode(String rawPhone) {
         String phone = normalizeRegistrationPhone(rawPhone);
+        // Said before a code is spent on it: the person is sent to recover the password instead.
+        userService.requirePhoneUnregistered(phone);
         return codes.issue(phone, VerificationPurpose.REGISTER, phone);
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
+    public List<ProfileMatch> checkCode(String rawPhone, String otp) {
+        String phone = normalizeRegistrationPhone(rawPhone);
+        codes.check(phone, VerificationPurpose.REGISTER, otp);
+        return customerService.unclaimedWithPhone(phone).stream().map(ProfileMatch::from).toList();
     }
 
     @Override
@@ -70,7 +82,7 @@ public class RegistrationServiceImpl implements RegistrationService {
         // another account already holds it.
         User user = userService.createSelfRegistered(
                 phone, request.email(), request.password(), request.fullName(), GUEST_ROLE);
-        customerService.registerAccountProfile(user, request.dateOfBirth());
+        customerService.registerAccountProfile(user, request.claimProfileId(), request.dateOfBirth());
         return authService.signInVerified(user);
     }
 

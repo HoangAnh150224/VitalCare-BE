@@ -102,7 +102,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                         // Self-registration happens before there is a token to
                         // hold.
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/otp").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/register/otp",
+                                "/api/auth/register/otp/check").permitAll()
                         // Recovering a forgotten password, for the same reason;
                         // its one-time-code limits (resend cooldown, per-hour
                         // cap) are what guard it instead.
