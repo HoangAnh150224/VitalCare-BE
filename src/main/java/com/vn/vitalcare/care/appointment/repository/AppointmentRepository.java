@@ -57,9 +57,17 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
             + "where a.employee.id = :employeeId and a.appointmentDate = :date and a.deletedAt is null")
     int maxQueueNumber(@Param("employeeId") Long employeeId, @Param("date") LocalDate date);
 
-    /** Whether the patient already has another visit registered (not yet checked in) at that clinic that day. */
+    /**
+     * Whether the patient already has another visit at that clinic that day that is booked or under way —
+     * a walk-in is checked in as it is made, so "booked" alone would let two of them through at once.
+     * Asked under the clinic-day lock, which is what makes it hold against a concurrent registration.
+     */
     @Query("select count(a) > 0 from Appointment a where a.customer.id = :customerId and a.clinicId = :clinicId"
-            + " and a.appointmentDate = :date and a.status = com.vn.vitalcare.entity.AppointmentStatus.BOOKED"
+            + " and a.appointmentDate = :date and a.status in (com.vn.vitalcare.entity.AppointmentStatus.BOOKED,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.READY_FOR_EXAMINATION,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM,"
+            + " com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS)"
             + " and a.id <> :excludeId and a.deletedAt is null")
     boolean existsScheduledAtClinic(@Param("customerId") Long customerId, @Param("clinicId") java.util.UUID clinicId,
                                     @Param("date") LocalDate date, @Param("excludeId") Long excludeId);

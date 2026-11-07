@@ -156,6 +156,12 @@ public class Invoices {
             if (invoice.getStatus() == InvoiceStatus.UNPAID) {
                 invoice.cancel();
                 invoices.persist(invoice);
+            } else if (invoice.getStatus() == InvoiceStatus.PAID
+                    && invoice.getAppointment() != null
+                    && invoice.getAppointment().getStatus() == com.vn.vitalcare.entity.AppointmentStatus.NO_SHOW) {
+                // UC-02 B1: a missed visit's paid fee pays for the walk-in the patient may still come for.
+                log.info("Visit {} was missed with its examination bill {} paid: kept for a walk-in",
+                        event.appointmentId(), invoice.getInvoiceNumber());
             } else if (invoice.getStatus() == InvoiceStatus.PAID) {
                 log.warn("Visit {} was cancelled after its examination bill {} was paid: refund needed",
                         event.appointmentId(), invoice.getInvoiceNumber());
