@@ -409,6 +409,38 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     @Transactional
+    public Appointment changeExaminee(Long id, Long customerId) {
+        Appointment appointment = find(id, Action.WRITE);
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            throw new ConflictException("Only a registered appointment can be given to someone else");
+        }
+        Customer other = customerService.getForBooking(customerId);
+        if (other.getId().equals(appointment.getCustomer().getId())) {
+            return appointment;
+        }
+        if (!accountOf(other).getId().equals(accountOf(appointment.getCustomer()).getId())) {
+            throw new FieldValidationException("customerId", "Pick a profile of the same account");
+        }
+        if (!other.isCompleteForVisit()) {
+            throw new FieldValidationException("customerId",
+                    "Fill in this profile's date of birth and gender before registering a visit");
+        }
+        if (repository.existsScheduledAtClinic(other.getId(), appointment.getClinicId(),
+                appointment.getAppointmentDate(), appointment.getId())) {
+            throw new ConflictException("There is already a visit registered at that clinic on that day");
+        }
+        appointment.setCustomer(other);
+        rowLevel.checkWritable(appointment);
+        return repository.persist(appointment);
+    }
+
+    /** The account a profile belongs to: its own owner's profile, or its guardian's for a relative. */
+    private static Customer accountOf(Customer profile) {
+        return profile.getGuardian() != null ? profile.getGuardian() : profile;
+    }
+
+    @Override
+    @Transactional
     public Appointment reschedule(Long id, RescheduleRequest request) {
         return reschedule(find(id, Action.WRITE), request, true);
     }

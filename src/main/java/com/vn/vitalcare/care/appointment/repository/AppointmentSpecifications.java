@@ -52,7 +52,10 @@ public final class AppointmentSpecifications {
                     cb.like(user.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(customer.get("fullName")), ListParams.likePattern(term)),
                     cb.like(customer.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
-                    cb.like(cb.lower(customer.get("customerCode")), ListParams.likePattern(term)));
+                    cb.like(cb.lower(customer.get("customerCode")), ListParams.likePattern(term)),
+                    // UC-02: the desk finds a visit by the patient's citizen id too, exactly.
+                    cb.equal(customer.get("nationalId"), term.trim()),
+                    cb.equal(cb.lower(root.get("bookingCode")), term.trim().toLowerCase(java.util.Locale.ROOT)));
         }));
 
         List<Long> ids = params.ids();

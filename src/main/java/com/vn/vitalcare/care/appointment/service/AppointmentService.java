@@ -135,6 +135,13 @@ public interface AppointmentService {
 
     Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request);
 
+    /**
+     * UC-02 B1, wrong examinee: the person at the desk is another profile of
+     * the same account (the owner or a relative). Only while booked, and the
+     * other profile must not already have a visit at that clinic that day.
+     */
+    Appointment changeExaminee(Long id, Long customerId);
+
     /** A day a clinic can still take a visit on, and how many places it has left (BR-01). */
     record OpenDay(java.time.LocalDate date, int remaining) {
     }

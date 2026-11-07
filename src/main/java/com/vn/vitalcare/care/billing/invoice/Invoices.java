@@ -163,6 +163,39 @@ public class Invoices {
         });
     }
 
+    /**
+     * UC-02 B1: a visit the patient missed or that was cancelled, replaced by a
+     * walk-in today. An examination fee already paid on it pays for the new
+     * one: the paid bill moves over, the new visit's own fresh bill is called
+     * off, and the new visit is paid now — so it queues from now (BR-05).
+     * Nothing changes when the old fee was not paid.
+     *
+     * @return whether a paid fee was carried over
+     */
+    @Transactional
+    public boolean carryExamPaid(Long fromAppointmentId, Appointment to) {
+        var found = invoices.findExamOf(fromAppointmentId);
+        if (found.isEmpty()) {
+            return false;
+        }
+        // The bills before the visit, the order every payment and cancellation takes them in.
+        Invoice paid = lock(found.get().getId());
+        if (paid.getStatus() != InvoiceStatus.PAID) {
+            return false;
+        }
+        invoices.findExamOf(to.getId()).ifPresent(fresh -> {
+            Invoice unpaid = lock(fresh.getId());
+            if (unpaid.getStatus() == InvoiceStatus.UNPAID) {
+                unpaid.cancel();
+                invoices.persist(unpaid);
+            }
+        });
+        paid.setAppointment(to);
+        invoices.persist(paid);
+        appointmentService.markExamPaid(to.getId(), OffsetDateTime.now(clock));
+        return true;
+    }
+
     /** A visit moved to another doctor, maybe of another clinic: an unpaid bill moves with it. */
     @EventListener
     @Transactional

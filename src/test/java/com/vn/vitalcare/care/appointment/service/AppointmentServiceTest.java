@@ -321,6 +321,30 @@ class AppointmentServiceTest {
         verify(repository, never()).persist(any());
     }
 
+    @Test
+    @DisplayName("UC-02 B1: the desk gives a booked visit to another profile of the same account, never another's")
+    void changesExamineeWithinTheAccount() {
+        ReflectionTestUtils.setField(customer, "id", 1L);
+        Customer child = relative();
+        ReflectionTestUtils.setField(child, "id", 5L);
+        when(customers.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(child));
+        Customer stranger = new Customer();
+        ReflectionTestUtils.setField(stranger, "id", 9L);
+        stranger.setDateOfBirth(LocalDate.of(1980, 1, 1));
+        stranger.setGender("female");
+        when(customers.findByIdAndDeletedAtIsNull(9L)).thenReturn(Optional.of(stranger));
+        Appointment appointment = stored(appointmentOn(TUESDAY));
+
+        service.changeExaminee(1L, 5L);
+        assertEquals(child, appointment.getCustomer());
+
+        assertField("customerId", () -> service.changeExaminee(1L, 9L));
+        assertEquals(child, appointment.getCustomer());
+
+        appointment.checkIn(7L, null);
+        assertThrows(ConflictException.class, () -> service.changeExaminee(1L, 1L));
+    }
+
     private Customer relative() {
         Customer child = new Customer();
         child.setGuardian(customer);
