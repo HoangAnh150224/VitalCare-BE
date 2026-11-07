@@ -50,7 +50,8 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     /** Duplicate guard for a newly entered walk-in; phone alone never identifies a person. */
     @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     @Query("select c from Customer c left join c.user u where c.deletedAt is null and ("
-            + "(:nationalId is not null and lower(trim(c.nationalId)) = lower(trim(:nationalId))) or ("
+            // Cast: a null parameter has no type, and PostgreSQL then reads it as bytea, which trim refuses.
+            + "(:nationalId is not null and lower(trim(c.nationalId)) = lower(trim(cast(:nationalId as String)))) or ("
             + "(:nationalId is null or c.nationalId is null or trim(c.nationalId) = '') and "
             + "lower(trim(coalesce(c.fullName, u.fullName))) = lower(trim(:fullName)) "
             + "and c.dateOfBirth = :dateOfBirth "

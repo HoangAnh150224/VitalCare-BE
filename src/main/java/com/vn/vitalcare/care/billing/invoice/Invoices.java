@@ -190,6 +190,9 @@ public class Invoices {
                 invoices.persist(unpaid);
             }
         });
+        // Written now: a visit holds one live exam bill (uq_invoice_exam_appointment), and Hibernate
+        // would otherwise move the paid one over before calling the fresh one off.
+        entityManager.flush();
         paid.setAppointment(to);
         invoices.persist(paid);
         appointmentService.markExamPaid(to.getId(), OffsetDateTime.now(clock));
