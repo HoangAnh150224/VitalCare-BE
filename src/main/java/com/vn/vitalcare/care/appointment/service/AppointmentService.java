@@ -134,4 +134,23 @@ public interface AppointmentService {
     Appointment reschedule(Long id, RescheduleRequest request);
 
     Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request);
+
+    /** A day a clinic can still take a visit on, and how many places it has left (BR-01). */
+    record OpenDay(java.time.LocalDate date, int remaining) {
+    }
+
+    /**
+     * The days from {@code from} on, within the booking window and at most
+     * {@code days} of them, that still have a place: what to offer instead of
+     * a full day (UC-01 A1, UC-03 C1). Online and walk-in visits share the places.
+     */
+    List<OpenDay> openDays(java.util.UUID clinicId, java.time.LocalDate from, int days);
+
+    /**
+     * J-01: every visit still booked once its day's last turn is over becomes a
+     * no-show, giving its place back (BR-10). Not scoped: the sweep's.
+     *
+     * @return how many were marked
+     */
+    int markNoShowsDue();
 }

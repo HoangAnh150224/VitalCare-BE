@@ -533,20 +533,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (repository.existsScheduledAtClinic(customer.getId(), clinicId, date, excludeId == null ? -1L : excludeId)) {
             throw new ConflictException("There is already a visit registered at that clinic on that day");
         }
-        int capacity = 0;
-        // Today, somebody has to be still to come: no registering after the last session has ended.
-        boolean stillOpen = !date.equals(clinicService.today());
-        java.time.LocalTime nowHere = java.time.LocalTime.now(clock.withZone(clinicTimeZone()));
-        for (Employee doctor : employeeService.doctorsOf(clinicId)) {
-            List<Turn> turns = availability.turns(doctor, date);
-            capacity += turns.size();
-            stillOpen = stillOpen || turns.stream().anyMatch(turn -> turn.end().isAfter(nowHere));
-        }
-        if (!stillOpen) {
-            throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
-        }
-        if (capacity == 0
-                || repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId) >= capacity) {
+        DaySupply supply = supply(clinicId, date);
+        if (!supply.stillOpen() || supply.capacity() == 0
+                || repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId)
+                        >= supply.capacity()) {
             throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
         }
         appointment.setEmployee(null);
@@ -556,6 +546,74 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setQueueNumber(repository.maxQueueNumberAtClinic(clinicId, date) + 1);
         appointment.setStartTime(null);
         appointment.setEndTime(null);
+    }
+
+    /**
+     * A clinic's day: how many visits its doctors' turns hold (BR-01, shared by
+     * online and walk-in visits), and whether a turn is still to come — on
+     * any other day than today there always is. The last turn's end is the
+     * day's last check-in (BR-10).
+     */
+    private record DaySupply(int capacity, boolean stillOpen) {
+    }
+
+    private DaySupply supply(java.util.UUID clinicId, LocalDate date) {
+        int capacity = 0;
+        boolean stillOpen = !date.equals(clinicService.today());
+        java.time.LocalTime nowHere = java.time.LocalTime.now(clock.withZone(clinicTimeZone()));
+        for (Employee doctor : employeeService.doctorsOf(clinicId)) {
+            List<Turn> turns = availability.turns(doctor, date);
+            capacity += turns.size();
+            stillOpen = stillOpen || turns.stream().anyMatch(turn -> turn.end().isAfter(nowHere));
+        }
+        return new DaySupply(capacity, stillOpen);
+    }
+
+    @Override
+    public List<OpenDay> openDays(java.util.UUID clinicId, LocalDate from, int days) {
+        LocalDate start = from == null || from.isBefore(today()) ? today() : from;
+        int wanted = Math.max(1, Math.min(days, 31));
+        // ponytail: one count per day over a few weeks; a grouped count if the window grows.
+        List<OpenDay> open = new java.util.ArrayList<>();
+        for (LocalDate day = start; clinicService.isWithinBookingWindow(day) && open.size() < wanted;
+             day = day.plusDays(1)) {
+            DaySupply supply = supply(clinicId, day);
+            if (!supply.stillOpen()) {
+                continue;
+            }
+            int remaining = supply.capacity() - (int) repository.countActiveAtClinic(clinicId, day, -1L);
+            if (remaining > 0) {
+                open.add(new OpenDay(day, remaining));
+            }
+        }
+        return open;
+    }
+
+    @Override
+    @Transactional
+    public int markNoShowsDue() {
+        LocalDate today = today();
+        java.util.Map<java.util.UUID, Boolean> openToday = new java.util.HashMap<>();
+        int marked = 0;
+        for (Appointment due : repository.findBookedUpTo(today)) {
+            if (due.getAppointmentDate().equals(today)
+                    && openToday.computeIfAbsent(due.getClinicId(), clinic -> supply(clinic, today).stillOpen())) {
+                continue;
+            }
+            // The bill first, then the visit, as every cancellation takes them; then
+            // read again under the lock: the desk may have checked them in meanwhile.
+            events.publishEvent(new VisitEvents.Cancelling(due.getId()));
+            var locked = repository.lockById(due.getId())
+                    .filter(appointment -> appointment.getStatus() == AppointmentStatus.BOOKED);
+            if (locked.isEmpty()) {
+                continue;
+            }
+            locked.get().markNoShow();
+            repository.persist(locked.get());
+            events.publishEvent(new VisitEvents.Cancelled(due.getId()));
+            marked++;
+        }
+        return marked;
     }
 
     /**

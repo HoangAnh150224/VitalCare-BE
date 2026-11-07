@@ -62,6 +62,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * Registering a visit at a clinic for a day (BF-02, the clinic's shared
@@ -765,6 +766,57 @@ class AppointmentServiceTest {
         when(employees.doctorsOf(CLINIC)).thenReturn(List.of());
         assertField("appointmentDate", () -> service.bookOwn(customer, new BookingRequest(null, null, CLINIC, TUESDAY, "Sốt")));
         verify(repository, never()).persist(any());
+    }
+
+    @Test
+    @DisplayName("J-01: still booked after the day's last turn is a no-show; today's wait while a turn is left")
+    void sweepsNoShows() {
+        Appointment yesterday = appointmentOn(TODAY.minusDays(1));
+        ReflectionTestUtils.setField(yesterday, "id", 1L);
+        Appointment today = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(today, "id", 2L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(yesterday, today));
+        when(repository.lockById(1L)).thenReturn(Optional.of(yesterday));
+        when(repository.lockById(2L)).thenReturn(Optional.of(today));
+
+        assertEquals(1, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.NO_SHOW, yesterday.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, today.getStatus(), "10:00 on a working day: turns are left");
+
+        // 18:00 in Ho Chi Minh City: the 17:00 turn was the last one.
+        setUp(Clock.fixed(Instant.parse("2026-10-05T11:00:00Z"), ZoneOffset.UTC));
+        Appointment late = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(late, "id", 3L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(late));
+        when(repository.lockById(3L)).thenReturn(Optional.of(late));
+        assertEquals(1, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.NO_SHOW, late.getStatus());
+    }
+
+    @Test
+    @DisplayName("J-01 leaves alone a visit checked in between the read and the lock")
+    void sweepSkipsCheckedIn() {
+        Appointment yesterday = appointmentOn(TODAY.minusDays(1));
+        ReflectionTestUtils.setField(yesterday, "id", 1L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(yesterday));
+        Appointment meanwhile = appointmentOn(TODAY.minusDays(1));
+        meanwhile.checkIn(7L, null);
+        when(repository.lockById(1L)).thenReturn(Optional.of(meanwhile));
+
+        assertEquals(0, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.CHECKED_IN, meanwhile.getStatus());
+    }
+
+    @Test
+    @DisplayName("open days: the next days with a place left, the weekend (no turns) and full days skipped")
+    void openDays() {
+        // Friday 9 October, two days asked: Friday, then Monday.
+        List<AppointmentService.OpenDay> open = service.openDays(CLINIC, LocalDate.of(2026, 10, 9), 2);
+        assertEquals(List.of(new AppointmentService.OpenDay(LocalDate.of(2026, 10, 9), 16),
+                new AppointmentService.OpenDay(LocalDate.of(2026, 10, 12), 16)), open);
+
+        held = 16;
+        assertTrue(service.openDays(CLINIC, TODAY, 3).isEmpty(), "every day full");
     }
 
     private static BookingRequest booking(LocalDate date) {

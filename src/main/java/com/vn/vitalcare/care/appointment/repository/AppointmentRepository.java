@@ -171,6 +171,17 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
     @Query("select a from Appointment a where a.id = :id and a.deletedAt is null")
     Optional<Appointment> lockById(@Param("id") Long id);
 
+    /** Visits still booked on a day up to {@code today}: what J-01 may mark as no-shows. Not scoped: the sweep's. */
+    @Query("select a from Appointment a where a.status = com.vn.vitalcare.entity.AppointmentStatus.BOOKED "
+            + "and a.appointmentDate <= :today and a.deletedAt is null")
+    List<Appointment> findBookedUpTo(@Param("today") LocalDate today);
+
+    /** BR-11: how many visits of an account (its owner's and the relatives') ended as no-shows. */
+    @Query("select count(a) from Appointment a join a.customer c left join c.guardian g "
+            + "where (c.id = :ownerId or g.id = :ownerId) "
+            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.NO_SHOW and a.deletedAt is null")
+    long countNoShowsOfAccount(@Param("ownerId") Long ownerId);
+
     /** Visits left out of the room on an earlier day: nobody brought them back or concluded them. Not scoped: the sweep's. */
     @Query("select a from Appointment a where a.status = com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS "
             + "and a.appointmentDate < :today and a.deletedAt is null")
