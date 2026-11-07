@@ -142,6 +142,12 @@ public interface AppointmentService {
      */
     Appointment changeExaminee(Long id, Long customerId);
 
+    /** BR-11: an account with this many no-shows pays online when it books; "pay at the desk" is not offered. */
+    int NO_SHOWS_FOR_ONLINE_ONLY = 3;
+
+    /** How many visits of the account (its owner's and the relatives') ended as no-shows (BR-11). */
+    long noShowsOfAccount(Customer owner);
+
     /** A day a clinic can still take a visit on, and how many places it has left (BR-01). */
     record OpenDay(java.time.LocalDate date, int remaining) {
     }

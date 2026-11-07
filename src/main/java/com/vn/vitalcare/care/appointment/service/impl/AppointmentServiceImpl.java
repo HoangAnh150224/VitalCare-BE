@@ -408,6 +408,11 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
+    public long noShowsOfAccount(Customer owner) {
+        return repository.countNoShowsOfAccount(accountOf(owner).getId());
+    }
+
+    @Override
     @Transactional
     public Appointment changeExaminee(Long id, Long customerId) {
         Appointment appointment = find(id, Action.WRITE);

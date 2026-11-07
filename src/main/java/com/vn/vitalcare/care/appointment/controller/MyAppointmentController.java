@@ -57,6 +57,19 @@ public class MyAppointmentController {
         return ListResponse.of(page.map(AppointmentResponse::forCustomer).getContent(), page.getTotalElements());
     }
 
+    /**
+     * How the account may pay its next examination fees (UC-01 step 4, BR-11):
+     * after {@link AppointmentService#NO_SHOWS_FOR_ONLINE_ONLY} no-shows only
+     * online, so the portal does not offer paying at the desk.
+     */
+    @GetMapping("/payment-rules")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
+    public Map<String, Object> paymentRules() {
+        long noShows = service.noShowsOfAccount(customerService.getForCurrentUser());
+        return Map.of("noShows", noShows,
+                "onlinePaymentRequired", noShows >= AppointmentService.NO_SHOWS_FOR_ONLINE_ONLY);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
     public AppointmentResponse get(@PathVariable Long id) {
