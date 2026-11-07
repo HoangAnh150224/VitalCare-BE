@@ -38,6 +38,7 @@ public final class CustomerSpecifications {
                 case "status" -> statusSpec(criterion);
                 case "customerCode" -> customerCodeSpec(criterion);
                 case "clinicId" -> clinicSpec(criterion);
+                case "sameAccountAs" -> sameAccountSpec(criterion);
                 default -> null;
             };
             if (spec != null) {
@@ -65,6 +66,29 @@ public final class CustomerSpecifications {
         }
 
         return Specification.allOf(specs);
+    }
+
+    /**
+     * {@code sameAccountAs=<id>}: the profiles of that profile's account — its
+     * owner's and the relatives' — for the desk giving a visit to the right one
+     * of them (UC-02 B1). A value that is not an id matches nothing.
+     */
+    private static Specification<Customer> sameAccountSpec(ListParams.Criterion criterion) {
+        Long id;
+        try {
+            id = Long.valueOf(criterion.value().trim());
+        } catch (RuntimeException e) {
+            return (root, query, cb) -> cb.disjunction();
+        }
+        return (root, query, cb) -> {
+            Subquery<Long> owner = query.subquery(Long.class);
+            Root<Customer> profile = owner.from(Customer.class);
+            var guardianOfProfile = profile.join("guardian", JoinType.LEFT);
+            owner.select(cb.coalesce(guardianOfProfile.<Long>get("id"), profile.<Long>get("id")))
+                    .where(cb.equal(profile.get("id"), id));
+            var guardian = root.join("guardian", JoinType.LEFT);
+            return cb.or(cb.equal(root.get("id"), owner), cb.equal(guardian.get("id"), owner));
+        };
     }
 
     /**
