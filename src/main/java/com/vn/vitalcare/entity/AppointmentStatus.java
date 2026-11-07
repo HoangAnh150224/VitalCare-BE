@@ -6,16 +6,22 @@ import com.fasterxml.jackson.annotation.JsonValue;
 /**
  * Where a registered visit stands.
  *
- * <p>Registered, then checked in at the desk — waiting in the doctor's queue —
- * then called into an examination room, then completed. The two other
- * ways out of {@link #SCHEDULED} are final: a cancelled visit and one the
- * patient never came to both stay as they are — the patient registers again.
+ * <p>Booked, then checked in at the desk, then ready for examination once
+ * the examination fee is paid too (BR-04) — waiting in the queue — then
+ * called into an examination room, then completed. The two other ways out of
+ * {@link #BOOKED} are final: a cancelled visit and one the patient never came
+ * to both stay as they are, and give their place in the day back (BR-01).
  */
 public enum AppointmentStatus {
 
-    SCHEDULED("scheduled"),
+    /** Holds one of the day's places; the patient has not checked in yet. */
+    BOOKED("booked"),
 
+    /** At the desk and checked in, the examination fee not paid yet: not in the queue. */
     CHECKED_IN("checked_in"),
+
+    /** Checked in and paid (BR-04): in the queue, ordered by when it got here (BR-05). */
+    READY_FOR_EXAMINATION("ready_for_examination"),
 
     /** Called into an examination room and being seen; see {@code ExamRoom}. */
     IN_EXAM("in_exam"),
@@ -48,6 +54,10 @@ public enum AppointmentStatus {
     public static AppointmentStatus from(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
+        }
+        // The name before the spec's: older clients still filter by it.
+        if ("scheduled".equalsIgnoreCase(raw.trim())) {
+            return BOOKED;
         }
         for (AppointmentStatus status : values()) {
             if (status.value.equalsIgnoreCase(raw) || status.name().equalsIgnoreCase(raw)) {

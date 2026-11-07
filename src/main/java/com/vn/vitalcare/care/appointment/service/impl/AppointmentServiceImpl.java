@@ -140,8 +140,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     public Integer queueAhead(Appointment appointment) {
-        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
-                || appointment.getPaidAt() == null
+        if (appointment.getStatus() != AppointmentStatus.READY_FOR_EXAMINATION
                 || !appointment.getAppointmentDate().equals(today())) {
             return null;
         }
@@ -217,7 +216,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public Appointment update(Long id, AppointmentUpdateRequest request) {
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !isUnderway(appointment)) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED && !isUnderway(appointment)) {
             throw new ConflictException("An appointment that is over can no longer be changed");
         }
         appointment.setReason(request.reason().trim());
@@ -232,7 +231,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         // USING through the write scope: an appointment the desk may see but
         // not change is a 404.
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new ConflictException("Only a registered appointment can be checked in");
         }
         if (!appointment.getAppointmentDate().equals(today())) {
@@ -324,13 +323,14 @@ public class AppointmentServiceImpl implements AppointmentService {
     public void markExamPaid(Long appointmentId, OffsetDateTime when) {
         repository.lockById(appointmentId).ifPresent(appointment -> {
             boolean wasUnpaid = appointment.getPaidAt() == null;
+            boolean wasCheckedIn = appointment.getStatus() == AppointmentStatus.CHECKED_IN;
             appointment.markPaid(when);
             repository.persist(appointment);
             if (wasUnpaid) {
                 events.publishEvent(new VisitEvents.ExamPaid(appointment.getId()));
             }
             // Already at the desk: paying is what puts the patient in the line now.
-            if (wasUnpaid && appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
+            if (wasUnpaid && wasCheckedIn) {
                 events.publishEvent(new ExamRoomEvents.QueueJoined(appointment.getClinicId(),
                         doctorIdOf(appointment)));
             }
@@ -368,7 +368,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = find(id, Action.WRITE);
         // Also somebody checked in who left without paying: they never joined the line (BF-02).
         boolean leftUnpaid = appointment.getStatus() == AppointmentStatus.CHECKED_IN && appointment.getPaidAt() == null;
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !leftUnpaid) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED && !leftUnpaid) {
             throw new ConflictException("Only a registered appointment can be marked as a no-show");
         }
         events.publishEvent(new VisitEvents.Cancelling(appointment.getId()));
@@ -445,7 +445,7 @@ public class AppointmentServiceImpl implements AppointmentService {
      * later than two hours before it is expected -- for the desk and the patient alike.
      */
     private void requireChangeable(Appointment appointment, String change) {
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new ConflictException("Only a registered appointment can be " + change);
         }
         // A visit in the shared line has no expected time: it changes until it is checked in.
@@ -595,15 +595,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         throw new IllegalStateException("Could not generate an unused booking code");
     }
 
-    /** Checked in and not yet over: waiting for the doctor, in the room with them, or out and coming back. */
+    /** Checked in and not yet over: waiting to pay, waiting for the doctor, in the room with them, or out and coming back. */
     private static boolean isUnderway(Appointment appointment) {
         return appointment.getStatus() == AppointmentStatus.CHECKED_IN
+                || appointment.getStatus() == AppointmentStatus.READY_FOR_EXAMINATION
                 || appointment.getStatus() == AppointmentStatus.IN_EXAM
                 || appointment.getStatus() == AppointmentStatus.AWAITING_RESULTS;
     }
 
     private static boolean isUnderwayOrRegistered(Appointment appointment) {
-        return appointment.getStatus() == AppointmentStatus.SCHEDULED || isUnderway(appointment);
+        return appointment.getStatus() == AppointmentStatus.BOOKED || isUnderway(appointment);
     }
 
     private LocalDate today() {

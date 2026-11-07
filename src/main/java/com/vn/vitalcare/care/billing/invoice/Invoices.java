@@ -434,7 +434,7 @@ public class Invoices {
     private static boolean owesExamFee(Appointment appointment) {
         var status = appointment.getStatus();
         return appointment.getReferredFrom() == null && appointment.getPaidAt() == null
-                && (status == com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED
+                && (status == com.vn.vitalcare.entity.AppointmentStatus.BOOKED
                     || status == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN);
     }
 

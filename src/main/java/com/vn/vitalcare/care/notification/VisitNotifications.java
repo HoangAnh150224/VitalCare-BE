@@ -47,7 +47,7 @@ public class VisitNotifications {
     public void onExamPaid(VisitEvents.ExamPaid event) {
         visit(event.appointmentId()).ifPresent(visit -> tell(visit, NotificationLevel.SUCCESS, "payment",
                 "Đã nhận phí khám",
-                visit.getStatus() == AppointmentStatus.CHECKED_IN
+                visit.getStatus() == AppointmentStatus.READY_FOR_EXAMINATION
                         ? "Bạn đã vào hàng chờ khám, theo thời điểm thanh toán."
                         : "Khi tới phòng khám, tiếp nhận tại quầy là bạn vào hàng chờ khám.",
                 "/my-appointments/show/" + visit.getId()));

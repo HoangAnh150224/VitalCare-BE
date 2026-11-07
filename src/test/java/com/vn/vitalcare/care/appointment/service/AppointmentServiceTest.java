@@ -175,7 +175,7 @@ class AppointmentServiceTest {
         assertEquals(1, booked.getQueueNumber());
         assertEquals(null, booked.getStartTime());
         assertEquals(null, booked.getEndTime());
-        assertEquals(AppointmentStatus.SCHEDULED, booked.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, booked.getStatus());
         assertEquals(null, booked.getEmployee());
         assertEquals(CLINIC, booked.getClinicId());
         assertEquals(TUESDAY, booked.getAppointmentDate());
@@ -377,7 +377,7 @@ class AppointmentServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.checkIn(1L));
         assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ResourceNotFoundException.class, () -> service.complete(1L));
-        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         verify(repository, never()).persist(any());
     }
 
@@ -407,6 +407,21 @@ class AppointmentServiceTest {
         assertEquals(CustomerStatus.PATIENT, customer.getStatus());
         assertEquals(PatientActivationSource.CHECK_IN, customer.getPatientActivationSource());
         assertEquals(appointment.getCheckedInAt(), customer.getPatientActivatedAt());
+    }
+
+    @Test
+    @DisplayName("BR-04: ready for examination once both checked in and paid, in either order")
+    void readyOnceCheckedInAndPaid() {
+        Appointment paidFirst = stored(appointmentOn(TODAY));
+        paidFirst.markPaid(java.time.OffsetDateTime.now());
+        assertEquals(AppointmentStatus.BOOKED, paidFirst.getStatus(), "paying online does not check anybody in");
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, service.checkIn(1L).getStatus());
+
+        Appointment arrivedFirst = stored(appointmentOn(TODAY));
+        service.checkIn(1L);
+        assertEquals(AppointmentStatus.CHECKED_IN, arrivedFirst.getStatus());
+        arrivedFirst.markPaid(java.time.OffsetDateTime.now());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, arrivedFirst.getStatus());
     }
 
     @Test
@@ -453,7 +468,7 @@ class AppointmentServiceTest {
         Appointment second = appointmentOn(TODAY);
         when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(second));
         service.completeForEncounter(2L);
-        assertEquals(AppointmentStatus.SCHEDULED, second.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, second.getStatus());
         second.checkIn(null, null);
         service.completeForEncounter(2L);
         assertEquals(AppointmentStatus.COMPLETED, second.getStatus());
@@ -497,7 +512,7 @@ class AppointmentServiceTest {
 
         assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ConflictException.class, () -> service.reschedule(1L, new RescheduleRequest(null, TUESDAY)));
-        assertEquals(AppointmentStatus.SCHEDULED, soon.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, soon.getStatus());
         assertEquals(TODAY, soon.getAppointmentDate());
     }
 
@@ -520,7 +535,7 @@ class AppointmentServiceTest {
         assertEquals(null, moved.getStartTime());
         assertEquals(null, moved.getEndTime());
         assertEquals("K7M29QXA", moved.getBookingCode());
-        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         verify(repository).maxQueueNumberAtClinic(CLINIC, TODAY.plusDays(3));
     }
 
@@ -537,7 +552,7 @@ class AppointmentServiceTest {
         yesterday.setEndTime(null);
         assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ConflictException.class, () -> service.reschedule(1L, new RescheduleRequest(null, TUESDAY)));
-        assertEquals(AppointmentStatus.SCHEDULED, yesterday.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, yesterday.getStatus());
     }
 
     @Test
@@ -655,7 +670,7 @@ class AppointmentServiceTest {
 
         Appointment referral = service.referFrom(origin, DOCTOR, "Khám tai mũi họng");
 
-        assertEquals(AppointmentStatus.CHECKED_IN, referral.getStatus());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, referral.getStatus());
         assertEquals(doctor, referral.getEmployee());
         assertEquals(origin, referral.getReferredFrom());
         assertTrue(referral.getReturnedAt() != null, "first in that doctor's queue");

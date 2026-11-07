@@ -76,8 +76,7 @@ public class MyAppointmentController {
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("ahead", service.queueAhead(appointment));
         // BF-02: checked in but the examination fee is not paid, so not in the line yet.
-        body.put("awaitingPayment", appointment.getStatus() == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN
-                && appointment.getPaidAt() == null);
+        body.put("awaitingPayment", appointment.getStatus() == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN);
         // Called while away: it waits again, behind those never called, until the recall time.
         body.put("skipped", appointment.getSkippedAt() != null);
         // Back from what the doctor sent them to do, or sent by a colleague: called first.
