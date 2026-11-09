@@ -26,20 +26,20 @@ public final class VitalViewDtos {
 
     /** One measurement as listed. */
     public record Reading(Long id, OffsetDateTime measuredAt, OffsetDateTime receivedAt, Integer heartRate,
-                          BigDecimal spo2, BigDecimal skinTemperature, String source, String validationStatus,
+                          BigDecimal spo2, BigDecimal skinTemperature, BigDecimal bodyTemperature, String source, String validationStatus,
                           String validationError, Long deviceId, String deviceCode) {
 
         public static Reading of(VitalSigns v) {
             MedicalDevice d = v.getDevice();
             return new Reading(v.getId(), v.getMeasuredAt(), v.getReceivedAt(), v.getHeartRate(), v.getSpo2(),
-                    v.getTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
+                    v.getTemperature(), v.getBodyTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
                     d == null ? null : d.getId(), d == null ? null : d.getDeviceCode());
         }
     }
 
     /** One measurement in full (Measurement Details). */
     public record Detail(Long id, OffsetDateTime measuredAt, OffsetDateTime receivedAt, Integer heartRate,
-                         BigDecimal spo2, BigDecimal skinTemperature, String source, String validationStatus,
+                         BigDecimal spo2, BigDecimal skinTemperature, BigDecimal bodyTemperature, String source, String validationStatus,
                          String validationError, String clientRecordId, Long deviceId, String deviceCode,
                          String deviceModel, Long customerId, String customerCode, String customerName,
                          Long sessionId, String sessionStatus, OffsetDateTime sessionStartedAt,
@@ -50,7 +50,7 @@ public final class VitalViewDtos {
             Customer c = v.getCustomer();
             var s = v.getSession();
             return new Detail(v.getId(), v.getMeasuredAt(), v.getReceivedAt(), v.getHeartRate(), v.getSpo2(),
-                    v.getTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
+                    v.getTemperature(), v.getBodyTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
                     v.getClientRecordId(), d == null ? null : d.getId(), d == null ? null : d.getDeviceCode(),
                     d == null ? null : d.getModel(), c == null ? null : c.getId(),
                     c == null ? null : c.getCustomerCode(), c == null ? null : c.getFullName(),
@@ -61,14 +61,15 @@ public final class VitalViewDtos {
 
     /** A patient's latest value of each measure (Monitoring Overview, Patient Monitoring Summary). */
     public record Latest(Integer heartRate, OffsetDateTime heartRateAt, BigDecimal spo2, OffsetDateTime spo2At,
-                         BigDecimal skinTemperature, OffsetDateTime skinTemperatureAt, OffsetDateTime lastMeasuredAt,
-                         long readings24h) {
+                         BigDecimal skinTemperature, OffsetDateTime skinTemperatureAt, BigDecimal bodyTemperature,
+                         OffsetDateTime bodyTemperatureAt, OffsetDateTime lastMeasuredAt, long readings24h) {
 
-        static final Latest NONE = new Latest(null, null, null, null, null, null, null, 0);
+        static final Latest NONE = new Latest(null, null, null, null, null, null, null, null, null, 0);
 
         static Latest of(VitalSignsRepository.LatestRow r) {
             return r == null ? NONE : new Latest(r.getHeartRate(), at(r.getHeartRateAt()), r.getSpo2(),
                     at(r.getSpo2At()), r.getSkinTemperature(), at(r.getSkinTemperatureAt()),
+                    r.getBodyTemperature(), at(r.getBodyTemperatureAt()),
                     at(r.getLastMeasuredAt()), r.getReadings24h() == null ? 0 : r.getReadings24h());
         }
 
@@ -94,13 +95,15 @@ public final class VitalViewDtos {
     public record TrendPoint(LocalDateTime at, long readings, Integer heartRateMin, BigDecimal heartRateAvg,
                              Integer heartRateMax, BigDecimal spo2Min, BigDecimal spo2Avg, BigDecimal spo2Max,
                              BigDecimal skinTemperatureMin, BigDecimal skinTemperatureAvg,
-                             BigDecimal skinTemperatureMax) {
+                             BigDecimal skinTemperatureMax, BigDecimal bodyTemperatureMin,
+                             BigDecimal bodyTemperatureAvg, BigDecimal bodyTemperatureMax) {
 
         static TrendPoint of(VitalSignsRepository.TrendRow r) {
             return new TrendPoint(r.getBucket(), r.getReadings() == null ? 0 : r.getReadings(),
                     r.getHeartRateMin(), round(r.getHeartRateAvg(), 0), r.getHeartRateMax(),
                     r.getSpo2Min(), round(r.getSpo2Avg(), 1), r.getSpo2Max(),
-                    r.getSkinTemperatureMin(), round(r.getSkinTemperatureAvg(), 2), r.getSkinTemperatureMax());
+                    r.getSkinTemperatureMin(), round(r.getSkinTemperatureAvg(), 2), r.getSkinTemperatureMax(),
+                    r.getBodyTemperatureMin(), round(r.getBodyTemperatureAvg(), 2), r.getBodyTemperatureMax());
         }
 
         private static BigDecimal round(BigDecimal v, int scale) {

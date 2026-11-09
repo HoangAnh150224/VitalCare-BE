@@ -43,7 +43,7 @@ public class AlertRule extends BaseEntity {
     @Column(name = "name", nullable = false)
     private String name;
 
-    /** {@code HEART_RATE}, {@code SPO2} or {@code SKIN_TEMPERATURE}. */
+    /** {@code HEART_RATE}, {@code SPO2}, {@code SKIN_TEMPERATURE} or {@code BODY_TEMPERATURE}. */
     @Column(name = "metric", nullable = false, length = 32)
     private String metric;
 
