@@ -11,12 +11,14 @@ import com.vn.vitalcare.identity.user.entity.UserStatus;
 import com.vn.vitalcare.identity.user.repository.UserRepository;
 import com.vn.vitalcare.identity.user.repository.UserSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,6 +44,7 @@ public class UserService {
      * second account can hold this role.
      */
     private static final String ADMIN_ROLE_CODE = "ADMIN";
+    private static final int MAX_PASSWORD_BYTES = 72;
     private static final String GUEST_ROLE_CODE = "GUEST";
     private static final String PATIENT_ROLE_CODE = "PATIENT";
     private static final Set<String> WORKFLOW_ROLE_CODES = Set.of(
@@ -224,7 +227,7 @@ public class UserService {
         User user = new User(
                 normalized,
                 email,
-                passwordEncoder.encode(rawPassword),
+                hash("password", rawPassword),
                 fullName.trim(),
                 UserStatus.ACTIVE);
         user.setRoles(new LinkedHashSet<>(List.of(roleService.getByCode(roleCode))));
@@ -242,7 +245,7 @@ public class UserService {
         User user = new User(
                 phone,
                 email,
-                passwordEncoder.encode(request.password()),
+                hash("password", request.password()),
                 request.fullName().trim(),
                 request.status() == null ? UserStatus.ACTIVE : request.status());
         Set<Role> roles = resolveRoles(request.roles());
@@ -362,7 +365,7 @@ public class UserService {
     @Transactional
     public User setPassword(Long id, String rawPassword) {
         User user = get(id);
-        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setPasswordHash(hash("password", rawPassword));
         User saved = repository.save(user);
         refreshTokenService.revokeAllFor(saved, Instant.now());
         events.publishEvent(com.vn.vitalcare.share.audit.AuditEvent.of("users", saved.getId(), "password_reset"));
@@ -382,13 +385,26 @@ public class UserService {
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
             throw new ConflictException("The current password is not correct");
         }
-        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setPasswordHash(hash("newPassword", newPassword));
         User saved = repository.save(user);
         // Other sessions end; the one making the change gets a fresh pair back
         // from the controller, so the person changing their password is not
         // signed out by their own action.
         refreshTokenService.revokeAllFor(saved, Instant.now());
         return saved;
+    }
+
+    /**
+     * Every password is hashed here. BCrypt reads at most 72 bytes and refuses a
+     * longer password with an exception that would reach the client as a raw
+     * library message; accented letters take two or three bytes each, so 72
+     * characters can still be too long.
+     */
+    private String hash(String field, String rawPassword) {
+        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            throw new FieldValidationException(field, "Password must be between 8 and 72 characters");
+        }
+        return passwordEncoder.encode(rawPassword);
     }
 
     /** Stamps the successful sign-in. Called by the auth domain. */
