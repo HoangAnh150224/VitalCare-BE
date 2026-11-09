@@ -56,12 +56,15 @@ public record ProfileRequest(
         @Size(max = 128, message = "Occupation must be at most 128 characters")
         String occupation,
 
+        @NotBlank(message = "A province or city is required")
         @Size(max = 128, message = "Province must be at most 128 characters")
         String province,
 
+        @NotBlank(message = "A ward or commune is required")
         @Size(max = 128, message = "Ward must be at most 128 characters")
         String ward,
 
+        @NotBlank(message = "A street address is required")
         @Size(max = 500, message = "Address must be at most 500 characters")
         String address) {
 }
