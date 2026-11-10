@@ -210,9 +210,15 @@ public class CustomerServiceImpl implements CustomerService {
         }
         profile.setDateOfBirth(request.dateOfBirth());
         profile.setGender(request.gender());
-        profile.setNationalId(request.nationalId().trim());
-        profile.setNationalIdType(
-                request.nationalIdType() == null || request.nationalIdType().isBlank() ? "cccd" : request.nationalIdType());
+        String idType = request.nationalIdType() == null || request.nationalIdType().isBlank()
+                ? "cccd" : request.nationalIdType();
+        // The number has to fit the paper chosen: twelve digits for a citizen card or personal number,
+        // six to nine letters and digits for a passport.
+        if (!com.vn.vitalcare.care.customer.NationalIds.matches(idType, request.nationalId())) {
+            throw new FieldValidationException("nationalId", "The number does not match the chosen kind of paper");
+        }
+        profile.setNationalId(com.vn.vitalcare.care.customer.NationalIds.normalize(idType, request.nationalId()));
+        profile.setNationalIdType(idType);
         if (request.province() != null) {
             profile.setProvince(blankToNull(request.province()));
         }
