@@ -189,7 +189,18 @@ public class CustomerServiceImpl implements CustomerService {
      * the owner. The owner's own name and number are the account's and stay
      * out of the profile.
      */
-    private static void applyProfile(Customer profile, ProfileRequest request) {
+    /** Nobody is older than this: a date of birth further back is a typing slip (the forms say the same). */
+    static final int MAX_AGE_YEARS = 120;
+
+    /** A date of birth no more than {@link #MAX_AGE_YEARS} years before today; null is left to the caller. */
+    private void requireLikelyBirthDate(java.time.LocalDate dateOfBirth) {
+        if (dateOfBirth != null && dateOfBirth.isBefore(java.time.LocalDate.now(clock).minusYears(MAX_AGE_YEARS))) {
+            throw new FieldValidationException("dateOfBirth", "Date of birth is more than 120 years ago");
+        }
+    }
+
+    private void applyProfile(Customer profile, ProfileRequest request) {
+        requireLikelyBirthDate(request.dateOfBirth());
         if (profile.isDependent()) {
             String name = request.fullName() == null ? "" : request.fullName().trim();
             String phone = request.phone() == null ? "" : request.phone().trim();
@@ -274,6 +285,7 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setFullName(name);
         customer.setPhone(normalizedPhone);
         customer.setNationalId(normalizedNationalId);
+        requireLikelyBirthDate(dateOfBirth);
         customer.setDateOfBirth(dateOfBirth);
         customer.setGender(gender);
         Customer saved = repository.save(customer);
@@ -305,6 +317,7 @@ public class CustomerServiceImpl implements CustomerService {
         } else {
             profile = new Customer();
             profile.setUser(user);
+            requireLikelyBirthDate(dateOfBirth);
             profile.setDateOfBirth(dateOfBirth);
             profile = repository.save(profile);
             profile.setCustomerCode("KH%06d".formatted(profile.getId()));
@@ -341,6 +354,7 @@ public class CustomerServiceImpl implements CustomerService {
         Customer customer = get(id);
 
         if (request.dateOfBirth() != null) {
+            requireLikelyBirthDate(request.dateOfBirth());
             customer.setDateOfBirth(request.dateOfBirth());
         }
         if (request.gender() != null) {
