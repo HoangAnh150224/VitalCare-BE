@@ -130,3 +130,5 @@ databaseChangeLog:
       file: db/changelog/changes/063-admin-grants-clinic-admin.sql
   - include:
       file: db/changelog/changes/064-desk-payment-choice.sql
+  - include:
+      file: db/changelog/changes/065-seed-test-accounts-per-role.sql
