@@ -20,8 +20,8 @@ public enum StaffType {
 
     /**
      * Runs one clinic: its staff, devices and appointments, through the
-     * row-level policies on {@code CLINIC_ADMIN}. Anybody who may create staff
-     * may create one, for now; who may is to be narrowed later.
+     * row-level policies on {@code CLINIC_ADMIN}. Creating this staff type
+     * requires clinic management permission and an explicitly selected clinic.
      */
     CLINIC_ADMIN("clinic_admin", "CLINIC_ADMIN");
 
