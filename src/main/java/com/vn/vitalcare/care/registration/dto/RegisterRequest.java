@@ -5,16 +5,22 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Past;
+import java.time.LocalDate;
 
 /**
- * {@code POST /auth/register}: the account to create. The phone number is
- * what it signs in with and where a password-recovery code is sent by SMS.
+ * {@code POST /auth/register}: the account to create after proving control of
+ * its phone number with a one-time code.
  * The email is optional; when given it must be valid and not another account's.
  */
 public record RegisterRequest(
         // The shape is checked by the service, which says which way it is wrong (PhoneNumbers.problem).
         @NotBlank(message = "Phone number is required")
         String phone,
+
+        @NotBlank(message = "The code is required")
+        @Pattern(regexp = "^\\d{4,8}$", message = "The code is the digits from the SMS")
+        String otp,
 
         @Email(message = "Email must be a valid address")
         @Size(max = 255, message = "Email must be at most 255 characters")
@@ -27,10 +33,31 @@ public record RegisterRequest(
                 message = "Full name may only contain letters and spaces")
         String fullName,
 
+        /** Optional: kept on a new profile; a claimed one keeps its own. */
+        @Past(message = "Date of birth must be in the past")
+        LocalDate dateOfBirth,
+
         // 72 is BCrypt's limit in bytes, which the service also checks: a
         // password of Vietnamese letters reaches it well before 72 characters.
         // Not @NotBlank: a password of spaces is refused for what it is, by the service.
         @NotEmpty(message = "Password is required")
         @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
-        String password) {
+        String password,
+
+        /**
+         * The profile, among those {@code /otp/check} listed for the number, that
+         * is the person registering; null for "not me" or when none was listed (UC-04).
+         */
+        Long claimProfileId) {
+
+    /** Keeps callers compiled against the request shape before a profile could be claimed. */
+    public RegisterRequest(String phone, String otp, String email, String fullName, LocalDate dateOfBirth,
+                           String password) {
+        this(phone, otp, email, fullName, dateOfBirth, password, null);
+    }
+
+    /** Keeps callers compiled against the pre-profile-link request shape working. */
+    public RegisterRequest(String phone, String otp, String email, String fullName, String password) {
+        this(phone, otp, email, fullName, null, password, null);
+    }
 }

@@ -1,15 +1,18 @@
 package com.vn.vitalcare.care.registration.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 import com.vn.vitalcare.care.customer.service.CustomerService;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
+import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
 import com.vn.vitalcare.care.registration.service.impl.RegistrationServiceImpl;
 import com.vn.vitalcare.identity.auth.service.AuthService;
 import com.vn.vitalcare.identity.user.entity.User;
@@ -31,6 +34,7 @@ class RegistrationServiceTest {
     private UserService userService;
     private CustomerService customerService;
     private AuthService authService;
+    private PhoneCodes codes;
     private RegistrationService service;
 
     @BeforeEach
@@ -38,20 +42,118 @@ class RegistrationServiceTest {
         userService = mock(UserService.class);
         customerService = mock(CustomerService.class);
         authService = mock(AuthService.class);
-        service = new RegistrationServiceImpl(userService, customerService, authService);
+        codes = mock(PhoneCodes.class);
+        service = new RegistrationServiceImpl(userService, customerService, authService, codes);
     }
 
     @Test
-    @DisplayName("creates the account with its email, a neutral customer and a session")
+    @DisplayName("creates a Guest account, its linked patient profile, and a session")
     void registers() {
         User user = mock(User.class);
-        when(userService.createSelfRegistered("0912345678", "an@example.com", "Passw0rd!", "Nguyen Van A",
-                RegistrationServiceImpl.CUSTOMER_ROLE)).thenReturn(user);
+        when(userService.createSelfRegistered("+84912345678", "an@example.com", "Passw0rd!", "Nguyen Van A",
+                RegistrationServiceImpl.GUEST_ROLE)).thenReturn(user);
 
         service.register(request("Passw0rd!"));
 
-        verify(customerService).createNeutral(user);
+        verify(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
+        verify(customerService).registerAccountProfile(user, null, null);
         verify(authService).signInVerified(user);
+    }
+
+    @Test
+    @DisplayName("UC-04 D2: a number that already has an account gets no code")
+    void registeredNumberGetsNoCode() {
+        doThrow(new ConflictException("Số điện thoại đã được sử dụng. Xin vui lòng nhập một số khác."))
+                .when(userService).requirePhoneUnregistered("+84912345678");
+
+        assertThrows(ConflictException.class, () -> service.requestCode("0912345678"));
+        verifyNoInteractions(codes);
+    }
+
+    @Test
+    @DisplayName("UC-04: a right code answers with the number's unclaimed profiles, masked; a wrong one with none")
+    void checkCodeListsMaskedMatches() {
+        com.vn.vitalcare.entity.Customer walkIn = new com.vn.vitalcare.entity.Customer();
+        walkIn.setFullName("Nguyễn Văn A");
+        walkIn.setDateOfBirth(java.time.LocalDate.of(1985, 3, 1));
+        when(customerService.unclaimedWithPhone("+84912345678")).thenReturn(java.util.List.of(walkIn));
+
+        var matches = service.checkCode("0912345678", "123456");
+
+        verify(codes).check("+84912345678", VerificationPurpose.REGISTER, "123456");
+        assertEquals("Nguyễn V*** A", matches.getFirst().maskedName());
+        assertEquals(1985, matches.getFirst().birthYear());
+
+        doThrow(new InvalidVerificationCodeException())
+                .when(codes).check("+84912345678", VerificationPurpose.REGISTER, "000000");
+        assertThrows(InvalidVerificationCodeException.class, () -> service.checkCode("0912345678", "000000"));
+    }
+
+    @Test
+    @DisplayName("BR-14: the masked name keeps the first and last words, the ones between as their initial")
+    void masksNames() {
+        assertEquals("Nguyễn V*** A", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Nguyễn Văn A"));
+        assertEquals("Lê T*** T*** Hoa", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask(" Lê  Thị Thu Hoa "));
+        assertEquals("Trần B***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Trần Bình"));
+        assertEquals("Đ***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Đức"));
+        // A decomposed accent (U+0301) stays with its letter.
+        assertEquals("Lê Á***", com.vn.vitalcare.care.registration.dto.ProfileMatch.mask("Lê Ánh"));
+    }
+
+    @Test
+    @DisplayName("does not create an account when the phone code is invalid")
+    void invalidCodeStopsRegistration() {
+        doThrow(new InvalidVerificationCodeException())
+                .when(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
+
+        assertThrows(InvalidVerificationCodeException.class, () -> service.register(request("Passw0rd!")));
+        verifyNoInteractions(userService, customerService, authService);
+    }
+
+    @Test
+    @DisplayName("does not send a registration code to an all-zero phone number")
+    void allZeroPhoneIsRefused() {
+        FieldValidationException exception = assertThrows(
+                FieldValidationException.class, () -> service.requestCode("0000000000"));
+
+        assertEquals("phone", exception.field());
+        verifyNoInteractions(codes);
+    }
+
+    @Test
+    @DisplayName("does not register an all-zero phone even if an OTP is supplied")
+    void registrationWithAllZeroPhoneIsRefused() {
+        RegisterRequest request = new RegisterRequest("0000000000", "123456", "an@example.com",
+                "Nguyen Van A", "Passw0rd!");
+
+        FieldValidationException exception = assertThrows(FieldValidationException.class,
+                () -> service.register(request));
+
+        assertEquals("phone", exception.field());
+        verifyNoInteractions(codes, userService, customerService, authService);
+    }
+
+    @Test
+    @DisplayName("keeps an existing structurally valid seed phone eligible for registration")
+    void numberWithNonZeroSignificantDigitsIsAllowed() {
+        service.requestCode("+84 000 000 131");
+
+        verify(codes).issue("+84000000131", VerificationPurpose.REGISTER, "+84000000131");
+    }
+
+    @Test
+    @DisplayName("does not create an account with a one-character name")
+    void oneCharacterNameIsRefused() {
+        for (String name : java.util.List.of("A", " A ")) {
+            RegisterRequest request = new RegisterRequest("0912345678", "123456", "an@example.com",
+                    name, "Passw0rd!");
+
+            FieldValidationException exception = assertThrows(FieldValidationException.class,
+                    () -> service.register(request));
+
+            assertEquals("fullName", exception.field());
+        }
+        verifyNoInteractions(codes, userService, customerService, authService);
     }
 
     @Test
@@ -72,7 +174,7 @@ class RegistrationServiceTest {
     }
 
     private static RegisterRequest request(String password) {
-        return new RegisterRequest("0912345678", "an@example.com", "Nguyen Van A", password);
+        return new RegisterRequest("0912345678", "123456", "an@example.com", "Nguyen Van A", password);
     }
 
     /** A clock a test can move forward, so expiry and cooldown need no waiting. */

@@ -1,14 +1,21 @@
 package com.vn.vitalcare.care.registration.service.impl;
 
 import com.vn.vitalcare.care.customer.service.CustomerService;
+import com.vn.vitalcare.care.registration.dto.OtpResponse;
+import com.vn.vitalcare.care.registration.dto.ProfileMatch;
 import com.vn.vitalcare.care.registration.dto.RegisterRequest;
+import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
+import com.vn.vitalcare.care.registration.service.InvalidVerificationCodeException;
+import com.vn.vitalcare.care.registration.service.PhoneCodes;
 import com.vn.vitalcare.care.registration.service.RegistrationService;
 import com.vn.vitalcare.identity.auth.dto.TokenResponse;
 import com.vn.vitalcare.identity.auth.service.AuthService;
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.phone.PhoneNumbers;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,8 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class RegistrationServiceImpl implements RegistrationService {
 
-    /** The system role every self-registered account receives; seeded by 013. */
-    public static final String CUSTOMER_ROLE = "CUSTOMER";
+    /** The initial role for self-registration; patient activation promotes it later. */
+    public static final String GUEST_ROLE = "GUEST";
 
     /** BCrypt ignores — and the encoder refuses — anything past this many bytes. */
     private static final int MAX_PASSWORD_BYTES = 72;
@@ -26,21 +33,42 @@ public class RegistrationServiceImpl implements RegistrationService {
     private final UserService userService;
     private final CustomerService customerService;
     private final AuthService authService;
+    private final PhoneCodes codes;
 
     public RegistrationServiceImpl(UserService userService,
                                    CustomerService customerService,
-                                   AuthService authService) {
+                                   AuthService authService,
+                                   PhoneCodes codes) {
         this.userService = userService;
         this.customerService = customerService;
         this.authService = authService;
+        this.codes = codes;
     }
 
     @Override
     @Transactional
+    public OtpResponse requestCode(String rawPhone) {
+        String phone = normalizeRegistrationPhone(rawPhone);
+        // Said before a code is spent on it: the person is sent to recover the password instead.
+        userService.requirePhoneUnregistered(phone);
+        return codes.issue(phone, VerificationPurpose.REGISTER, phone);
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
+    public List<ProfileMatch> checkCode(String rawPhone, String otp) {
+        String phone = normalizeRegistrationPhone(rawPhone);
+        codes.check(phone, VerificationPurpose.REGISTER, otp);
+        return customerService.unclaimedWithPhone(phone).stream().map(ProfileMatch::from).toList();
+    }
+
+    @Override
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public TokenResponse register(RegisterRequest request) {
-        com.vn.vitalcare.share.phone.PhoneNumbers.problem(request.phone()).ifPresent(problem -> {
-            throw new FieldValidationException("phone", problem);
-        });
+        String phone = normalizeRegistrationPhone(request.phone());
+        if (request.fullName().trim().length() < 2) {
+            throw new FieldValidationException("fullName", "Full name must contain at least 2 characters");
+        }
         if (request.password().isBlank()) {
             throw new FieldValidationException("password", "Password cannot contain only spaces");
         }
@@ -48,25 +76,27 @@ public class RegistrationServiceImpl implements RegistrationService {
             throw new FieldValidationException("password", "Password is too long; use fewer accented letters");
         }
 
+        codes.verify(phone, VerificationPurpose.REGISTER, request.otp());
+
         // UserService normalises the number and any email, and refuses either if
         // another account already holds it.
         User user = userService.createSelfRegistered(
-                request.phone(), request.email(), request.password(), request.fullName(), CUSTOMER_ROLE);
-        customerService.createNeutral(user);
+                phone, request.email(), request.password(), request.fullName(), GUEST_ROLE);
+        customerService.registerAccountProfile(user, request.claimProfileId(), request.dateOfBirth());
         return authService.signInVerified(user);
     }
 
-    @Override
-    @Transactional
-    public com.vn.vitalcare.entity.Customer registerAtDesk(String fullName, String phone,
-                                                          java.time.LocalDate dateOfBirth, String gender) {
-        byte[] secret = new byte[24];
-        new java.security.SecureRandom().nextBytes(secret);
-        String unknownPassword = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
-        User user = userService.createSelfRegistered(phone, null, unknownPassword, fullName.trim(), CUSTOMER_ROLE);
-        com.vn.vitalcare.entity.Customer customer = customerService.createNeutral(user);
-        customer.setDateOfBirth(dateOfBirth);
-        customer.setGender(gender);
-        return customer;
+    private static String normalize(String rawPhone) {
+        return PhoneNumbers.normalize(rawPhone)
+                .orElseThrow(() -> new FieldValidationException(
+                        "phone", PhoneNumbers.problem(rawPhone).orElse("Not a valid Vietnamese phone number")));
+    }
+
+    private static String normalizeRegistrationPhone(String rawPhone) {
+        String normalized = normalize(rawPhone);
+        if (normalized.substring(3).chars().allMatch(digit -> digit == '0')) {
+            throw new FieldValidationException("phone", "Phone number cannot be all zeros");
+        }
+        return normalized;
     }
 }

@@ -109,7 +109,7 @@ class VisitReturnsTest {
 
         returns.onOrdersChanged(new VisitEvents.OrdersChanged(50L));
 
-        assertEquals(AppointmentStatus.CHECKED_IN, away.getStatus());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, away.getStatus());
         assertTrue(away.getReturnedAt() != null);
         verify(events).publishEvent(any(ExamRoomEvents.QueueJoined.class));
     }
@@ -123,7 +123,7 @@ class VisitReturnsTest {
         assertEquals(AppointmentStatus.AWAITING_RESULTS, away.getStatus());
 
         ordered.clear();
-        referral(AppointmentStatus.CHECKED_IN);
+        referral(AppointmentStatus.READY_FOR_EXAMINATION);
         returns.returnIfDone(50L);
         assertEquals(AppointmentStatus.AWAITING_RESULTS, away.getStatus());
         verify(events, never()).publishEvent(any(ExamRoomEvents.QueueJoined.class));
@@ -141,7 +141,7 @@ class VisitReturnsTest {
 
         returns.onVisitEnded(new VisitEvents.VisitEnded(60L));
 
-        assertEquals(AppointmentStatus.CHECKED_IN, away.getStatus());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, away.getStatus());
     }
 
     @Test
@@ -149,13 +149,13 @@ class VisitReturnsTest {
     void tasks() {
         order("Công thức máu", ServiceOrderStatus.RESULT_READY);
         order("X-quang", ServiceOrderStatus.ORDERED);
-        referral(AppointmentStatus.CHECKED_IN);
+        referral(AppointmentStatus.READY_FOR_EXAMINATION);
 
         List<VisitReturns.Task> tasks = returns.tasksOf(away);
 
         assertEquals(3, tasks.size());
         assertEquals(new VisitReturns.Task("service", "Công thức máu", "result_ready", true), tasks.get(0));
         assertEquals(new VisitReturns.Task("service", "X-quang", "ordered", false), tasks.get(1));
-        assertEquals(new VisitReturns.Task("referral", "BS. B", "checked_in", false), tasks.get(2));
+        assertEquals(new VisitReturns.Task("referral", "BS. B", "ready_for_examination", false), tasks.get(2));
     }
 }

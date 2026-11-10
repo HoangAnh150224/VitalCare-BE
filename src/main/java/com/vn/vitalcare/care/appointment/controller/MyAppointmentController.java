@@ -57,6 +57,19 @@ public class MyAppointmentController {
         return ListResponse.of(page.map(AppointmentResponse::forCustomer).getContent(), page.getTotalElements());
     }
 
+    /**
+     * How the account may pay its next examination fees (UC-01 step 4, BR-11):
+     * after {@link AppointmentService#NO_SHOWS_FOR_ONLINE_ONLY} no-shows only
+     * online, so the portal does not offer paying at the desk.
+     */
+    @GetMapping("/payment-rules")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
+    public Map<String, Object> paymentRules() {
+        long noShows = service.noShowsOfAccount(customerService.getForCurrentUser());
+        return Map.of("noShows", noShows,
+                "onlinePaymentRequired", noShows >= AppointmentService.NO_SHOWS_FOR_ONLINE_ONLY);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_READ + "')")
     public AppointmentResponse get(@PathVariable Long id) {
@@ -76,8 +89,7 @@ public class MyAppointmentController {
         Map<String, Object> body = new java.util.HashMap<>();
         body.put("ahead", service.queueAhead(appointment));
         // BF-02: checked in but the examination fee is not paid, so not in the line yet.
-        body.put("awaitingPayment", appointment.getStatus() == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN
-                && appointment.getPaidAt() == null);
+        body.put("awaitingPayment", appointment.getStatus() == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN);
         // Called while away: it waits again, behind those never called, until the recall time.
         body.put("skipped", appointment.getSkippedAt() != null);
         // Back from what the doctor sent them to do, or sent by a colleague: called first.
@@ -100,6 +112,22 @@ public class MyAppointmentController {
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
     public AppointmentResponse cancel(@PathVariable Long id) {
         return AppointmentResponse.forCustomer(service.cancelOwn(customerService.getForCurrentUser(), id));
+    }
+
+    /** UC-01 step 4: pays the examination fee at the desk on the day; the patient is told so by SMS. */
+    @org.springframework.web.bind.annotation.PutMapping("/{id}/desk-payment")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse payAtDesk(@PathVariable Long id) {
+        return AppointmentResponse.forCustomer(
+                service.choosePaymentAtDesk(customerService.getForCurrentUser(), id, true));
+    }
+
+    /** Pays online after all. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/desk-payment")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse payOnline(@PathVariable Long id) {
+        return AppointmentResponse.forCustomer(
+                service.choosePaymentAtDesk(customerService.getForCurrentUser(), id, false));
     }
 
     @PostMapping("/{id}/reschedule")

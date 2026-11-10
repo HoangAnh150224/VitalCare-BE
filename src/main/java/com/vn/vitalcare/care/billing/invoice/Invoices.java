@@ -156,11 +156,53 @@ public class Invoices {
             if (invoice.getStatus() == InvoiceStatus.UNPAID) {
                 invoice.cancel();
                 invoices.persist(invoice);
+            } else if (invoice.getStatus() == InvoiceStatus.PAID
+                    && invoice.getAppointment() != null
+                    && invoice.getAppointment().getStatus() == com.vn.vitalcare.entity.AppointmentStatus.NO_SHOW) {
+                // UC-02 B1: a missed visit's paid fee pays for the walk-in the patient may still come for.
+                log.info("Visit {} was missed with its examination bill {} paid: kept for a walk-in",
+                        event.appointmentId(), invoice.getInvoiceNumber());
             } else if (invoice.getStatus() == InvoiceStatus.PAID) {
                 log.warn("Visit {} was cancelled after its examination bill {} was paid: refund needed",
                         event.appointmentId(), invoice.getInvoiceNumber());
             }
         });
+    }
+
+    /**
+     * UC-02 B1: a visit the patient missed or that was cancelled, replaced by a
+     * walk-in today. An examination fee already paid on it pays for the new
+     * one: the paid bill moves over, the new visit's own fresh bill is called
+     * off, and the new visit is paid now — so it queues from now (BR-05).
+     * Nothing changes when the old fee was not paid.
+     *
+     * @return whether a paid fee was carried over
+     */
+    @Transactional
+    public boolean carryExamPaid(Long fromAppointmentId, Appointment to) {
+        var found = invoices.findExamOf(fromAppointmentId);
+        if (found.isEmpty()) {
+            return false;
+        }
+        // The bills before the visit, the order every payment and cancellation takes them in.
+        Invoice paid = lock(found.get().getId());
+        if (paid.getStatus() != InvoiceStatus.PAID) {
+            return false;
+        }
+        invoices.findExamOf(to.getId()).ifPresent(fresh -> {
+            Invoice unpaid = lock(fresh.getId());
+            if (unpaid.getStatus() == InvoiceStatus.UNPAID) {
+                unpaid.cancel();
+                invoices.persist(unpaid);
+            }
+        });
+        // Written now: a visit holds one live exam bill (uq_invoice_exam_appointment), and Hibernate
+        // would otherwise move the paid one over before calling the fresh one off.
+        entityManager.flush();
+        paid.setAppointment(to);
+        invoices.persist(paid);
+        appointmentService.markExamPaid(to.getId(), OffsetDateTime.now(clock));
+        return true;
     }
 
     /** A visit moved to another doctor, maybe of another clinic: an unpaid bill moves with it. */
@@ -170,9 +212,20 @@ public class Invoices {
         invoices.findExamOf(event.appointmentId()).ifPresent(found -> {
             Invoice invoice = lock(found.getId());
             Appointment appointment = invoice.getAppointment();
-            if (invoice.getStatus() == InvoiceStatus.UNPAID && appointment != null
-                    && !appointment.getClinicId().equals(invoice.getClinicId())) {
+            if (invoice.getStatus() != InvoiceStatus.UNPAID || appointment == null) {
+                return;
+            }
+            boolean changed = false;
+            if (!appointment.getClinicId().equals(invoice.getClinicId())) {
                 invoice.setClinic(appointment.getClinic());
+                changed = true;
+            }
+            // Given to another profile of the account at the desk (UC-02 B1).
+            if (!appointment.getCustomer().getId().equals(invoice.getCustomer().getId())) {
+                invoice.setCustomer(appointment.getCustomer());
+                changed = true;
+            }
+            if (changed) {
                 invoices.persist(invoice);
             }
         });
@@ -434,7 +487,7 @@ public class Invoices {
     private static boolean owesExamFee(Appointment appointment) {
         var status = appointment.getStatus();
         return appointment.getReferredFrom() == null && appointment.getPaidAt() == null
-                && (status == com.vn.vitalcare.entity.AppointmentStatus.SCHEDULED
+                && (status == com.vn.vitalcare.entity.AppointmentStatus.BOOKED
                     || status == com.vn.vitalcare.entity.AppointmentStatus.CHECKED_IN);
     }
 

@@ -130,6 +130,22 @@ class AlertEngineTest {
     }
 
     @Test
+    @DisplayName("Fever rules read the body temperature, not the cooler wrist skin")
+    void bodyTemperature() {
+        when(rules.findApplicable(37L, CLINIC)).thenReturn(List.of(
+                rule("BODY_TEMPERATURE", "ABOVE", "37.5", "WARNING", null)));
+        VitalSigns v = reading(null, null);
+        v.setTemperature(new BigDecimal("34.1"));
+        v.setBodyTemperature(new BigDecimal("38.0"));
+        engine.evaluate(v);
+
+        assertThat(open).singleElement().satisfies(a -> {
+            assertThat(a.getMetric()).isEqualTo("BODY_TEMPERATURE");
+            assertThat(a.getMessage()).contains("Nhiệt độ cơ thể 38 °C").contains("vượt ngưỡng 37.5 °C");
+        });
+    }
+
+    @Test
     @DisplayName("Two measures broken at once raise one alert each")
     void oneAlertPerMeasure() {
         clinicRules();

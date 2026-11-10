@@ -93,9 +93,9 @@ public class Reports {
                 from alert a where a.deleted_at is null""" + and("a", clinicId), p));
         body.put("appointmentsToday", jdbc.queryForMap("""
                 select count(*) as total,
-                       count(*) filter (where status = 'SCHEDULED') as scheduled,
-                       count(*) filter (where status = 'CHECKED_IN' and paid_at is null) as awaiting_payment,
-                       count(*) filter (where status = 'CHECKED_IN' and paid_at is not null) as waiting,
+                       count(*) filter (where status = 'BOOKED') as scheduled,
+                       count(*) filter (where status = 'CHECKED_IN') as awaiting_payment,
+                       count(*) filter (where status = 'READY_FOR_EXAMINATION') as waiting,
                        count(*) filter (where status = 'IN_EXAM') as in_exam,
                        count(*) filter (where status = 'AWAITING_RESULTS') as awaiting_results,
                        count(*) filter (where status = 'COMPLETED') as completed,

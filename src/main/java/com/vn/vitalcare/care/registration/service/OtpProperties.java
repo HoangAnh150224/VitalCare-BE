@@ -10,7 +10,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param codeTtl        how long a code may be used after it is sent
  * @param maxAttempts    wrong guesses before the code is burned
  * @param resendCooldown how long after one code another may be requested
- * @param maxPerHour     codes one number may be sent in any rolling hour
+ * @param maxPerDay      codes one number may be sent in any rolling 24 hours (BR-13);
+ *                       past that the number is locked out until the oldest is a day old
  */
 @ConfigurationProperties(prefix = "app.otp")
 public record OtpProperties(
@@ -18,5 +19,5 @@ public record OtpProperties(
         Duration codeTtl,
         int maxAttempts,
         Duration resendCooldown,
-        int maxPerHour) {
+        int maxPerDay) {
 }

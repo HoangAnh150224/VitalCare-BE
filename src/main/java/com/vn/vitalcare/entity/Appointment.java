@@ -73,7 +73,7 @@ public class Appointment extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private AppointmentStatus status = AppointmentStatus.SCHEDULED;
+    private AppointmentStatus status = AppointmentStatus.BOOKED;
 
     /** The code on the appointment slip and in its QR; unique. Set once, at booking. */
     @Column(name = "booking_code", nullable = false, length = 16, unique = true, updatable = false)
@@ -129,6 +129,10 @@ public class Appointment extends BaseEntity {
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
 
+    /** When the patient chose to pay the examination fee at the desk on the day (UC-01 step 4); null: online. */
+    @Column(name = "desk_payment_chosen_at")
+    private OffsetDateTime deskPaymentChosenAt;
+
     /** The visit whose doctor sent the patient here the same day; null for an ordinary registration. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referred_from_id")
@@ -137,14 +141,18 @@ public class Appointment extends BaseEntity {
     public Appointment() {
     }
 
-    /** Records the arrival. Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    /**
+     * Records the arrival: ready for examination if the fee is already paid
+     * (online, before coming), else checked in and waiting to pay (BR-04).
+     * Only valid from {@link AppointmentStatus#BOOKED}; the service checks.
+     */
     public void checkIn(Long actorId, OffsetDateTime when) {
-        this.status = AppointmentStatus.CHECKED_IN;
+        this.status = paidAt != null ? AppointmentStatus.READY_FOR_EXAMINATION : AppointmentStatus.CHECKED_IN;
         this.checkedInById = actorId;
         this.checkedInAt = when;
     }
 
-    /** Called into a room. Only valid from {@link AppointmentStatus#CHECKED_IN}; the dispatcher checks. */
+    /** Called into a room. Only valid from {@link AppointmentStatus#READY_FOR_EXAMINATION}; the dispatcher checks. */
     public void callInto(ExamRoom room, OffsetDateTime when) {
         this.status = AppointmentStatus.IN_EXAM;
         this.examRoom = room;
@@ -153,7 +161,7 @@ public class Appointment extends BaseEntity {
 
     /** Called and not there: back to the queue, behind those not yet called. Only valid from {@link AppointmentStatus#IN_EXAM}. */
     public void passOver(OffsetDateTime when) {
-        this.status = AppointmentStatus.CHECKED_IN;
+        this.status = AppointmentStatus.READY_FOR_EXAMINATION;
         this.examRoom = null;
         this.calledAt = null;
         this.skippedAt = when;
@@ -171,7 +179,7 @@ public class Appointment extends BaseEntity {
 
     /** Back in the doctor's queue, ahead of everybody: what it went out for is done. */
     public void returnToQueue(OffsetDateTime when) {
-        this.status = AppointmentStatus.CHECKED_IN;
+        this.status = AppointmentStatus.READY_FOR_EXAMINATION;
         this.skippedAt = null;
         this.returnedAt = when;
     }
@@ -188,13 +196,13 @@ public class Appointment extends BaseEntity {
 
     /**
      * The patient never arrived, or was called into the room and never came in.
-     * Only valid from {@link AppointmentStatus#SCHEDULED} or {@link AppointmentStatus#IN_EXAM}; the service checks.
+     * Only valid from {@link AppointmentStatus#BOOKED} or {@link AppointmentStatus#IN_EXAM}; the service checks.
      */
     public void markNoShow() {
         this.status = AppointmentStatus.NO_SHOW;
     }
 
-    /** Only valid from {@link AppointmentStatus#SCHEDULED}; the service checks. */
+    /** Only valid from {@link AppointmentStatus#BOOKED}; the service checks. */
     public void cancel(Long actorId, OffsetDateTime when, String reason) {
         this.status = AppointmentStatus.CANCELLED;
         this.cancelReason = reason;
@@ -214,10 +222,25 @@ public class Appointment extends BaseEntity {
         return paidAt;
     }
 
-    /** The examination fee is paid; the first payment counts, a later one changes nothing. */
+    public OffsetDateTime getDeskPaymentChosenAt() {
+        return deskPaymentChosenAt;
+    }
+
+    /** Pays at the desk on the day, or (null) online after all. The service checks it is still owed. */
+    public void setDeskPaymentChosenAt(OffsetDateTime when) {
+        this.deskPaymentChosenAt = when;
+    }
+
+    /**
+     * The examination fee is paid; the first payment counts, a later one
+     * changes nothing. Somebody already checked in is ready for examination now (BR-04).
+     */
     public void markPaid(OffsetDateTime when) {
         if (this.paidAt == null) {
             this.paidAt = when;
+        }
+        if (this.status == AppointmentStatus.CHECKED_IN) {
+            this.status = AppointmentStatus.READY_FOR_EXAMINATION;
         }
     }
 

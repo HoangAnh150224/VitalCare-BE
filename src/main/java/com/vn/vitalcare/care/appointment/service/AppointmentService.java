@@ -134,4 +134,46 @@ public interface AppointmentService {
     Appointment reschedule(Long id, RescheduleRequest request);
 
     Appointment rescheduleOwn(Customer customer, Long id, RescheduleRequest request);
+
+    /**
+     * UC-02 B1, wrong examinee: the person at the desk is another profile of
+     * the same account (the owner or a relative). Only while booked, and the
+     * other profile must not already have a visit at that clinic that day.
+     */
+    Appointment changeExaminee(Long id, Long customerId);
+
+    /** Whether the profile has a visit at the clinic that day that is booked or under way. */
+    boolean hasOpenVisitAt(Customer customer, java.util.UUID clinicId, java.time.LocalDate date);
+
+    /** BR-11: an account with this many no-shows pays online when it books; "pay at the desk" is not offered. */
+    int NO_SHOWS_FOR_ONLINE_ONLY = 3;
+
+    /** How many visits of the account (its owner's and the relatives') ended as no-shows (BR-11). */
+    long noShowsOfAccount(Customer owner);
+
+    /**
+     * UC-01 step 4: the customer's own visit is paid at the desk on the day
+     * ({@code atDesk}), or online after all. Only while the fee is still owed;
+     * not at the desk after {@link #NO_SHOWS_FOR_ONLINE_ONLY} no-shows (BR-11).
+     */
+    Appointment choosePaymentAtDesk(Customer customer, Long id, boolean atDesk);
+
+    /** A day a clinic can still take a visit on, and how many places it has left (BR-01). */
+    record OpenDay(java.time.LocalDate date, int remaining) {
+    }
+
+    /**
+     * The days from {@code from} on, within the booking window and at most
+     * {@code days} of them, that still have a place: what to offer instead of
+     * a full day (UC-01 A1, UC-03 C1). Online and walk-in visits share the places.
+     */
+    List<OpenDay> openDays(java.util.UUID clinicId, java.time.LocalDate from, int days);
+
+    /**
+     * J-01: every visit still booked once its day's last turn is over becomes a
+     * no-show, giving its place back (BR-10). Not scoped: the sweep's.
+     *
+     * @return how many were marked
+     */
+    int markNoShowsDue();
 }

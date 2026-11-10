@@ -65,7 +65,8 @@ public class EmployeeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('" + Permissions.EMPLOYEES_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.EMPLOYEES_WRITE + "') or hasAuthority('"
+            + Permissions.CLINICS_WRITE + "')")
     public ResponseEntity<EmployeeResponse> create(@Valid @RequestBody EmployeeCreateRequest request) {
         Employee created = service.create(request);
         return ResponseEntity

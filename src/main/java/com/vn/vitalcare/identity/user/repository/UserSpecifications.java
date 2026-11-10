@@ -5,6 +5,7 @@ import com.vn.vitalcare.identity.user.entity.UserStatus;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.web.ListParams;
 import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.data.jpa.domain.Specification;
@@ -24,6 +25,7 @@ public final class UserSpecifications {
 
     public static Specification<User> from(ListParams params) {
         List<Specification<User>> specs = new ArrayList<>();
+        specs.add((root, query, cb) -> cb.isNull(root.get("deletedAt")));
 
         for (ListParams.Criterion criterion : params.filters()) {
             Specification<User> spec = switch (criterion.field()) {
@@ -42,8 +44,9 @@ public final class UserSpecifications {
             }
         }
 
-        // The quick filter is one term matched across the three text columns,
-        // because the provider has no way to express an OR across fields.
+        // The quick filter is one term matched across the text columns and, if
+        // numeric, the exact account id. The provider has no way to express an
+        // OR across fields itself.
         //
         // The phone leg searches the significant digits rather than the term as
         // typed, for the reason given on phoneSearchTail.
@@ -51,10 +54,17 @@ public final class UserSpecifications {
         // email is nullable, and lower(NULL) LIKE '%x%' is NULL rather than
         // false — an account without one simply contributes nothing to this
         // OR, which is what it should do.
-        params.search().ifPresent(term -> specs.add((root, query, cb) -> cb.or(
-                cb.like(root.get("phone"), ListParams.likePattern(phoneSearchTail(term))),
-                cb.like(cb.lower(root.get("email")), ListParams.likePattern(term)),
-                cb.like(cb.lower(root.get("fullName")), ListParams.likePattern(term)))));
+        params.search().ifPresent(term -> specs.add((root, query, cb) -> {
+            List<Predicate> matches = new ArrayList<>();
+            matches.add(cb.like(root.get("phone"), ListParams.likePattern(phoneSearchTail(term))));
+            matches.add(cb.like(cb.lower(root.get("email")), ListParams.likePattern(term)));
+            matches.add(cb.like(cb.lower(root.get("fullName")), ListParams.likePattern(term)));
+            Long id = parseId(term);
+            if (id != null) {
+                matches.add(cb.equal(root.get("id"), id));
+            }
+            return cb.or(matches.toArray(Predicate[]::new));
+        }));
 
         List<Long> ids = params.ids();
         if (!ids.isEmpty()) {

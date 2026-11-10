@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.schedule.controller;
 
+import com.vn.vitalcare.care.appointment.service.AppointmentService;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.care.schedule.dto.DoctorAvailabilityResponse;
 import com.vn.vitalcare.care.schedule.dto.WorkingHoursEntry;
@@ -38,17 +39,35 @@ public class DoctorController {
     private final EmployeeService employees;
     private final ClinicService clinics;
     private final ClinicScope clinicScope;
+    private final AppointmentService appointments;
 
     public DoctorController(DoctorAvailabilityService availability,
                             DoctorScheduleService schedules,
                             EmployeeService employees,
                             ClinicService clinics,
-                            ClinicScope clinicScope) {
+                            ClinicScope clinicScope,
+                            AppointmentService appointments) {
         this.availability = availability;
         this.schedules = schedules;
         this.employees = employees;
         this.clinics = clinics;
         this.clinicScope = clinicScope;
+        this.appointments = appointments;
+    }
+
+    /**
+     * The next days with a place left at a clinic (BR-01/02): what a full day
+     * offers instead. Open to anybody signed in, as {@link #doctors} is.
+     */
+    @GetMapping("/clinics/{clinicId}/open-days")
+    public List<AppointmentService.OpenDay> openDays(
+            @PathVariable UUID clinicId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(defaultValue = "5") int days) {
+        if ("INACTIVE".equals(clinics.get(clinicId).getOperatingStatus())) {
+            return List.of();
+        }
+        return appointments.openDays(clinicId, from, days);
     }
 
     /**

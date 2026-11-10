@@ -139,6 +139,31 @@ public class AppointmentController {
         return AppointmentResponse.from(service.cancel(id, request.reason()), rowLevel);
     }
 
+    /**
+     * UC-02 B1: a visit that can no longer be checked in (its day passed, missed
+     * or cancelled) replaced by a walk-in for today, an online-paid fee carried over.
+     */
+    @PostMapping("/{id}/walk-in")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "') and hasAuthority('"
+            + Permissions.APPOINTMENTS_CHECK_IN + "')")
+    public ResponseEntity<AppointmentResponse> replaceWithWalkIn(@PathVariable Long id) {
+        Appointment created = walkIns.replace(id);
+        return ResponseEntity
+                .created(URI.create("/api/appointments/" + created.getId()))
+                .body(AppointmentResponse.from(created, rowLevel));
+    }
+
+    /** UC-02 B1: the visit is for another profile of the same account. Body: {@code {"customerId": 12}}. */
+    @PostMapping("/{id}/examinee")
+    @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse changeExaminee(@PathVariable Long id, @RequestBody java.util.Map<String, Long> body) {
+        Long customerId = body.get("customerId");
+        if (customerId == null) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("customerId", "Pick a profile");
+        }
+        return AppointmentResponse.from(service.changeExaminee(id, customerId), rowLevel);
+    }
+
     @PostMapping("/{id}/reschedule")
     @PreAuthorize("hasAuthority('" + Permissions.APPOINTMENTS_WRITE + "')")
     public AppointmentResponse reschedule(@PathVariable Long id, @Valid @RequestBody RescheduleRequest request) {

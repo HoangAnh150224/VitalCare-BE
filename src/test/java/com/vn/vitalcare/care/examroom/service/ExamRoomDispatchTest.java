@@ -218,7 +218,7 @@ class ExamRoomDispatchTest {
 
         service.passOver(7L);
 
-        assertEquals(AppointmentStatus.CHECKED_IN, inside.getStatus());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, inside.getStatus());
         assertNull(inside.getExamRoom());
         assertNotNull(inside.getSkippedAt());
         assertEquals(ExamRoomStatus.AVAILABLE, room.getStatus());

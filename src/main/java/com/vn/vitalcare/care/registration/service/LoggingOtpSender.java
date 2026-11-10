@@ -11,9 +11,9 @@ import org.springframework.stereotype.Component;
 /**
  * Writes the code to the application log instead of sending it.
  *
- * <p>For development without an SMS account, so password recovery can be
- * exercised end to end. Anybody who can read the log can finish any password
- * reset, so this must never face real users. The number is masked; the code
+ * <p>For development without an SMS account, so registration and password
+ * recovery can be exercised end to end. Anybody who can read the log can use
+ * the code, so this must never face real users. The number is masked; the code
  * cannot be, or there would be no point.
  *
  * <p>Off under the {@code prod} profile, so a production deployment without

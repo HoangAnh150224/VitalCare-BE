@@ -42,7 +42,7 @@ public interface EmployeeRepository extends SecuredRepository<Employee, Long> {
     /** Visits today or later still to be seen by this doctor (a move to another clinic waits for them). */
     @Query(nativeQuery = true, value = "select count(*) from appointment where employee_id = :employeeId"
             + " and deleted_at is null and appointment_date >= :today"
-            + " and status in ('SCHEDULED', 'CHECKED_IN', 'IN_EXAM')")
+            + " and status in ('BOOKED', 'CHECKED_IN', 'READY_FOR_EXAMINATION', 'IN_EXAM')")
     long countUpcomingVisits(@Param("employeeId") Long employeeId, @Param("today") java.time.LocalDate today);
 
     /** Their working sessions leave the old clinic's rooms; the new clinic places them in its own. */

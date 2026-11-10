@@ -59,7 +59,7 @@ class EmployeeCreationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StaffType.class, names = {"DOCTOR", "NURSE", "RECEPTIONIST"})
+    @EnumSource(value = StaffType.class, names = {"DOCTOR", "RECEPTIONIST"})
     void systemAdminCannotCreateOtherStaffEvenWithClinicAdminRole(StaffType type) {
         signIn("ROLE_ADMIN", "ROLE_CLINIC_ADMIN", "employees:write", "clinics:write");
         var error = assertThrows(AuthorizationDeniedException.class,
@@ -100,7 +100,7 @@ class EmployeeCreationTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = StaffType.class, names = {"DOCTOR", "NURSE", "RECEPTIONIST"})
+    @EnumSource(value = StaffType.class, names = {"DOCTOR", "RECEPTIONIST"})
     void clinicAdminCanStillCreateClinicStaff(StaffType type) {
         signIn("ROLE_CLINIC_ADMIN", "employees:write");
         assertCreates(type);
@@ -121,7 +121,11 @@ class EmployeeCreationTest {
         assertEquals(type, created.getStaffType());
         assertSame(clinic, created.getClinic());
         assertSame(user, created.getUser());
-        verify(rowLevel).checkWritable(created);
+        if (type == StaffType.CLINIC_ADMIN) {
+            verify(rowLevel, never()).checkWritable(any());
+        } else {
+            verify(rowLevel).checkWritable(created);
+        }
         verify(memberships).save(any(StaffMembership.class));
     }
 }

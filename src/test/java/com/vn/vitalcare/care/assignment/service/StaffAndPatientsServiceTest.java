@@ -38,10 +38,15 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /** Creating and retiring staff, and the "my patients" view that is pinned to the caller. */
@@ -51,21 +56,31 @@ class StaffAndPatientsServiceTest {
     private MonitoringAssignmentRepository careTeams;
     private DeviceAssignmentRepository deviceAssignments;
     private UserService userService;
+    private ClinicService clinicService;
     private EmployeeService employees;
 
     @BeforeEach
     void setUp() {
+        Jwt token = Jwt.withTokenValue("test-token").header("alg", "none").subject("1").build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(token,
+                AuthorityUtils.createAuthorityList("employees:write", "clinics:write")));
+
         employeeRepository = mock(EmployeeRepository.class);
         careTeams = mock(MonitoringAssignmentRepository.class);
         deviceAssignments = mock(DeviceAssignmentRepository.class);
         userService = mock(UserService.class);
-        ClinicService clinics = mock(ClinicService.class);
-        when(clinics.listAll()).thenReturn(List.of());
+        clinicService = mock(ClinicService.class);
+        when(clinicService.listAll()).thenReturn(List.of());
         when(employeeRepository.persist(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         employees = new EmployeeServiceImpl(employeeRepository, careTeams,
-                org.mockito.Mockito.mock(com.vn.vitalcare.care.staff.repository.StaffMembershipRepository.class), userService, clinics, Optional::empty,
+                org.mockito.Mockito.mock(com.vn.vitalcare.care.staff.repository.StaffMembershipRepository.class), userService, clinicService, Optional::empty,
                 ClinicRowLevel.unrestricted(), event -> { }, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -79,9 +94,9 @@ class StaffAndPatientsServiceTest {
         });
 
         Employee created = employees.create(new EmployeeCreateRequest(
-                "0900000050", "BS. A", "Passw0rd!", StaffType.NURSE, null, null, null, null, null));
+                "0900000050", "BS. A", "Passw0rd!", StaffType.RECEPTIONIST, null, null, null, null, null));
 
-        verify(userService).createStaffAccount("0900000050", "Passw0rd!", "BS. A", "NURSE");
+        verify(userService).createStaffAccount("0900000050", "Passw0rd!", "BS. A", "MANAGER");
         assertEquals("NV000007", created.getEmployeeCode());
         assertEquals(EmployeeStatus.ACTIVE, created.getStatus());
     }
@@ -89,6 +104,10 @@ class StaffAndPatientsServiceTest {
     @Test
     @DisplayName("a clinic administrator is created as staff and gets the CLINIC_ADMIN role")
     void createClinicAdmin() {
+        UUID clinicId = UUID.fromString("5b1f8c2e-6a3d-4f7e-9c41-2d8e0a7b3c19");
+        Clinic clinic = new Clinic();
+        clinic.setClinicId(clinicId);
+        when(clinicService.get(clinicId)).thenReturn(clinic);
         when(userService.createStaffAccount(any(), any(), any(), any()))
                 .thenReturn(user(52, "+84900000052", "QTPK. C"));
         when(employeeRepository.persist(any())).thenAnswer(invocation -> {
@@ -98,7 +117,7 @@ class StaffAndPatientsServiceTest {
         });
 
         Employee created = employees.create(new EmployeeCreateRequest(
-                "0900000052", "QTPK. C", "Passw0rd!", StaffType.from("clinic_admin"), null, null, null, null, null));
+                "0900000052", "QTPK. C", "Passw0rd!", StaffType.from("clinic_admin"), null, null, null, null, clinicId));
 
         verify(userService).createStaffAccount("0900000052", "Passw0rd!", "QTPK. C", "CLINIC_ADMIN");
         assertEquals(StaffType.CLINIC_ADMIN, created.getStaffType());

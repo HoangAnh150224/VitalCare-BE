@@ -16,7 +16,18 @@ Mục này sẽ được bổ sung theo từng giai đoạn: sinh hiệu (FE-04)
 
 Mọi request sau đó gửi header `Authorization: Bearer <accessToken>`. Khi nhận 401, gọi `/auth/refresh` một lần rồi gửi lại request.
 
-## 2. Thiết bị của tôi (FE-02)
+## 2. Đăng ký bằng số điện thoại
+
+Đăng ký tự phục vụ yêu cầu xác minh số điện thoại trước khi tạo tài khoản:
+
+| | |
+|---|---|
+| `POST /auth/register/otp` | `{ "phone": "0901234567" }` → `{ "expiresIn": 300, "resendAfter": 60 }` |
+| `POST /auth/register` | `{ "phone": "0901234567", "otp": "123456", "fullName": "Nguyen Van A", "password": "..." }` → cặp token mới |
+
+Request đăng ký cuối chỉ tạo user và hồ sơ khách hàng khi OTP còn hạn, chưa dùng và đúng với số điện thoại đã gửi mã. Mã sai, hết hạn, đã dùng hoặc vượt số lần thử trả lỗi tại `errors.otp`; request OTP áp dụng giới hạn theo số điện thoại và địa chỉ IP. `email` là trường tùy chọn.
+
+## 3. Thiết bị của tôi (FE-02)
 
 Bệnh nhân chỉ thấy các thiết bị đang được giao cho chính mình và cho những hồ sơ người thân mà tài khoản đó quản lý. Thiết bị của người khác trả về 404.
 

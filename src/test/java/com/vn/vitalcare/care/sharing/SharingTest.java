@@ -22,6 +22,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,6 +80,9 @@ class SharingTest {
         User u = mock(User.class);
         when(u.getId()).thenReturn(id);
         when(u.getFullName()).thenReturn("Người " + id);
+        when(u.canSignIn()).thenReturn(true);
+        when(u.getDeletedAt()).thenReturn(null);
+        when(u.roleCodes()).thenReturn(Set.of("GUEST"));
         when(users.findForAuthentication(phone)).thenReturn(Optional.of(u));
         return u;
     }

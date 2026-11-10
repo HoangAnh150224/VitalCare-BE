@@ -46,6 +46,7 @@ public class VitalIngestion {
     static final BigDecimal SPO2_MIN = new BigDecimal("50"), SPO2_MAX = new BigDecimal("100");
     static final int HEART_RATE_MIN = 20, HEART_RATE_MAX = 250;
     static final BigDecimal SKIN_TEMP_MIN = new BigDecimal("25"), SKIN_TEMP_MAX = new BigDecimal("45");
+    static final BigDecimal BODY_TEMP_MIN = new BigDecimal("34"), BODY_TEMP_MAX = new BigDecimal("43");
     /** A device clock a little ahead is tolerated; a reading from further in the future is refused. */
     private static final long FUTURE_TOLERANCE_MINUTES = 5;
     /** Older than this it is not monitoring any more; refused. */
@@ -237,7 +238,8 @@ public class VitalIngestion {
             if (measuredAt.isBefore(now.minusDays(MAX_AGE_DAYS))) {
                 return refused(id, "Bản ghi cũ hơn " + MAX_AGE_DAYS + " ngày");
             }
-            if (reading.spo2() == null && reading.heartRate() == null && reading.skinTemperature() == null) {
+            if (reading.spo2() == null && reading.heartRate() == null && reading.skinTemperature() == null
+                    && reading.bodyTemperature() == null) {
                 return refused(id, "Bản ghi không có chỉ số nào");
             }
             DeviceAssignment wearer = wearerAt(measuredAt);
@@ -259,6 +261,7 @@ public class VitalIngestion {
             vital.setSpo2(reading.spo2());
             vital.setHeartRate(reading.heartRate());
             vital.setTemperature(reading.skinTemperature());
+            vital.setBodyTemperature(reading.bodyTemperature());
             vital.setMeasuredAt(measuredAt);
             vital.setReceivedAt(now);
             vital.setClientRecordId(id);
@@ -335,6 +338,11 @@ public class VitalIngestion {
                 && (r.skinTemperature().compareTo(SKIN_TEMP_MIN) < 0 || r.skinTemperature().compareTo(SKIN_TEMP_MAX) > 0)) {
             return "Nhiệt độ da " + r.skinTemperature().stripTrailingZeros().toPlainString()
                     + "°C ngoài khoảng đo được (25–45)";
+        }
+        if (r.bodyTemperature() != null
+                && (r.bodyTemperature().compareTo(BODY_TEMP_MIN) < 0 || r.bodyTemperature().compareTo(BODY_TEMP_MAX) > 0)) {
+            return "Nhiệt độ cơ thể " + r.bodyTemperature().stripTrailingZeros().toPlainString()
+                    + "°C ngoài khoảng đo được (34–43)";
         }
         return null;
     }

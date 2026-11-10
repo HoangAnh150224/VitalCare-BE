@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,8 +63,11 @@ public class Sharing {
         Customer me = customers.getForCurrentUser();
         Customer patient = r.profileId() == null ? me : customers.ownProfile(me, r.profileId());
         User caregiver = users.findForAuthentication(r.caregiverPhone())
+                .filter(User::canSignIn)
+                .filter(candidate -> candidate.getDeletedAt() == null)
+                .filter(candidate -> candidate.roleCodes().stream().anyMatch(Set.of("GUEST", "PATIENT")::contains))
                 .orElseThrow(() -> new FieldValidationException("caregiverPhone",
-                        "No VitalCare account uses that number; ask the caregiver to register first"));
+                        "No active Guest or Patient account uses that number; ask the caregiver to register first"));
         if (CurrentUser.id().map(caregiver.getId()::equals).orElse(false)) {
             throw new FieldValidationException("caregiverPhone", "Choose somebody other than yourself");
         }

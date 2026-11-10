@@ -41,7 +41,7 @@ public record UserRequest(
         // Length is the only rule worth enforcing here. Composition rules push
         // people towards predictable substitutions without adding real entropy,
         // and a longer minimum buys more than a required symbol does.
-        @Size(min = 8, max = 100, message = "Password must be between 8 and 100 characters")
+        @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
         String password,
 
         /** Optional; a user created without one starts active. */

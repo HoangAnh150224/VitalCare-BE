@@ -33,9 +33,10 @@ public record DeviceUpload(
      * @param measuredAt      ISO-8601 with an offset, e.g. {@code 2026-11-02T08:15:00+07:00}
      * @param sessionId       the {@link Session#clientSessionId()} it was taken in, if any
      * @param skinTemperature wrist skin temperature, °C
+     * @param bodyTemperature estimated body temperature, °C — only once the skin reading has settled
      */
     public record Reading(String clientRecordId, String measuredAt, BigDecimal spo2, Integer heartRate,
-                          BigDecimal skinTemperature, String sessionId) {
+                          BigDecimal skinTemperature, BigDecimal bodyTemperature, String sessionId) {
     }
 
     /** {@code status}: IN_PROGRESS while measuring, COMPLETED or CANCELLED to close it. */

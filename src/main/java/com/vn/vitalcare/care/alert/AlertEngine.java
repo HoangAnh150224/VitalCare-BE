@@ -41,8 +41,10 @@ public class AlertEngine {
     private static final Logger log = LoggerFactory.getLogger(AlertEngine.class);
 
     static final Map<String, String> LABELS = Map.of(
-            "HEART_RATE", "Nhịp tim", "SPO2", "SpO₂", "SKIN_TEMPERATURE", "Nhiệt độ da");
-    static final Map<String, String> UNITS = Map.of("HEART_RATE", " bpm", "SPO2", "%", "SKIN_TEMPERATURE", " °C");
+            "HEART_RATE", "Nhịp tim", "SPO2", "SpO₂", "SKIN_TEMPERATURE", "Nhiệt độ da",
+            "BODY_TEMPERATURE", "Nhiệt độ cơ thể");
+    static final Map<String, String> UNITS = Map.of("HEART_RATE", " bpm", "SPO2", "%", "SKIN_TEMPERATURE", " °C",
+            "BODY_TEMPERATURE", " °C");
 
     private final VitalSignsRepository vitals;
     private final AlertRuleRepository rules;
@@ -81,7 +83,7 @@ public class AlertEngine {
         Long customerId = reading.getCustomer().getId();
         alerts.lockPatient(customerId);
         List<AlertRule> applicable = applicable(rules.findApplicable(customerId, clinicId));
-        for (String metric : List.of("HEART_RATE", "SPO2", "SKIN_TEMPERATURE")) {
+        for (String metric : List.of("HEART_RATE", "SPO2", "SKIN_TEMPERATURE", "BODY_TEMPERATURE")) {
             BigDecimal value = valueOf(reading, metric);
             if (value == null) {
                 continue;
@@ -141,6 +143,7 @@ public class AlertEngine {
             case "HEART_RATE" -> v.getHeartRate() == null ? null : BigDecimal.valueOf(v.getHeartRate());
             case "SPO2" -> v.getSpo2();
             case "SKIN_TEMPERATURE" -> v.getTemperature();
+            case "BODY_TEMPERATURE" -> v.getBodyTemperature();
             default -> null;
         };
     }
