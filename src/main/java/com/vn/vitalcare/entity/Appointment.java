@@ -129,6 +129,10 @@ public class Appointment extends BaseEntity {
     @Column(name = "paid_at")
     private OffsetDateTime paidAt;
 
+    /** When the patient chose to pay the examination fee at the desk on the day (UC-01 step 4); null: online. */
+    @Column(name = "desk_payment_chosen_at")
+    private OffsetDateTime deskPaymentChosenAt;
+
     /** The visit whose doctor sent the patient here the same day; null for an ordinary registration. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "referred_from_id")
@@ -216,6 +220,15 @@ public class Appointment extends BaseEntity {
 
     public OffsetDateTime getPaidAt() {
         return paidAt;
+    }
+
+    public OffsetDateTime getDeskPaymentChosenAt() {
+        return deskPaymentChosenAt;
+    }
+
+    /** Pays at the desk on the day, or (null) online after all. The service checks it is still owed. */
+    public void setDeskPaymentChosenAt(OffsetDateTime when) {
+        this.deskPaymentChosenAt = when;
     }
 
     /**

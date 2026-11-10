@@ -114,6 +114,22 @@ public class MyAppointmentController {
         return AppointmentResponse.forCustomer(service.cancelOwn(customerService.getForCurrentUser(), id));
     }
 
+    /** UC-01 step 4: pays the examination fee at the desk on the day; the patient is told so by SMS. */
+    @org.springframework.web.bind.annotation.PutMapping("/{id}/desk-payment")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse payAtDesk(@PathVariable Long id) {
+        return AppointmentResponse.forCustomer(
+                service.choosePaymentAtDesk(customerService.getForCurrentUser(), id, true));
+    }
+
+    /** Pays online after all. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/desk-payment")
+    @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
+    public AppointmentResponse payOnline(@PathVariable Long id) {
+        return AppointmentResponse.forCustomer(
+                service.choosePaymentAtDesk(customerService.getForCurrentUser(), id, false));
+    }
+
     @PostMapping("/{id}/reschedule")
     @PreAuthorize("hasAuthority('" + Permissions.MY_APPOINTMENTS_WRITE + "')")
     public AppointmentResponse reschedule(@PathVariable Long id, @Valid @RequestBody RescheduleRequest request) {

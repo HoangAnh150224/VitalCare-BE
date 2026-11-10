@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyShort;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -511,6 +514,31 @@ class AppointmentServiceTest {
         assertThrows(ConflictException.class, () -> service.markNoShow(1L));
         assertThrows(ConflictException.class, () -> service.checkIn(1L));
         assertEquals(AppointmentStatus.NO_SHOW, today.getStatus());
+    }
+
+    @Test
+    @DisplayName("UC-01 step 4: paying at the desk is kept and texted once; online again clears it; not once paid, nor after three no-shows")
+    void paysAtTheDesk() {
+        Appointment visit = appointmentOn(TUESDAY);
+        when(repository.findOwn(eq(1L), any())).thenReturn(Optional.of(visit));
+
+        service.choosePaymentAtDesk(customer, 1L, true);
+        java.time.OffsetDateTime chosen = visit.getDeskPaymentChosenAt();
+        assertNotNull(chosen);
+        service.choosePaymentAtDesk(customer, 1L, true);
+        assertEquals(chosen, visit.getDeskPaymentChosenAt());
+        verify(events, times(1)).publishEvent(any(VisitEvents.DeskPaymentChosen.class));
+
+        service.choosePaymentAtDesk(customer, 1L, false);
+        assertNull(visit.getDeskPaymentChosenAt());
+
+        when(repository.countNoShowsOfAccount(any())).thenReturn(3L);
+        assertThrows(ConflictException.class, () -> service.choosePaymentAtDesk(customer, 1L, true));
+        service.choosePaymentAtDesk(customer, 1L, false);
+
+        when(repository.countNoShowsOfAccount(any())).thenReturn(0L);
+        visit.markPaid(java.time.OffsetDateTime.now());
+        assertThrows(ConflictException.class, () -> service.choosePaymentAtDesk(customer, 1L, true));
     }
 
     // --- cancelling and rescheduling ------------------------------------------

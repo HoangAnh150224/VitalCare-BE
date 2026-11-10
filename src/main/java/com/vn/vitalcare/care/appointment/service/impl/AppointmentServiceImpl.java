@@ -419,6 +419,34 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     @Transactional
+    public Appointment choosePaymentAtDesk(Customer customer, Long id, boolean atDesk) {
+        Appointment appointment = getOwn(customer, id);
+        if (appointment.getPaidAt() != null) {
+            throw new ConflictException("The examination fee is already paid");
+        }
+        if (appointment.getStatus() != AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.CHECKED_IN) {
+            throw new ConflictException("Only a visit still to come can change how it is paid");
+        }
+        if (atDesk && noShowsOfAccount(customer) >= NO_SHOWS_FOR_ONLINE_ONLY) {
+            throw new ConflictException("After three no-shows the examination fee is paid online");
+        }
+        // Chosen once: choosing again keeps the first time and texts nobody twice.
+        boolean newly = atDesk && appointment.getDeskPaymentChosenAt() == null;
+        if (newly) {
+            appointment.setDeskPaymentChosenAt(OffsetDateTime.now(clock));
+        } else if (!atDesk) {
+            appointment.setDeskPaymentChosenAt(null);
+        }
+        Appointment saved = repository.persist(appointment);
+        if (newly) {
+            events.publishEvent(new VisitEvents.DeskPaymentChosen(saved.getId()));
+        }
+        return saved;
+    }
+
+    @Override
+    @Transactional
     public Appointment changeExaminee(Long id, Long customerId) {
         Appointment appointment = find(id, Action.WRITE);
         if (appointment.getStatus() != AppointmentStatus.BOOKED) {

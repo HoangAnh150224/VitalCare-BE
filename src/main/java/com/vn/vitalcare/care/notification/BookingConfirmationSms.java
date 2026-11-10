@@ -77,7 +77,12 @@ public class BookingConfirmationSms {
 
     /** On this thread, with BR-12's retries; the outcome is only ever logged. */
     void send(String phone, String text) {
-        EsmsOtpSender sender = template.isEmpty() ? null : esms.getIfAvailable();
+        send(phone, text, !template.isEmpty());
+    }
+
+    /** The same for any text: sent only when it follows a template registered with the brandname, else logged. */
+    void send(String phone, String text, boolean registered) {
+        EsmsOtpSender sender = registered ? esms.getIfAvailable() : null;
         if (sender == null) {
             log.info("Booking confirmation for {} (no SMS template configured, not sent): {}",
                     PhoneNumbers.mask(phone), text);

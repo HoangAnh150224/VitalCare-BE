@@ -151,6 +151,13 @@ public interface AppointmentService {
     /** How many visits of the account (its owner's and the relatives') ended as no-shows (BR-11). */
     long noShowsOfAccount(Customer owner);
 
+    /**
+     * UC-01 step 4: the customer's own visit is paid at the desk on the day
+     * ({@code atDesk}), or online after all. Only while the fee is still owed;
+     * not at the desk after {@link #NO_SHOWS_FOR_ONLINE_ONLY} no-shows (BR-11).
+     */
+    Appointment choosePaymentAtDesk(Customer customer, Long id, boolean atDesk);
+
     /** A day a clinic can still take a visit on, and how many places it has left (BR-01). */
     record OpenDay(java.time.LocalDate date, int remaining) {
     }
