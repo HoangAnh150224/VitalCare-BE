@@ -24,10 +24,12 @@ public record ClinicRequest(
         @Size(max = 255, message = "Email must be at most 255 characters")
         String contactEmail,
 
+        @NotBlank(message = "Vui lòng nhập người liên hệ")
         @Size(max = 255, message = "Contact person must be at most 255 characters")
         String contactPerson,
 
-        /** OPERATING or INACTIVE; OPERATING when left out. An inactive clinic takes no new visits. */
-        @Pattern(regexp = "^$|^(OPERATING|INACTIVE)$", message = "Status must be OPERATING or INACTIVE")
+        /** Required on create and update. An inactive clinic takes no new visits. */
+        @NotBlank(message = "Vui lòng chọn trạng thái hoạt động")
+        @Pattern(regexp = "^(OPERATING|INACTIVE)$", message = "Status must be OPERATING or INACTIVE")
         String operatingStatus) {
 }
