@@ -108,18 +108,25 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Transactional
     public Employee create(EmployeeCreateRequest request) {
         boolean clinicAdministrator = request.staffType() == StaffType.CLINIC_ADMIN;
-        if (clinicAdministrator && !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.CLINICS_WRITE)) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                    "Only the System Administrator can create a Clinic Administrator");
+        // Check before creating the login account, including for direct API calls.
+        if (CurrentUser.has("ROLE_ADMIN") && request.staffType() != StaffType.CLINIC_ADMIN) {
+            throw new org.springframework.security.authorization.AuthorizationDeniedException(
+                    "System administrators may only create clinic administrators");
+        }
+        if (request.staffType() == StaffType.CLINIC_ADMIN) {
+            if (!CurrentUser.has(com.vn.vitalcare.share.security.Permissions.CLINICS_WRITE)) {
+                throw new org.springframework.security.authorization.AuthorizationDeniedException(
+                        "Creating a clinic administrator requires clinic management permission");
+            }
+            if (request.clinicId() == null) {
+                throw new com.vn.vitalcare.share.exception.FieldValidationException(
+                        "clinicId", "Pick a clinic for the clinic administrator");
+            }
         }
         if (!clinicAdministrator && !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.EMPLOYEES_WRITE)) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Only a Clinic Administrator can create clinic staff");
         }
-        if (clinicAdministrator && request.clinicId() == null) {
-            throw new FieldValidationException("clinicId", "Choose the clinic this administrator will manage");
-        }
-
         Employee employee = new Employee();
         employee.setStaffType(request.staffType());
         employee.setSpecialty(blankToNull(request.specialty()));
