@@ -34,8 +34,8 @@ import org.springframework.stereotype.Component;
 public class VisitReturns {
 
     /** A referral still to happen: registered, waiting, in the room, or itself away. */
-    private static final Set<AppointmentStatus> REFERRAL_OPEN = Set.of(AppointmentStatus.SCHEDULED,
-            AppointmentStatus.CHECKED_IN, AppointmentStatus.IN_EXAM, AppointmentStatus.AWAITING_RESULTS);
+    private static final Set<AppointmentStatus> REFERRAL_OPEN = Set.of(AppointmentStatus.BOOKED,
+            AppointmentStatus.CHECKED_IN, AppointmentStatus.READY_FOR_EXAMINATION, AppointmentStatus.IN_EXAM, AppointmentStatus.AWAITING_RESULTS);
     /** An ordered service still to be done; a result in (read or not) is enough to come back. */
     private static final Set<ServiceOrderStatus> ORDER_OPEN = Set.of(ServiceOrderStatus.ORDERED,
             ServiceOrderStatus.IN_PROGRESS);

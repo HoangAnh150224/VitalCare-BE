@@ -104,3 +104,29 @@ databaseChangeLog:
       file: db/changelog/changes/050-seed-test-caregiver-clinic-admin.sql
   - include:
       file: db/changelog/changes/051-shared-clinic-queue.sql
+  - include:
+      file: db/changelog/changes/052-system-administrator-scope.sql
+  - include:
+      file: db/changelog/changes/053-soft-delete-user-accounts.sql
+  - include:
+      file: db/changelog/changes/054-account-profile-role-rules.sql
+  - include:
+      file: db/changelog/changes/055-single-system-admin.sql
+  - include:
+      file: db/changelog/changes/056-appointment-status-spec.sql
+  - include:
+      file: db/changelog/changes/057-default-doctor-working-hours.sql
+  - include:
+      file: db/changelog/changes/058-body-temperature.sql
+  - include:
+      file: db/changelog/changes/059-drop-user-role.sql
+  - include:
+      file: db/changelog/changes/060-drop-unused-roles.sql
+  - include:
+      file: db/changelog/changes/061-drop-nurse.sql
+  - include:
+      file: db/changelog/changes/062-role-names-vi.sql
+  - include:
+      file: db/changelog/changes/063-admin-grants-clinic-admin.sql
+  - include:
+      file: db/changelog/changes/064-desk-payment-choice.sql

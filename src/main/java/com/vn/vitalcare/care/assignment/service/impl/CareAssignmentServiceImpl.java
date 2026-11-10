@@ -124,7 +124,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         Customer patient = requirePatient(customerId);
         Employee employee = employeeService.lockForUpdate(request.employeeId());
         if (!employee.getStaffType().isClinical()) {
-            throw new FieldValidationException("employeeId", "Only a doctor or a nurse can be on a care team");
+            throw new FieldValidationException("employeeId", "Only a doctor can be on a care team");
         }
         if (employee.getStatus() != EmployeeStatus.ACTIVE) {
             throw new FieldValidationException("employeeId", "That member of staff is no longer active");

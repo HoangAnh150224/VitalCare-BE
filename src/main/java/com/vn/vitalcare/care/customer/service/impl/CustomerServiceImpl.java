@@ -16,6 +16,7 @@ import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.PatientActivationSource;
 import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
 import com.vn.vitalcare.identity.user.entity.User;
+import com.vn.vitalcare.identity.user.service.UserService;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
@@ -31,6 +32,7 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,21 +57,33 @@ public class CustomerServiceImpl implements CustomerService {
     // read from it. See scope().
     private final RowLevelSecurity rowLevel;
     private final Clock clock;
+    private final UserService userService;
 
+    @Autowired
     public CustomerServiceImpl(CustomerRepository repository,
                                ClinicScope clinicScope,
                                RowLevelSecurity rowLevel,
-                               Clock clock) {
+                               Clock clock,
+                               UserService userService) {
         this.repository = repository;
         this.clinicScope = clinicScope;
         this.rowLevel = rowLevel;
         this.clock = clock;
+        this.userService = userService;
+    }
+
+    /** Compatibility constructor for existing service-level callers. */
+    public CustomerServiceImpl(CustomerRepository repository,
+                               ClinicScope clinicScope,
+                               RowLevelSecurity rowLevel,
+                               Clock clock) {
+        this(repository, clinicScope, rowLevel, clock, null);
     }
 
     @Override
     public Page<Customer> list(ListParams params) {
         // A receptionist sees their clinic's customers, plus whoever a full
-        // phone number or customer code names exactly — somebody walking in
+        // phone number, customer code or identity number names exactly — somebody walking in
         // from another clinic.
         Specification<Customer> visible = params.search()
                 .filter(term -> clinicScope.currentClinicId().isPresent())
@@ -238,6 +252,85 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     @Transactional
+    public Customer createWalkInProfile(String fullName, String phone, java.time.LocalDate dateOfBirth,
+                                        String gender, String nationalId) {
+        String name = fullName == null ? "" : fullName.trim();
+        String normalizedPhone = PhoneNumbers.normalize(phone)
+                .orElseThrow(() -> new FieldValidationException("phone", "A valid phone number is required"));
+        String normalizedNationalId = blankToNull(nationalId);
+
+        if (!repository.findWalkInDuplicates(normalizedPhone, name, dateOfBirth, normalizedNationalId).isEmpty()) {
+            throw new ConflictException(
+                    "A matching patient profile already exists. Search and select it instead of creating another one");
+        }
+
+        Customer customer = new Customer();
+        customer.setFullName(name);
+        customer.setPhone(normalizedPhone);
+        customer.setNationalId(normalizedNationalId);
+        customer.setDateOfBirth(dateOfBirth);
+        customer.setGender(gender);
+        Customer saved = repository.save(customer);
+        saved.setCustomerCode("KH%06d".formatted(saved.getId()));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public List<Customer> unclaimedWithPhone(String phone) {
+        return repository.findUnclaimedByPhone(phone);
+    }
+
+    @Override
+    @Transactional
+    public Customer registerAccountProfile(User user, Long claimProfileId, java.time.LocalDate dateOfBirth) {
+        // The account's number is proven by the code just spent: whoever holds it
+        // may take any of these, which is why the list was only shown after the code.
+        List<Customer> matches = repository.findUnclaimedByPhone(user.getPhone());
+
+        Customer profile;
+        if (claimProfileId != null) {
+            profile = matches.stream().filter(match -> match.getId().equals(claimProfileId)).findFirst()
+                    .orElseThrow(() -> new FieldValidationException("claimProfileId", "Pick one of the profiles shown"));
+            // The owner's name and number are the account's from now on (see Customer).
+            profile.setUser(user);
+            profile.setFullName(null);
+            profile.setPhone(null);
+        } else {
+            profile = new Customer();
+            profile.setUser(user);
+            profile.setDateOfBirth(dateOfBirth);
+            profile = repository.save(profile);
+            profile.setCustomerCode("KH%06d".formatted(profile.getId()));
+        }
+
+        // Having found themselves, the others with the number are relatives who share it (UC-04
+        // step 11b); beyond what an account holds they stay unclaimed, for the desk as before.
+        // "Not me" takes none of them: somebody none of these is gets nobody's history.
+        if (claimProfileId == null) {
+            if (userService != null) {
+                userService.synchronizeCustomerRole(user, false);
+            }
+            return repository.save(profile);
+        }
+        Customer owner = profile;
+        matches.stream()
+                .filter(match -> !match.getId().equals(owner.getId()))
+                .limit(MAX_DEPENDENTS)
+                .forEach(relative -> {
+                    relative.setGuardian(owner);
+                    relative.setRelationship("other");
+                    repository.save(relative);
+                });
+
+        if (userService != null) {
+            userService.synchronizeCustomerRole(user, profile.getStatus() == CustomerStatus.PATIENT);
+        }
+        return repository.save(profile);
+    }
+
+    @Override
+    @Transactional
     public Customer update(Long id, CustomerPatchRequest request) {
         Customer customer = get(id);
 
@@ -297,6 +390,9 @@ public class CustomerServiceImpl implements CustomerService {
 
     private void activate(Customer customer, PatientActivationSource source) {
         customer.activateAsPatient(source, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
+        if (customer.getUser() != null && userService != null) {
+            userService.synchronizeCustomerRole(customer.getUser(), true);
+        }
     }
 
     /** The caller's customers as a filter; see {@link #boundScope()}. */
@@ -327,6 +423,9 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     private static String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }

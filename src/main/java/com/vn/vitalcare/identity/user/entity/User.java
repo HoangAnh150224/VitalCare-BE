@@ -95,6 +95,10 @@ public class User {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    /** Set when an administrator archives the account while keeping its history. */
+    @Column(name = "deleted_at")
+    private Instant deletedAt;
+
     protected User() {
         // for JPA
     }
@@ -226,6 +230,14 @@ public class User {
 
     public Instant getLastLoginAt() {
         return lastLoginAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
     }
 
     public void setLastLoginAt(Instant lastLoginAt) {

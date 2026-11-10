@@ -32,12 +32,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class AlertRules {
 
     private static final Set<String> SORTABLE = Set.of("id", "metric", "severity", "threshold", "name");
-    private static final Set<String> METRICS = Set.of("HEART_RATE", "SPO2", "SKIN_TEMPERATURE");
+    private static final Set<String> METRICS = Set.of("HEART_RATE", "SPO2", "SKIN_TEMPERATURE", "BODY_TEMPERATURE");
     /** A threshold outside what the band can measure would never fire, or always would. */
     private static final Map<String, BigDecimal[]> RANGES = Map.of(
             "HEART_RATE", new BigDecimal[] {new BigDecimal("20"), new BigDecimal("250")},
             "SPO2", new BigDecimal[] {new BigDecimal("50"), new BigDecimal("100")},
-            "SKIN_TEMPERATURE", new BigDecimal[] {new BigDecimal("25"), new BigDecimal("45")});
+            "SKIN_TEMPERATURE", new BigDecimal[] {new BigDecimal("25"), new BigDecimal("45")},
+            "BODY_TEMPERATURE", new BigDecimal[] {new BigDecimal("34"), new BigDecimal("43")});
 
     private final AlertRuleRepository rules;
     private final CustomerService customers;
@@ -120,7 +121,7 @@ public class AlertRules {
     private void apply(AlertRule rule, AlertDtos.RuleRequest r, boolean creating) {
         String metric = upper(r.metric());
         if (!METRICS.contains(metric)) {
-            throw new FieldValidationException("metric", "Choose heart rate, SpO2 or skin temperature");
+            throw new FieldValidationException("metric", "Choose heart rate, SpO2, skin or body temperature");
         }
         String operator = upper(r.operator());
         if (!AlertRule.BELOW.equals(operator) && !AlertRule.ABOVE.equals(operator)) {

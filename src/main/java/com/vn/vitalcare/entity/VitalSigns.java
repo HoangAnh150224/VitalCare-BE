@@ -60,6 +60,10 @@ public class VitalSigns extends BaseEntity {
     @Column(name = "temperature", precision = 5, scale = 2)
     private BigDecimal temperature;
 
+    /** Estimated body (mouth-equivalent) temperature, °C: skin plus the band's calibrated offset. */
+    @Column(name = "body_temperature", precision = 5, scale = 2)
+    private BigDecimal bodyTemperature;
+
     @Column(name = "measured_at")
     private OffsetDateTime measuredAt;
 
@@ -148,6 +152,14 @@ public class VitalSigns extends BaseEntity {
 
     public void setTemperature(BigDecimal temperature) {
         this.temperature = temperature;
+    }
+
+    public BigDecimal getBodyTemperature() {
+        return bodyTemperature;
+    }
+
+    public void setBodyTemperature(BigDecimal bodyTemperature) {
+        this.bodyTemperature = bodyTemperature;
     }
 
     public OffsetDateTime getMeasuredAt() {

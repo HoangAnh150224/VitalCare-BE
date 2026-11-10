@@ -27,9 +27,8 @@ public class Customer extends BaseEntity {
     private Long id;
 
     /**
-     * The account this profile is the owner's own. Null for a dependent — a
-     * relative the account's owner registers visits for — who has no sign-in
-     * and belongs to {@link #guardian} instead.
+     * The account this profile is the owner's own. Null for an accountless
+     * walk-in or a relative registered under {@link #guardian}.
      */
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", unique = true)

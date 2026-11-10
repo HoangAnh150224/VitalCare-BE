@@ -140,8 +140,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
     @Override
     public Integer queueAhead(Appointment appointment) {
-        if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
-                || appointment.getPaidAt() == null
+        if (appointment.getStatus() != AppointmentStatus.READY_FOR_EXAMINATION
                 || !appointment.getAppointmentDate().equals(today())) {
             return null;
         }
@@ -217,7 +216,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public Appointment update(Long id, AppointmentUpdateRequest request) {
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !isUnderway(appointment)) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED && !isUnderway(appointment)) {
             throw new ConflictException("An appointment that is over can no longer be changed");
         }
         appointment.setReason(request.reason().trim());
@@ -232,7 +231,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         // USING through the write scope: an appointment the desk may see but
         // not change is a 404.
         Appointment appointment = find(id, Action.WRITE);
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new ConflictException("Only a registered appointment can be checked in");
         }
         if (!appointment.getAppointmentDate().equals(today())) {
@@ -243,6 +242,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         rowLevel.checkWritable(appointment);
         customerService.activateIfNeutral(appointment.getCustomer(), PatientActivationSource.CHECK_IN);
         Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.CheckedIn(saved.getId()));
         // The doctor's room may be free and waiting for exactly this person.
         events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), doctorIdOf(saved)));
         return saved;
@@ -324,13 +324,14 @@ public class AppointmentServiceImpl implements AppointmentService {
     public void markExamPaid(Long appointmentId, OffsetDateTime when) {
         repository.lockById(appointmentId).ifPresent(appointment -> {
             boolean wasUnpaid = appointment.getPaidAt() == null;
+            boolean wasCheckedIn = appointment.getStatus() == AppointmentStatus.CHECKED_IN;
             appointment.markPaid(when);
             repository.persist(appointment);
             if (wasUnpaid) {
                 events.publishEvent(new VisitEvents.ExamPaid(appointment.getId()));
             }
             // Already at the desk: paying is what puts the patient in the line now.
-            if (wasUnpaid && appointment.getStatus() == AppointmentStatus.CHECKED_IN) {
+            if (wasUnpaid && wasCheckedIn) {
                 events.publishEvent(new ExamRoomEvents.QueueJoined(appointment.getClinicId(),
                         doctorIdOf(appointment)));
             }
@@ -368,7 +369,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment appointment = find(id, Action.WRITE);
         // Also somebody checked in who left without paying: they never joined the line (BF-02).
         boolean leftUnpaid = appointment.getStatus() == AppointmentStatus.CHECKED_IN && appointment.getPaidAt() == null;
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED && !leftUnpaid) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED && !leftUnpaid) {
             throw new ConflictException("Only a registered appointment can be marked as a no-show");
         }
         events.publishEvent(new VisitEvents.Cancelling(appointment.getId()));
@@ -405,6 +406,79 @@ public class AppointmentServiceImpl implements AppointmentService {
         Appointment saved = repository.persist(appointment);
         events.publishEvent(new VisitEvents.Cancelled(saved.getId()));
         return saved;
+    }
+
+    @Override
+    public boolean hasOpenVisitAt(Customer customer, java.util.UUID clinicId, LocalDate date) {
+        return repository.existsOpenAtClinic(customer.getId(), clinicId, date);
+    }
+
+    @Override
+    public long noShowsOfAccount(Customer owner) {
+        return repository.countNoShowsOfAccount(accountOf(owner).getId());
+    }
+
+    @Override
+    @Transactional
+    public Appointment choosePaymentAtDesk(Customer customer, Long id, boolean atDesk) {
+        Appointment appointment = getOwn(customer, id);
+        if (appointment.getPaidAt() != null) {
+            throw new ConflictException("The examination fee is already paid");
+        }
+        if (appointment.getStatus() != AppointmentStatus.BOOKED
+                && appointment.getStatus() != AppointmentStatus.CHECKED_IN) {
+            throw new ConflictException("Only a visit still to come can change how it is paid");
+        }
+        if (atDesk && noShowsOfAccount(customer) >= NO_SHOWS_FOR_ONLINE_ONLY) {
+            throw new ConflictException("After three no-shows the examination fee is paid online");
+        }
+        // Chosen once: choosing again keeps the first time and texts nobody twice.
+        boolean newly = atDesk && appointment.getDeskPaymentChosenAt() == null;
+        if (newly) {
+            appointment.setDeskPaymentChosenAt(OffsetDateTime.now(clock));
+        } else if (!atDesk) {
+            appointment.setDeskPaymentChosenAt(null);
+        }
+        Appointment saved = repository.persist(appointment);
+        if (newly) {
+            events.publishEvent(new VisitEvents.DeskPaymentChosen(saved.getId()));
+        }
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Appointment changeExaminee(Long id, Long customerId) {
+        Appointment appointment = find(id, Action.WRITE);
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            throw new ConflictException("Only a registered appointment can be given to someone else");
+        }
+        Customer other = customerService.getForBooking(customerId);
+        if (other.getId().equals(appointment.getCustomer().getId())) {
+            return appointment;
+        }
+        if (!accountOf(other).getId().equals(accountOf(appointment.getCustomer()).getId())) {
+            throw new FieldValidationException("customerId", "Pick a profile of the same account");
+        }
+        if (!other.isCompleteForVisit()) {
+            throw new FieldValidationException("customerId",
+                    "Fill in this profile's date of birth and gender before registering a visit");
+        }
+        if (repository.existsScheduledAtClinic(other.getId(), appointment.getClinicId(),
+                appointment.getAppointmentDate(), appointment.getId())) {
+            throw new ConflictException("There is already a visit registered at that clinic on that day");
+        }
+        appointment.setCustomer(other);
+        rowLevel.checkWritable(appointment);
+        Appointment saved = repository.persist(appointment);
+        // Its unpaid exam bill follows the visit to the new profile.
+        events.publishEvent(new VisitEvents.Rescheduled(saved.getId()));
+        return saved;
+    }
+
+    /** The account a profile belongs to: its own owner's profile, or its guardian's for a relative. */
+    private static Customer accountOf(Customer profile) {
+        return profile.getGuardian() != null ? profile.getGuardian() : profile;
     }
 
     @Override
@@ -445,7 +519,7 @@ public class AppointmentServiceImpl implements AppointmentService {
      * later than two hours before it is expected -- for the desk and the patient alike.
      */
     private void requireChangeable(Appointment appointment, String change) {
-        if (appointment.getStatus() != AppointmentStatus.SCHEDULED) {
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
             throw new ConflictException("Only a registered appointment can be " + change);
         }
         // A visit in the shared line has no expected time: it changes until it is checked in.
@@ -533,20 +607,15 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (repository.existsScheduledAtClinic(customer.getId(), clinicId, date, excludeId == null ? -1L : excludeId)) {
             throw new ConflictException("There is already a visit registered at that clinic on that day");
         }
-        int capacity = 0;
-        // Today, somebody has to be still to come: no registering after the last session has ended.
-        boolean stillOpen = !date.equals(clinicService.today());
-        java.time.LocalTime nowHere = java.time.LocalTime.now(clock.withZone(clinicTimeZone()));
-        for (Employee doctor : employeeService.doctorsOf(clinicId)) {
-            List<Turn> turns = availability.turns(doctor, date);
-            capacity += turns.size();
-            stillOpen = stillOpen || turns.stream().anyMatch(turn -> turn.end().isAfter(nowHere));
+        DaySupply supply = supply(clinicId, date);
+        // Said apart, so the patient knows whether to pick another day or come earlier.
+        if (supply.capacity() == 0) {
+            throw new FieldValidationException("appointmentDate", "No doctor sees patients at that clinic on that day");
         }
-        if (!stillOpen) {
-            throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
+        if (!supply.stillOpen()) {
+            throw new FieldValidationException("appointmentDate", "Registration for that day is over");
         }
-        if (capacity == 0
-                || repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId) >= capacity) {
+        if (repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId) >= supply.capacity()) {
             throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
         }
         appointment.setEmployee(null);
@@ -556,6 +625,80 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setQueueNumber(repository.maxQueueNumberAtClinic(clinicId, date) + 1);
         appointment.setStartTime(null);
         appointment.setEndTime(null);
+    }
+
+    /**
+     * A clinic's day: how many visits its doctors' turns hold (BR-01, shared by
+     * online and walk-in visits), and whether a turn is still to come — on
+     * any other day than today there always is. The last turn's end is the
+     * day's last check-in (BR-10).
+     */
+    private record DaySupply(int capacity, boolean stillOpen) {
+    }
+
+    private DaySupply supply(java.util.UUID clinicId, LocalDate date) {
+        int capacity = 0;
+        boolean stillOpen = !date.equals(clinicService.today());
+        java.time.LocalTime nowHere = java.time.LocalTime.now(clock.withZone(clinicTimeZone()));
+        for (Employee doctor : employeeService.doctorsOf(clinicId)) {
+            List<Turn> turns = availability.turns(doctor, date);
+            capacity += turns.size();
+            stillOpen = stillOpen || turns.stream().anyMatch(turn -> turn.end().isAfter(nowHere));
+        }
+        return new DaySupply(capacity, stillOpen);
+    }
+
+    @Override
+    public List<OpenDay> openDays(java.util.UUID clinicId, LocalDate from, int days) {
+        LocalDate start = from == null || from.isBefore(today()) ? today() : from;
+        int wanted = Math.max(1, Math.min(days, 31));
+        // ponytail: one count per day over a few weeks; a grouped count if the window grows.
+        List<OpenDay> open = new java.util.ArrayList<>();
+        for (LocalDate day = start; clinicService.isWithinBookingWindow(day) && open.size() < wanted;
+             day = day.plusDays(1)) {
+            DaySupply supply = supply(clinicId, day);
+            if (!supply.stillOpen()) {
+                continue;
+            }
+            int remaining = supply.capacity() - (int) repository.countActiveAtClinic(clinicId, day, -1L);
+            if (remaining > 0) {
+                open.add(new OpenDay(day, remaining));
+            }
+        }
+        return open;
+    }
+
+    @Override
+    @Transactional
+    public int markNoShowsDue() {
+        LocalDate today = today();
+        java.util.Map<java.util.UUID, Boolean> openToday = new java.util.HashMap<>();
+        int marked = 0;
+        for (Long id : repository.findBookedUpTo(today)) {
+            // The bill first, then the visit, as every cancellation takes them; the visit is
+            // read under its lock, so one the desk checked in meanwhile is left alone.
+            events.publishEvent(new VisitEvents.Cancelling(id));
+            var locked = repository.lockById(id)
+                    .filter(appointment -> appointment.getStatus() == AppointmentStatus.BOOKED);
+            if (locked.isEmpty()) {
+                continue;
+            }
+            Appointment due = locked.get();
+            // Today only once the day's last turn is over; a day with no turns at all is left to
+            // tomorrow's sweep rather than turning everybody away before they could come.
+            if (due.getAppointmentDate().equals(today)
+                    && openToday.computeIfAbsent(due.getClinicId(), clinic -> {
+                        DaySupply supply = supply(clinic, today);
+                        return supply.stillOpen() || supply.capacity() == 0;
+                    })) {
+                continue;
+            }
+            due.markNoShow();
+            repository.persist(due);
+            events.publishEvent(new VisitEvents.Cancelled(id));
+            marked++;
+        }
+        return marked;
     }
 
     /**
@@ -595,15 +738,16 @@ public class AppointmentServiceImpl implements AppointmentService {
         throw new IllegalStateException("Could not generate an unused booking code");
     }
 
-    /** Checked in and not yet over: waiting for the doctor, in the room with them, or out and coming back. */
+    /** Checked in and not yet over: waiting to pay, waiting for the doctor, in the room with them, or out and coming back. */
     private static boolean isUnderway(Appointment appointment) {
         return appointment.getStatus() == AppointmentStatus.CHECKED_IN
+                || appointment.getStatus() == AppointmentStatus.READY_FOR_EXAMINATION
                 || appointment.getStatus() == AppointmentStatus.IN_EXAM
                 || appointment.getStatus() == AppointmentStatus.AWAITING_RESULTS;
     }
 
     private static boolean isUnderwayOrRegistered(Appointment appointment) {
-        return appointment.getStatus() == AppointmentStatus.SCHEDULED || isUnderway(appointment);
+        return appointment.getStatus() == AppointmentStatus.BOOKED || isUnderway(appointment);
     }
 
     private LocalDate today() {

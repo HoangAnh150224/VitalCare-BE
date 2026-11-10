@@ -101,14 +101,12 @@ public class RoleService {
         return found;
     }
 
-    @Transactional
+    /**
+     * The roles are fixed (Guest, Patient, Doctor, front desk, Clinic and System Administrator;
+     * a caregiver is a Guest or Patient someone shared with), so none is added.
+     */
     public Role create(RoleRequest request) {
-        String code = request.code().trim();
-        requireCodeAvailable(code, null);
-
-        Role role = new Role(code, request.name().trim(), trimToNull(request.description()), false);
-        role.setPermissions(resolvePermissions(request.permissions()));
-        return repository.save(role);
+        throw new ConflictException("The roles are fixed; a new one cannot be added");
     }
 
     @Transactional

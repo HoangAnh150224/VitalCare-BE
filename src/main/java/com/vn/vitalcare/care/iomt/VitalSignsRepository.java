@@ -27,6 +27,7 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long>,
                    hr.heart_rate as heartRate, hr.measured_at as heartRateAt,
                    sp.spo2 as spo2, sp.measured_at as spo2At,
                    tp.temperature as skinTemperature, tp.measured_at as skinTemperatureAt,
+                   bt.body_temperature as bodyTemperature, bt.measured_at as bodyTemperatureAt,
                    lt.measured_at as lastMeasuredAt,
                    (select count(*) from vital_signs d where d.customer_id = c.id and d.validation_status = 'VALID'
                       and d.deleted_at is null and d.measured_at > now() - interval '24 hours') as readings24h
@@ -40,6 +41,9 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long>,
             left join lateral (select v.temperature, v.measured_at from vital_signs v where v.customer_id = c.id
                 and v.temperature is not null and v.validation_status = 'VALID' and v.deleted_at is null
                 order by v.measured_at desc limit 1) tp on true
+            left join lateral (select v.body_temperature, v.measured_at from vital_signs v where v.customer_id = c.id
+                and v.body_temperature is not null and v.validation_status = 'VALID' and v.deleted_at is null
+                order by v.measured_at desc limit 1) bt on true
             left join lateral (select v.measured_at from vital_signs v where v.customer_id = c.id
                 and v.validation_status = 'VALID' and v.deleted_at is null
                 order by v.measured_at desc limit 1) lt on true
@@ -54,6 +58,8 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long>,
         java.time.Instant getSpo2At();
         java.math.BigDecimal getSkinTemperature();
         java.time.Instant getSkinTemperatureAt();
+        java.math.BigDecimal getBodyTemperature();
+        java.time.Instant getBodyTemperatureAt();
         java.time.Instant getLastMeasuredAt();
         Long getReadings24h();
     }
@@ -68,7 +74,9 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long>,
                    min(v.heart_rate) as heartRateMin, avg(v.heart_rate) as heartRateAvg, max(v.heart_rate) as heartRateMax,
                    min(v.spo2) as spo2Min, avg(v.spo2) as spo2Avg, max(v.spo2) as spo2Max,
                    min(v.temperature) as skinTemperatureMin, avg(v.temperature) as skinTemperatureAvg,
-                   max(v.temperature) as skinTemperatureMax
+                   max(v.temperature) as skinTemperatureMax,
+                   min(v.body_temperature) as bodyTemperatureMin, avg(v.body_temperature) as bodyTemperatureAvg,
+                   max(v.body_temperature) as bodyTemperatureMax
             from vital_signs v
             where v.customer_id = :customerId and v.validation_status = 'VALID' and v.deleted_at is null
               and v.measured_at >= :fromTime and v.measured_at < :toTime
@@ -90,6 +98,9 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long>,
         java.math.BigDecimal getSkinTemperatureMin();
         java.math.BigDecimal getSkinTemperatureAvg();
         java.math.BigDecimal getSkinTemperatureMax();
+        java.math.BigDecimal getBodyTemperatureMin();
+        java.math.BigDecimal getBodyTemperatureAvg();
+        java.math.BigDecimal getBodyTemperatureMax();
     }
 
     boolean existsByDeviceIdAndClientRecordId(Long deviceId, String clientRecordId);

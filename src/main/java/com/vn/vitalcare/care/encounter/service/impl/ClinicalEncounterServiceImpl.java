@@ -202,6 +202,7 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         }
         // Waiting for the doctor or already called into the room: either way, here.
         if (appointment.getStatus() != AppointmentStatus.CHECKED_IN
+                && appointment.getStatus() != AppointmentStatus.READY_FOR_EXAMINATION
                 && appointment.getStatus() != AppointmentStatus.IN_EXAM) {
             throw new FieldValidationException("appointmentId", "The patient has not checked in for that appointment");
         }
@@ -283,7 +284,7 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         return new VisitState(appointment.getId(), appointment.getStatus(),
                 appointment.getEmployee() == null ? null : appointment.getEmployee().getId(),
                 appointment.getReturnedAt() != null
-                && appointment.getStatus() == AppointmentStatus.CHECKED_IN, visitReturns.tasksOf(appointment));
+                && appointment.getStatus() == AppointmentStatus.READY_FOR_EXAMINATION, visitReturns.tasksOf(appointment));
     }
 
     private ClinicalEncounter find(Long id, Action action) {

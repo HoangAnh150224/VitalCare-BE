@@ -67,6 +67,21 @@ public interface CustomerService {
      */
     Customer createNeutral(User user);
 
+    /** A walk-in profile with no sign-in account or guardian. */
+    Customer createWalkInProfile(String fullName, String phone, java.time.LocalDate dateOfBirth,
+                                 String gender, String nationalId);
+
+    /** Profiles with this number and no account yet, oldest first: what a registration offers to claim. */
+    List<Customer> unclaimedWithPhone(String phone);
+
+    /**
+     * The owner's profile for a verified self-registration (UC-04 steps 9–11):
+     * the unclaimed profile with the account's number that {@code claimProfileId}
+     * names, or a new neutral one when it is null ("not me"). Every other
+     * unclaimed profile with that number joins the account as a relative.
+     */
+    Customer registerAccountProfile(User user, Long claimProfileId, java.time.LocalDate dateOfBirth);
+
     Customer update(Long id, CustomerPatchRequest request);
 
     /**

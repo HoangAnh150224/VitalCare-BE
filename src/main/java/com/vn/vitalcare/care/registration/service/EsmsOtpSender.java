@@ -28,11 +28,9 @@ import tools.jackson.databind.ObjectMapper;
  * <p>The text is unaccented: one SMS under 160 characters, and what a
  * brandname not registered for Unicode accepts.
  *
- * <p>Sent off the request thread. A number with an account gets an SMS, one
- * without does not; inline, the provider round trip would make the first
- * answer measurably slower and the recovery form would tell the two apart. The
- * price is that a refused send cannot reach the person: it is logged, and they
- * ask for a new code after the cooldown.
+ * <p>Sent off the request thread so the provider round trip does not hold the
+ * API response open. A refused send cannot reach the person: it is logged, and
+ * they ask for a new code after the cooldown.
  */
 @Component
 @ConditionalOnExpression("!'${app.sms.esms.api-key:}'.isBlank()")

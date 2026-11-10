@@ -112,7 +112,7 @@ class VitalIngestionTest {
 
     private static DeviceUpload.Reading reading(String id, OffsetDateTime at, String spo2, Integer heartRate) {
         return new DeviceUpload.Reading(id, at == null ? null : at.toString(),
-                spo2 == null ? null : new BigDecimal(spo2), heartRate, new BigDecimal("33.4"), null);
+                spo2 == null ? null : new BigDecimal(spo2), heartRate, new BigDecimal("33.4"), null, null);
     }
 
     private static DeviceUpload upload(DeviceUpload.Reading... readings) {
@@ -164,6 +164,28 @@ class VitalIngestionTest {
     }
 
     @Test
+    @DisplayName("The body temperature is stored next to the skin's; alone it is a reading, out of 34–43 °C it is INVALID")
+    void storesBodyTemperature() {
+        SyncResult result = ingestion.ingest("VC-BAND-07", upload(
+                new DeviceUpload.Reading("both", NOW.minusMinutes(3).toString(), new BigDecimal("97"), 70,
+                        new BigDecimal("34.2"), new BigDecimal("36.9"), null),
+                new DeviceUpload.Reading("body-only", NOW.minusMinutes(2).toString(), null, null, null,
+                        new BigDecimal("37.1"), null),
+                new DeviceUpload.Reading("too-hot", NOW.minusMinutes(1).toString(), null, null, null,
+                        new BigDecimal("45"), null)), "REST");
+
+        assertThat(result.accepted()).isEqualTo(2);
+        assertThat(result.invalid()).isEqualTo(1);
+        assertThat(stored).hasSize(3);
+        assertThat(stored.get(0).getBodyTemperature()).isEqualByComparingTo("36.9");
+        assertThat(stored.get(0).getTemperature()).isEqualByComparingTo("34.2");
+        assertThat(stored.get(1).isValid()).isTrue();
+        assertThat(stored.get(1).getBodyTemperature()).isEqualByComparingTo("37.1");
+        assertThat(stored.get(2).getValidationStatus()).isEqualTo(VitalSigns.INVALID);
+        assertThat(stored.get(2).getValidationError()).contains("Nhiệt độ cơ thể 45");
+    }
+
+    @Test
     @DisplayName("Malformed readings are refused one by one and kept as failures; the rest of the upload goes in")
     void refusesMalformedReadingsAlone() {
         SyncResult result = ingestion.ingest("VC-BAND-07", upload(
@@ -171,7 +193,7 @@ class VitalIngestionTest {
                 reading(null, NOW.minusMinutes(1), "97", 76),
                 reading("no-time", null, "97", 76),
                 reading("future", NOW.plusHours(1), "97", 76),
-                new DeviceUpload.Reading("empty", NOW.minusMinutes(1).toString(), null, null, null, null)), "REST");
+                new DeviceUpload.Reading("empty", NOW.minusMinutes(1).toString(), null, null, null, null, null)), "REST");
 
         assertThat(result.status()).isEqualTo(SyncBatch.PARTIAL);
         assertThat(result.accepted()).isEqualTo(1);
@@ -225,8 +247,8 @@ class VitalIngestionTest {
         when(sessions.findByDeviceIdAndClientSessionId(7L, "s-1")).thenReturn(Optional.empty());
 
         ingestion.ingest("VC-BAND-07", new DeviceUpload("b-2", 0, null, null, sitting, List.of(
-                new DeviceUpload.Reading("a", NOW.minusMinutes(4).toString(), new BigDecimal("97"), 70, null, "s-1"),
-                new DeviceUpload.Reading("b", NOW.minusMinutes(3).toString(), new BigDecimal("98"), 72, null, "s-1"))),
+                new DeviceUpload.Reading("a", NOW.minusMinutes(4).toString(), new BigDecimal("97"), 70, null, null, "s-1"),
+                new DeviceUpload.Reading("b", NOW.minusMinutes(3).toString(), new BigDecimal("98"), 72, null, null, "s-1"))),
                 "REST");
 
         verify(sessions, times(1)).save(saved.capture());

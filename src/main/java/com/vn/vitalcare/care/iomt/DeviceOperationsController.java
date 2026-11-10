@@ -58,7 +58,8 @@ public class DeviceOperationsController {
     }
 
     public record ReadingResponse(Long id, OffsetDateTime measuredAt, OffsetDateTime receivedAt, Integer heartRate,
-                                  BigDecimal spo2, BigDecimal skinTemperature, String source, String validationStatus,
+                                  BigDecimal spo2, BigDecimal skinTemperature, BigDecimal bodyTemperature,
+                                  String source, String validationStatus,
                                   String validationError, Long customerId, String customerName) {
     }
 
@@ -72,7 +73,7 @@ public class DeviceOperationsController {
                         org.springframework.data.domain.PageRequest.of(0, Math.max(1, Math.min(limit, 200))))
                 .stream()
                 .map(v -> new ReadingResponse(v.getId(), v.getMeasuredAt(), v.getReceivedAt(), v.getHeartRate(),
-                        v.getSpo2(), v.getTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
+                        v.getSpo2(), v.getTemperature(), v.getBodyTemperature(), v.getSource(), v.getValidationStatus(), v.getValidationError(),
                         v.getCustomer() == null ? null : v.getCustomer().getId(),
                         v.getCustomer() == null ? null : v.getCustomer().getFullName()))
                 .toList();
@@ -85,11 +86,12 @@ public class DeviceOperationsController {
     }
 
     /**
-     * {@code scenario}: NORMAL, LOW_SPO2, HIGH_HEART_RATE, FEVER (a high skin
+     * {@code scenario}: NORMAL, LOW_SPO2, HIGH_HEART_RATE, FEVER (a high body
      * temperature) or SENSOR_FAULT (implausible values, stored as INVALID).
      */
     public record SimulationRequest(Integer count, Integer intervalSeconds, String scenario,
-                                    BigDecimal spo2, Integer heartRate, BigDecimal skinTemperature) {
+                                    BigDecimal spo2, Integer heartRate, BigDecimal skinTemperature,
+                                    BigDecimal bodyTemperature) {
     }
 
     @PostMapping("/{id}/simulate")
@@ -122,8 +124,11 @@ public class DeviceOperationsController {
             case "SENSOR_FAULT" -> 0;
             default -> 76;
         };
+        // Fever rules read the body temperature; the wrist skin stays a few degrees below it.
+        BigDecimal body = request.bodyTemperature() != null ? request.bodyTemperature()
+                : "FEVER".equals(scenario) ? new BigDecimal("38.6") : new BigDecimal("36.8");
         BigDecimal skin = request.skinTemperature() != null ? request.skinTemperature()
-                : "FEVER".equals(scenario) ? new BigDecimal("38.6") : new BigDecimal("33.4");
+                : "FEVER".equals(scenario) ? new BigDecimal("35.4") : new BigDecimal("33.4");
 
         ThreadLocalRandom random = ThreadLocalRandom.current();
         OffsetDateTime now = OffsetDateTime.now(clock);
@@ -138,6 +143,7 @@ public class DeviceOperationsController {
                             .setScale(1, RoundingMode.HALF_UP),
                     fault ? heartRate : heartRate + random.nextInt(-3, 4),
                     skin.add(BigDecimal.valueOf(random.nextInt(-2, 3), 1)).setScale(1, RoundingMode.HALF_UP),
+                    body.add(BigDecimal.valueOf(random.nextInt(-1, 2), 1)).setScale(1, RoundingMode.HALF_UP),
                     session));
         }
         DeviceUpload upload = new DeviceUpload("sim-" + now.toEpochSecond(), 0, random.nextInt(40, 101), "sim-1.0",

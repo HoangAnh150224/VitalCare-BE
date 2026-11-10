@@ -22,6 +22,14 @@ public final class VisitEvents {
     public record Registered(Long appointmentId) {
     }
 
+    /** The patient chose to pay a visit's examination fee at the desk: they are told so by SMS. */
+    public record DeskPaymentChosen(Long appointmentId) {
+    }
+
+    /** A booked visit was checked in at the desk: the patient's account is told what comes next. */
+    public record CheckedIn(Long appointmentId) {
+    }
+
     /** A visit's examination fee was paid: it may queue. */
     public record ExamPaid(Long appointmentId) {
     }

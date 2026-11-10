@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyShort;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,6 +65,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * Registering a visit at a clinic for a day (BF-02, the clinic's shared
@@ -175,7 +179,7 @@ class AppointmentServiceTest {
         assertEquals(1, booked.getQueueNumber());
         assertEquals(null, booked.getStartTime());
         assertEquals(null, booked.getEndTime());
-        assertEquals(AppointmentStatus.SCHEDULED, booked.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, booked.getStatus());
         assertEquals(null, booked.getEmployee());
         assertEquals(CLINIC, booked.getClinicId());
         assertEquals(TUESDAY, booked.getAppointmentDate());
@@ -256,6 +260,15 @@ class AppointmentServiceTest {
     void unavailableDays() {
         LocalDate sunday = TODAY.plusDays(6);
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(sunday)));
+        // Said apart: nobody works that day, or the day is full.
+        assertEquals("No doctor sees patients at that clinic on that day",
+                assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                        () -> service.bookOwn(customer, booking(sunday))).getMessage());
+        held = 16;
+        assertEquals("No doctor has a turn left at that clinic on that day",
+                assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                        () -> service.bookOwn(customer, booking(TUESDAY))).getMessage());
+        held = 0;
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(TODAY.minusDays(1))));
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(TODAY.plusDays(31))));
     }
@@ -320,6 +333,30 @@ class AppointmentServiceTest {
         verify(repository, never()).persist(any());
     }
 
+    @Test
+    @DisplayName("UC-02 B1: the desk gives a booked visit to another profile of the same account, never another's")
+    void changesExamineeWithinTheAccount() {
+        ReflectionTestUtils.setField(customer, "id", 1L);
+        Customer child = relative();
+        ReflectionTestUtils.setField(child, "id", 5L);
+        when(customers.findByIdAndDeletedAtIsNull(5L)).thenReturn(Optional.of(child));
+        Customer stranger = new Customer();
+        ReflectionTestUtils.setField(stranger, "id", 9L);
+        stranger.setDateOfBirth(LocalDate.of(1980, 1, 1));
+        stranger.setGender("female");
+        when(customers.findByIdAndDeletedAtIsNull(9L)).thenReturn(Optional.of(stranger));
+        Appointment appointment = stored(appointmentOn(TUESDAY));
+
+        service.changeExaminee(1L, 5L);
+        assertEquals(child, appointment.getCustomer());
+
+        assertField("customerId", () -> service.changeExaminee(1L, 9L));
+        assertEquals(child, appointment.getCustomer());
+
+        appointment.checkIn(7L, null);
+        assertThrows(ConflictException.class, () -> service.changeExaminee(1L, 1L));
+    }
+
     private Customer relative() {
         Customer child = new Customer();
         child.setGuardian(customer);
@@ -377,7 +414,7 @@ class AppointmentServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.checkIn(1L));
         assertThrows(ResourceNotFoundException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ResourceNotFoundException.class, () -> service.complete(1L));
-        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         verify(repository, never()).persist(any());
     }
 
@@ -407,6 +444,29 @@ class AppointmentServiceTest {
         assertEquals(CustomerStatus.PATIENT, customer.getStatus());
         assertEquals(PatientActivationSource.CHECK_IN, customer.getPatientActivationSource());
         assertEquals(appointment.getCheckedInAt(), customer.getPatientActivatedAt());
+    }
+
+    @Test
+    @DisplayName("checking in tells the patient's account (what comes next depends on the fee)")
+    void checkInTellsThePatient() {
+        stored(appointmentOn(TODAY));
+        service.checkIn(1L);
+        verify(events, times(1)).publishEvent(any(VisitEvents.CheckedIn.class));
+    }
+
+    @Test
+    @DisplayName("BR-04: ready for examination once both checked in and paid, in either order")
+    void readyOnceCheckedInAndPaid() {
+        Appointment paidFirst = stored(appointmentOn(TODAY));
+        paidFirst.markPaid(java.time.OffsetDateTime.now());
+        assertEquals(AppointmentStatus.BOOKED, paidFirst.getStatus(), "paying online does not check anybody in");
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, service.checkIn(1L).getStatus());
+
+        Appointment arrivedFirst = stored(appointmentOn(TODAY));
+        service.checkIn(1L);
+        assertEquals(AppointmentStatus.CHECKED_IN, arrivedFirst.getStatus());
+        arrivedFirst.markPaid(java.time.OffsetDateTime.now());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, arrivedFirst.getStatus());
     }
 
     @Test
@@ -453,7 +513,7 @@ class AppointmentServiceTest {
         Appointment second = appointmentOn(TODAY);
         when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(second));
         service.completeForEncounter(2L);
-        assertEquals(AppointmentStatus.SCHEDULED, second.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, second.getStatus());
         second.checkIn(null, null);
         service.completeForEncounter(2L);
         assertEquals(AppointmentStatus.COMPLETED, second.getStatus());
@@ -471,6 +531,31 @@ class AppointmentServiceTest {
         assertThrows(ConflictException.class, () -> service.markNoShow(1L));
         assertThrows(ConflictException.class, () -> service.checkIn(1L));
         assertEquals(AppointmentStatus.NO_SHOW, today.getStatus());
+    }
+
+    @Test
+    @DisplayName("UC-01 step 4: paying at the desk is kept and texted once; online again clears it; not once paid, nor after three no-shows")
+    void paysAtTheDesk() {
+        Appointment visit = appointmentOn(TUESDAY);
+        when(repository.findOwn(eq(1L), any())).thenReturn(Optional.of(visit));
+
+        service.choosePaymentAtDesk(customer, 1L, true);
+        java.time.OffsetDateTime chosen = visit.getDeskPaymentChosenAt();
+        assertNotNull(chosen);
+        service.choosePaymentAtDesk(customer, 1L, true);
+        assertEquals(chosen, visit.getDeskPaymentChosenAt());
+        verify(events, times(1)).publishEvent(any(VisitEvents.DeskPaymentChosen.class));
+
+        service.choosePaymentAtDesk(customer, 1L, false);
+        assertNull(visit.getDeskPaymentChosenAt());
+
+        when(repository.countNoShowsOfAccount(any())).thenReturn(3L);
+        assertThrows(ConflictException.class, () -> service.choosePaymentAtDesk(customer, 1L, true));
+        service.choosePaymentAtDesk(customer, 1L, false);
+
+        when(repository.countNoShowsOfAccount(any())).thenReturn(0L);
+        visit.markPaid(java.time.OffsetDateTime.now());
+        assertThrows(ConflictException.class, () -> service.choosePaymentAtDesk(customer, 1L, true));
     }
 
     // --- cancelling and rescheduling ------------------------------------------
@@ -497,7 +582,7 @@ class AppointmentServiceTest {
 
         assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ConflictException.class, () -> service.reschedule(1L, new RescheduleRequest(null, TUESDAY)));
-        assertEquals(AppointmentStatus.SCHEDULED, soon.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, soon.getStatus());
         assertEquals(TODAY, soon.getAppointmentDate());
     }
 
@@ -520,7 +605,7 @@ class AppointmentServiceTest {
         assertEquals(null, moved.getStartTime());
         assertEquals(null, moved.getEndTime());
         assertEquals("K7M29QXA", moved.getBookingCode());
-        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, appointment.getStatus());
         verify(repository).maxQueueNumberAtClinic(CLINIC, TODAY.plusDays(3));
     }
 
@@ -537,7 +622,7 @@ class AppointmentServiceTest {
         yesterday.setEndTime(null);
         assertThrows(ConflictException.class, () -> service.cancel(1L, "reason"));
         assertThrows(ConflictException.class, () -> service.reschedule(1L, new RescheduleRequest(null, TUESDAY)));
-        assertEquals(AppointmentStatus.SCHEDULED, yesterday.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, yesterday.getStatus());
     }
 
     @Test
@@ -655,7 +740,7 @@ class AppointmentServiceTest {
 
         Appointment referral = service.referFrom(origin, DOCTOR, "Khám tai mũi họng");
 
-        assertEquals(AppointmentStatus.CHECKED_IN, referral.getStatus());
+        assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, referral.getStatus());
         assertEquals(doctor, referral.getEmployee());
         assertEquals(origin, referral.getReferredFrom());
         assertTrue(referral.getReturnedAt() != null, "first in that doctor's queue");
@@ -750,6 +835,66 @@ class AppointmentServiceTest {
         when(employees.doctorsOf(CLINIC)).thenReturn(List.of());
         assertField("appointmentDate", () -> service.bookOwn(customer, new BookingRequest(null, null, CLINIC, TUESDAY, "Sốt")));
         verify(repository, never()).persist(any());
+    }
+
+    @Test
+    @DisplayName("J-01: still booked after the day's last turn is a no-show; today's wait while a turn is left")
+    void sweepsNoShows() {
+        Appointment yesterday = appointmentOn(TODAY.minusDays(1));
+        ReflectionTestUtils.setField(yesterday, "id", 1L);
+        Appointment today = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(today, "id", 2L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(1L, 2L));
+        when(repository.lockById(1L)).thenReturn(Optional.of(yesterday));
+        when(repository.lockById(2L)).thenReturn(Optional.of(today));
+
+        assertEquals(1, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.NO_SHOW, yesterday.getStatus());
+        assertEquals(AppointmentStatus.BOOKED, today.getStatus(), "10:00 on a working day: turns are left");
+
+        // 18:00 in Ho Chi Minh City: the 17:00 turn was the last one.
+        setUp(Clock.fixed(Instant.parse("2026-10-05T11:00:00Z"), ZoneOffset.UTC));
+        Appointment late = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(late, "id", 3L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(3L));
+        when(repository.lockById(3L)).thenReturn(Optional.of(late));
+        assertEquals(1, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.NO_SHOW, late.getStatus());
+
+        // A day with no turns at all (the schedule changed): today's visits are left for tomorrow's sweep.
+        when(employees.doctorsOf(CLINIC)).thenReturn(List.of());
+        Appointment noTurns = appointmentOn(TODAY);
+        ReflectionTestUtils.setField(noTurns, "id", 4L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(4L));
+        when(repository.lockById(4L)).thenReturn(Optional.of(noTurns));
+        assertEquals(0, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.BOOKED, noTurns.getStatus());
+    }
+
+    @Test
+    @DisplayName("J-01 leaves alone a visit checked in between the read and the lock")
+    void sweepSkipsCheckedIn() {
+        Appointment yesterday = appointmentOn(TODAY.minusDays(1));
+        ReflectionTestUtils.setField(yesterday, "id", 1L);
+        when(repository.findBookedUpTo(TODAY)).thenReturn(List.of(1L));
+        Appointment meanwhile = appointmentOn(TODAY.minusDays(1));
+        meanwhile.checkIn(7L, null);
+        when(repository.lockById(1L)).thenReturn(Optional.of(meanwhile));
+
+        assertEquals(0, service.markNoShowsDue());
+        assertEquals(AppointmentStatus.CHECKED_IN, meanwhile.getStatus());
+    }
+
+    @Test
+    @DisplayName("open days: the next days with a place left, the weekend (no turns) and full days skipped")
+    void openDays() {
+        // Friday 9 October, two days asked: Friday, then Monday.
+        List<AppointmentService.OpenDay> open = service.openDays(CLINIC, LocalDate.of(2026, 10, 9), 2);
+        assertEquals(List.of(new AppointmentService.OpenDay(LocalDate.of(2026, 10, 9), 16),
+                new AppointmentService.OpenDay(LocalDate.of(2026, 10, 12), 16)), open);
+
+        held = 16;
+        assertTrue(service.openDays(CLINIC, TODAY, 3).isEmpty(), "every day full");
     }
 
     private static BookingRequest booking(LocalDate date) {

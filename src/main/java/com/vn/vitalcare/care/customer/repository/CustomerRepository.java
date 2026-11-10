@@ -38,6 +38,29 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
     @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
     Optional<Customer> findByUserIdAndDeletedAtIsNull(Long userId);
 
+    /**
+     * Profiles taken down at the desk with this number, before anybody has an
+     * account for them (UC-04): the person registering picks their own, the
+     * others join the account as relatives sharing the number.
+     */
+    @Query("select c from Customer c where c.deletedAt is null and c.user is null and c.guardian is null "
+            + "and c.phone = :phone order by c.id")
+    List<Customer> findUnclaimedByPhone(@Param("phone") String phone);
+
+    /** Duplicate guard for a newly entered walk-in; phone alone never identifies a person. */
+    @EntityGraph(attributePaths = {"user", "guardian", "guardian.user"})
+    @Query("select c from Customer c left join c.user u where c.deletedAt is null and ("
+            // Cast: a null parameter has no type, and PostgreSQL then reads it as bytea, which trim refuses.
+            + "(:nationalId is not null and lower(trim(c.nationalId)) = lower(trim(cast(:nationalId as String)))) or ("
+            + "(:nationalId is null or c.nationalId is null or trim(c.nationalId) = '') and "
+            + "lower(trim(coalesce(c.fullName, u.fullName))) = lower(trim(:fullName)) "
+            + "and c.dateOfBirth = :dateOfBirth "
+            + "and coalesce(c.phone, u.phone) = :phone))")
+    List<Customer> findWalkInDuplicates(@Param("phone") String phone,
+                                        @Param("fullName") String fullName,
+                                        @Param("dateOfBirth") java.time.LocalDate dateOfBirth,
+                                        @Param("nationalId") String nationalId);
+
     /** The relatives an account's owner registers visits for, oldest first. */
     List<Customer> findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(Long guardianId);
 

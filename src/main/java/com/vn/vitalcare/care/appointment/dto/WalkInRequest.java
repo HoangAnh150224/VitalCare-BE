@@ -10,8 +10,8 @@ import java.time.LocalDate;
 /**
  * {@code POST /appointments/walk-in}: somebody at the counter to be seen
  * today. Either a customer the clinic knows ({@code customerId}) or a new
- * patient, who is given an account on their phone number there and then — they
- * sign in later through "forgot password".
+ * patient. The profile has no sign-in account; the patient can create and link
+ * one later after proving control of their phone.
  */
 public record WalkInRequest(
         Long customerId,
@@ -46,9 +46,17 @@ public record WalkInRequest(
             @NotNull(message = "Date of birth is required")
             LocalDate dateOfBirth,
 
+            @Size(max = 32, message = "National id must be at most 32 characters")
+            String nationalId,
+
             @NotBlank(message = "Gender is required")
             @Pattern(regexp = "male|female|other", message = "Gender must be male, female or other")
             String gender) {
+
+        /** Older clients may omit the optional identity number. */
+        public NewPatient(String fullName, String phone, LocalDate dateOfBirth, String gender) {
+            this(fullName, phone, dateOfBirth, null, gender);
+        }
     }
 
     public StaffBookingRequest booking(Long customer, LocalDate today) {
