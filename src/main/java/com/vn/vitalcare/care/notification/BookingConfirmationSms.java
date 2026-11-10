@@ -73,7 +73,7 @@ public class BookingConfirmationSms {
         String number = visit.getQueueNumber() == null ? "-" : String.valueOf(visit.getQueueNumber());
         String payment = visit.getPaidAt() != null ? "da thanh toan" : "chua thanh toan";
         String body = template.isEmpty()
-                ? "VitalCare: {owner} da dang ky kham thanh cong cho {patient} ngay {date}, so thu tu {number}, "
+                ? "VitalCare: {owner} dang ky kham thanh cong cho {patient} ngay {date}, STT {number}, "
                         + "ma {code}. Phi kham: {payment}."
                 : template;
         return names(body, visit).replace("{date}", date).replace("{number}", number)

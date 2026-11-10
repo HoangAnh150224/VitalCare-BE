@@ -31,8 +31,8 @@ class DeskPaymentSmsTest {
         visit.setQueueNumber(5);
         visit.setBookingCode("AB12CD34");
 
-        assertEquals("VitalCare: Tran Thu Trang da dang ky kham thanh cong cho Tran Thu Trang ngay 11/11/2026, "
-                + "so thu tu 5, ma AB12CD34. Vui long tra phi kham 150.000d tai quay le tan khi toi kham.",
+        assertEquals("VitalCare: Tran Thu Trang dang ky kham thanh cong cho Tran Thu Trang ngay 11/11/2026, "
+                + "STT 5, ma AB12CD34. Vui long tra 150.000d tai quay le tan.",
                 sms("").text(visit, new BigDecimal("150000.0000")));
         assertEquals("Lich 11/11/2026 so 5 tien theo bang gia", sms("Lich {date} so {number} tien {amount}").text(visit, null));
     }

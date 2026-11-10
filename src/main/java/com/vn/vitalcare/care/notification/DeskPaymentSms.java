@@ -61,8 +61,8 @@ public class DeskPaymentSms {
         String money = amount == null ? "theo bang gia" : NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN"))
                 .format(amount) + "d";
         String body = template.isEmpty()
-                ? "VitalCare: {owner} da dang ky kham thanh cong cho {patient} ngay {date}, so thu tu {number}, "
-                        + "ma {code}. Vui long tra phi kham {amount} tai quay le tan khi toi kham."
+                ? "VitalCare: {owner} dang ky kham thanh cong cho {patient} ngay {date}, STT {number}, "
+                        + "ma {code}. Vui long tra {amount} tai quay le tan."
                 : template;
         return BookingConfirmationSms.names(body, visit).replace("{date}", DAY.format(visit.getAppointmentDate())).replace("{number}", number)
                 .replace("{code}", visit.getBookingCode()).replace("{amount}", money);

@@ -46,8 +46,8 @@ class BookingConfirmationSmsTest {
         visit.setQueueNumber(7);
         visit.setBookingCode("K7M29QXA");
 
-        assertEquals("VitalCare: Nguyen Van Duc da dang ky kham thanh cong cho Nguyen Thi Ha ngay 09/11/2026, "
-                + "so thu tu 7, ma K7M29QXA. Phi kham: chua thanh toan.", sms("").text(visit));
+        assertEquals("VitalCare: Nguyen Van Duc dang ky kham thanh cong cho Nguyen Thi Ha ngay 09/11/2026, "
+                + "STT 7, ma K7M29QXA. Phi kham: chua thanh toan.", sms("").text(visit));
         assertEquals("+84912345678", BookingConfirmationSms.accountOf(visit).getPhone());
         assertEquals("Lich 09/11/2026 so 7", sms("Lich {date} so {number}").text(visit));
     }
