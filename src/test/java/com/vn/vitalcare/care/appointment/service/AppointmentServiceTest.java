@@ -438,6 +438,14 @@ class AppointmentServiceTest {
     }
 
     @Test
+    @DisplayName("checking in tells the patient's account (what comes next depends on the fee)")
+    void checkInTellsThePatient() {
+        stored(appointmentOn(TODAY));
+        service.checkIn(1L);
+        verify(events, times(1)).publishEvent(any(VisitEvents.CheckedIn.class));
+    }
+
+    @Test
     @DisplayName("BR-04: ready for examination once both checked in and paid, in either order")
     void readyOnceCheckedInAndPaid() {
         Appointment paidFirst = stored(appointmentOn(TODAY));

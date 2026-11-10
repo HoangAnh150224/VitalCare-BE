@@ -242,6 +242,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         rowLevel.checkWritable(appointment);
         customerService.activateIfNeutral(appointment.getCustomer(), PatientActivationSource.CHECK_IN);
         Appointment saved = repository.persist(appointment);
+        events.publishEvent(new VisitEvents.CheckedIn(saved.getId()));
         // The doctor's room may be free and waiting for exactly this person.
         events.publishEvent(new ExamRoomEvents.QueueJoined(saved.getClinicId(), doctorIdOf(saved)));
         return saved;

@@ -4,8 +4,10 @@ import com.vn.vitalcare.care.appointment.repository.AppointmentRepository;
 import com.vn.vitalcare.care.appointment.service.VisitEvents;
 import com.vn.vitalcare.care.registration.service.EsmsOtpSender;
 import com.vn.vitalcare.entity.Appointment;
+import com.vn.vitalcare.entity.Customer;
 import com.vn.vitalcare.entity.AppointmentStatus;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
+import java.text.Normalizer;
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
@@ -24,7 +26,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * ({@link VisitNotifications#onRegistered}) is there either way.
  *
  * <p>Sent through eSMS only with a registered template
- * ({@code app.sms.esms.booking-template}, placeholders {@code {date}},
+ * ({@code app.sms.esms.booking-template}, placeholders {@code {owner}} (who booked),
+ * {@code {patient}} (who it is for), {@code {date}},
  * {@code {number}}, {@code {code}}, {@code {payment}}): a brandname carries only
  * the texts it was registered with. Without one the text goes to the log.
  * Walk-ins are not texted: they are at the desk, checked in, when it commits.
@@ -56,10 +59,11 @@ public class BookingConfirmationSms {
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public void onRegistered(VisitEvents.Registered event) {
         Appointment visit = appointments.findForNotice(event.appointmentId()).orElse(null);
-        if (visit == null || visit.getStatus() != AppointmentStatus.BOOKED || visit.getCustomer().getPhone() == null) {
+        // To whoever booked it: the account, also when the visit is a relative's (who may have no number).
+        String phone = visit == null ? null : accountOf(visit).getPhone();
+        if (visit == null || visit.getStatus() != AppointmentStatus.BOOKED || phone == null) {
             return;
         }
-        String phone = visit.getCustomer().getPhone();
         String text = text(visit);
         Thread.ofVirtual().name("booking-sms").start(() -> send(phone, text));
     }
@@ -69,10 +73,32 @@ public class BookingConfirmationSms {
         String number = visit.getQueueNumber() == null ? "-" : String.valueOf(visit.getQueueNumber());
         String payment = visit.getPaidAt() != null ? "da thanh toan" : "chua thanh toan";
         String body = template.isEmpty()
-                ? "VitalCare: da dat lich kham ngay {date}, so thu tu {number}, ma {code}. Phi kham: {payment}."
+                ? "VitalCare: {owner} da dang ky kham thanh cong cho {patient} ngay {date}, so thu tu {number}, "
+                        + "ma {code}. Phi kham: {payment}."
                 : template;
-        return body.replace("{date}", date).replace("{number}", number)
+        return names(body, visit).replace("{date}", date).replace("{number}", number)
                 .replace("{code}", visit.getBookingCode()).replace("{payment}", payment);
+    }
+
+    /** The account a visit belongs to: the relative's guardian, else the patient themself. */
+    static Customer accountOf(Appointment visit) {
+        Customer patient = visit.getCustomer();
+        return patient.getGuardian() != null ? patient.getGuardian() : patient;
+    }
+
+    /** {@code {owner}} and {@code {patient}}, without accents: the registered texts carry none. */
+    static String names(String body, Appointment visit) {
+        return body.replace("{owner}", plain(accountOf(visit).getFullName()))
+                .replace("{patient}", plain(visit.getCustomer().getFullName()));
+    }
+
+    /** "Nguyễn Văn Đức" → "Nguyen Van Duc". */
+    static String plain(String text) {
+        if (text == null) {
+            return "";
+        }
+        return Normalizer.normalize(text.replace('đ', 'd').replace('Đ', 'D'), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "").trim();
     }
 
     /** On this thread, with BR-12's retries; the outcome is only ever logged. */

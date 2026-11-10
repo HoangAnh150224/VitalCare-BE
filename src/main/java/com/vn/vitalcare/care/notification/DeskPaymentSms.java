@@ -20,7 +20,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * code and the amount. Sent like the booking confirmation
  * ({@link BookingConfirmationSms}: retried, then logged), and only with a
  * template registered for it ({@code app.sms.esms.desk-template}, placeholders
- * {@code {date}}, {@code {number}}, {@code {code}}, {@code {amount}}); without
+ * {@code {owner}}, {@code {patient}}, {@code {date}}, {@code {number}}, {@code {code}}, {@code {amount}}); without
  * one the text goes to the log.
  */
 @Component
@@ -46,11 +46,12 @@ public class DeskPaymentSms {
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public void onChosen(VisitEvents.DeskPaymentChosen event) {
         Appointment visit = appointments.findForNotice(event.appointmentId()).orElse(null);
-        if (visit == null || visit.getCustomer().getPhone() == null) {
+        // To whoever booked it, as the booking confirmation.
+        String phone = visit == null ? null : BookingConfirmationSms.accountOf(visit).getPhone();
+        if (phone == null) {
             return;
         }
         BigDecimal amount = invoices.findExamOf(visit.getId()).map(invoice -> invoice.getTotalAmount()).orElse(null);
-        String phone = visit.getCustomer().getPhone();
         String text = text(visit, amount);
         Thread.ofVirtual().name("desk-payment-sms").start(() -> sender.send(phone, text, !template.isEmpty()));
     }
@@ -60,10 +61,10 @@ public class DeskPaymentSms {
         String money = amount == null ? "theo bang gia" : NumberFormat.getIntegerInstance(Locale.forLanguageTag("vi-VN"))
                 .format(amount) + "d";
         String body = template.isEmpty()
-                ? "VitalCare: da xac nhan lich kham ngay {date}, so thu tu {number}, ma {code}. "
-                        + "Vui long tra phi kham {amount} tai quay le tan khi toi kham."
+                ? "VitalCare: {owner} da dang ky kham thanh cong cho {patient} ngay {date}, so thu tu {number}, "
+                        + "ma {code}. Vui long tra phi kham {amount} tai quay le tan khi toi kham."
                 : template;
-        return body.replace("{date}", DAY.format(visit.getAppointmentDate())).replace("{number}", number)
+        return BookingConfirmationSms.names(body, visit).replace("{date}", DAY.format(visit.getAppointmentDate())).replace("{number}", number)
                 .replace("{code}", visit.getBookingCode()).replace("{amount}", money);
     }
 }

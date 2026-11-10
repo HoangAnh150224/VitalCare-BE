@@ -43,6 +43,17 @@ public class VisitNotifications {
                 "/my-appointments/show/" + visit.getId()));
     }
 
+    /** Checked in at the desk: in the queue already when the fee was paid, else pay first. */
+    @EventListener
+    public void onCheckedIn(VisitEvents.CheckedIn event) {
+        visit(event.appointmentId()).ifPresent(visit -> tell(visit, NotificationLevel.INFO, "appointment",
+                "Đã tiếp nhận tại quầy",
+                visit.getStatus() == AppointmentStatus.READY_FOR_EXAMINATION
+                        ? "Số khám %s: bạn đã vào hàng chờ khám, vui lòng chờ được gọi vào phòng.".formatted(number(visit))
+                        : "Số khám %s: vui lòng trả phí khám tại quầy để vào hàng chờ khám.".formatted(number(visit)),
+                "/my-appointments/show/" + visit.getId()));
+    }
+
     @EventListener
     public void onExamPaid(VisitEvents.ExamPaid event) {
         visit(event.appointmentId()).ifPresent(visit -> tell(visit, NotificationLevel.SUCCESS, "payment",
