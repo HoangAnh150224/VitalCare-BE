@@ -94,9 +94,9 @@ class StaffAndPatientsServiceTest {
         });
 
         Employee created = employees.create(new EmployeeCreateRequest(
-                "0900000050", "BS. A", "Passw0rd!", StaffType.NURSE, null, null, null, null, null));
+                "0900000050", "BS. A", "Passw0rd!", StaffType.RECEPTIONIST, null, null, null, null, null));
 
-        verify(userService).createStaffAccount("0900000050", "Passw0rd!", "BS. A", "NURSE");
+        verify(userService).createStaffAccount("0900000050", "Passw0rd!", "BS. A", "MANAGER");
         assertEquals("NV000007", created.getEmployeeCode());
         assertEquals(EmployeeStatus.ACTIVE, created.getStatus());
     }

@@ -17,8 +17,6 @@ public final class StaffRoles {
 
     static {
         CLINIC_LEVEL.put("DOCTOR", "Bác sĩ");
-        CLINIC_LEVEL.put("NURSE", "Điều dưỡng");
-        CLINIC_LEVEL.put("MEDICAL_STAFF", "Nhân viên theo dõi");
         CLINIC_LEVEL.put("MANAGER", "Lễ tân");
         CLINIC_LEVEL.put("CLINIC_ADMIN", "Quản trị phòng khám");
     }

@@ -14,8 +14,6 @@ public enum StaffType {
 
     DOCTOR("doctor", "DOCTOR"),
 
-    NURSE("nurse", "NURSE"),
-
     RECEPTIONIST("receptionist", "MANAGER"),
 
     /**
@@ -44,11 +42,11 @@ public enum StaffType {
     }
 
     /**
-     * Whether somebody of this kind can be on a patient's care team: doctors
-     * and nurses. The front desk and the clinic's administrator cannot.
+     * Whether somebody of this kind can be on a patient's care team: only
+     * doctors. The front desk and the clinic's administrator cannot.
      */
     public boolean isClinical() {
-        return this == DOCTOR || this == NURSE;
+        return this == DOCTOR;
     }
 
     @JsonCreator

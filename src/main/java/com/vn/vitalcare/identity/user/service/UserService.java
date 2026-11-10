@@ -48,8 +48,8 @@ public class UserService {
     private static final String GUEST_ROLE_CODE = "GUEST";
     private static final String PATIENT_ROLE_CODE = "PATIENT";
     private static final Set<String> WORKFLOW_ROLE_CODES = Set.of(
-            ADMIN_ROLE_CODE, "CLINIC_ADMIN", "DOCTOR", "MANAGER", "NURSE", "MEDICAL_STAFF", "USER",
-            "CARE_GIVER", "CAREGIVER", GUEST_ROLE_CODE, PATIENT_ROLE_CODE);
+            ADMIN_ROLE_CODE, "CLINIC_ADMIN", "DOCTOR", "MANAGER",
+            GUEST_ROLE_CODE, PATIENT_ROLE_CODE);
 
     /** Sort properties the list endpoint accepts; anything else is ignored. */
     private static final Set<String> SORTABLE =
@@ -159,7 +159,7 @@ public class UserService {
                     "Only the System Administrator can create a Clinic Administrator");
             requireActorRole(ADMIN_ROLE_CODE,
                     "Only the System Administrator can create a Clinic Administrator");
-        } else if (Set.of("DOCTOR", "MANAGER", "NURSE", "MEDICAL_STAFF").contains(roleCode)) {
+        } else if (Set.of("DOCTOR", "MANAGER").contains(roleCode)) {
             requireAuthority(Permissions.EMPLOYEES_WRITE,
                     "Only a Clinic Administrator can create clinic staff");
             requireActorRole("CLINIC_ADMIN",

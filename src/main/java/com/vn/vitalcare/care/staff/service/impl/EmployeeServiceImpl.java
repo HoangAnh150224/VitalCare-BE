@@ -314,10 +314,17 @@ public class EmployeeServiceImpl implements EmployeeService {
         // Only the system administrator makes a clinic administrator, or takes that away.
         boolean admin = CurrentUser.has(com.vn.vitalcare.share.security.Permissions.STAFF_MEMBERSHIPS_TRANSFER);
         java.util.Set<String> had = new java.util.HashSet<>(employee.getUser().roleCodes());
-        for (String code : com.vn.vitalcare.care.staff.service.StaffRoles.ADMIN_ONLY) {
-            if (!admin && roles.contains(code) != had.contains(code)) {
+        // The other roles are the clinic's to give: whoever runs its staff (employees:write).
+        boolean staffManager = CurrentUser.has(com.vn.vitalcare.share.security.Permissions.EMPLOYEES_WRITE);
+        for (String code : com.vn.vitalcare.care.staff.service.StaffRoles.CLINIC_LEVEL.keySet()) {
+            if (roles.contains(code) == had.contains(code)) {
+                continue;
+            }
+            if (com.vn.vitalcare.care.staff.service.StaffRoles.ADMIN_ONLY.contains(code) ? !admin : !staffManager) {
                 throw new org.springframework.security.authorization.AuthorizationDeniedException(
-                        "Only the system administrator gives or takes away that role");
+                        com.vn.vitalcare.care.staff.service.StaffRoles.ADMIN_ONLY.contains(code)
+                                ? "Only the system administrator gives or takes away that role"
+                                : "Only the clinic administrator gives or takes away that role");
             }
         }
         userService.replaceRolesWithin(employee.getUser().getId(),
