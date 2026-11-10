@@ -260,6 +260,15 @@ class AppointmentServiceTest {
     void unavailableDays() {
         LocalDate sunday = TODAY.plusDays(6);
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(sunday)));
+        // Said apart: nobody works that day, or the day is full.
+        assertEquals("No doctor sees patients at that clinic on that day",
+                assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                        () -> service.bookOwn(customer, booking(sunday))).getMessage());
+        held = 16;
+        assertEquals("No doctor has a turn left at that clinic on that day",
+                assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                        () -> service.bookOwn(customer, booking(TUESDAY))).getMessage());
+        held = 0;
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(TODAY.minusDays(1))));
         assertField("appointmentDate", () -> service.bookOwn(customer, booking(TODAY.plusDays(31))));
     }

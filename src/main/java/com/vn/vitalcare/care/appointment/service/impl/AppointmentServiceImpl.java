@@ -608,9 +608,14 @@ public class AppointmentServiceImpl implements AppointmentService {
             throw new ConflictException("There is already a visit registered at that clinic on that day");
         }
         DaySupply supply = supply(clinicId, date);
-        if (!supply.stillOpen() || supply.capacity() == 0
-                || repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId)
-                        >= supply.capacity()) {
+        // Said apart, so the patient knows whether to pick another day or come earlier.
+        if (supply.capacity() == 0) {
+            throw new FieldValidationException("appointmentDate", "No doctor sees patients at that clinic on that day");
+        }
+        if (!supply.stillOpen()) {
+            throw new FieldValidationException("appointmentDate", "Registration for that day is over");
+        }
+        if (repository.countActiveAtClinic(clinicId, date, excludeId == null ? -1L : excludeId) >= supply.capacity()) {
             throw new FieldValidationException("appointmentDate", "No doctor has a turn left at that clinic on that day");
         }
         appointment.setEmployee(null);
