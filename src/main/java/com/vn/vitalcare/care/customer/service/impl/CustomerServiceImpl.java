@@ -47,7 +47,8 @@ public class CustomerServiceImpl implements CustomerService {
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
 
     /** Relatives under one account; a family, not a register. */
-    private static final int MAX_DEPENDENTS = 10;
+    /** Relatives one account may hold (the owner's own profile aside). */
+    private static final int MAX_DEPENDENTS = 2;
 
     private final CustomerRepository repository;
     private final ClinicScope clinicScope;

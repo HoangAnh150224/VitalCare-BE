@@ -81,4 +81,19 @@ class RelativeDuplicateTest {
         assertEquals("fullName", assertThrows(FieldValidationException.class,
                 () -> service.createDependent(owner, request("Trần Thị Phương", born))).field());
     }
+
+    @Test
+    @DisplayName("an account holds at most two relatives: a third is refused and nothing is saved")
+    void atMostTwo() {
+        Customer owner = new Customer();
+        ReflectionTestUtils.setField(owner, "id", 1L);
+        when(customers.findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(1L)).thenReturn(List.of(
+                relative(2L, owner, "Trần Thị Phương", LocalDate.of(1982, 1, 1)),
+                relative(3L, owner, "Nguyễn Văn Bình", LocalDate.of(1990, 5, 5))));
+        com.vn.vitalcare.share.exception.ConflictException refused = assertThrows(
+                com.vn.vitalcare.share.exception.ConflictException.class,
+                () -> service.createDependent(owner, request("Lê Văn Cường", LocalDate.of(2010, 3, 3))));
+        assertEquals("An account holds at most 2 relatives", refused.getMessage());
+        verify(customers, never()).save(any());
+    }
 }
