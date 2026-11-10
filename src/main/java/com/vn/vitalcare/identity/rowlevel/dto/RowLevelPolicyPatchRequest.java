@@ -1,6 +1,7 @@
 package com.vn.vitalcare.identity.rowlevel.dto;
 
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -14,9 +15,13 @@ import tools.jackson.databind.JsonNode;
  */
 public record RowLevelPolicyPatchRequest(
         RoleRef role,
+        @Pattern(regexp = "(?s).*\\S.*", message = "Vui lòng chọn hành động")
         @Size(max = 16) String action,
+        @Pattern(regexp = "(?s).*\\S.*", message = "Vui lòng nhập tên")
         @Size(max = 160) String name,
+        @Pattern(regexp = "(?s).*\\S.*", message = "Vui lòng nhập nhóm")
         @Size(max = 64) String policyGroup,
+        @Pattern(regexp = "(?s).*\\S.*", message = "Vui lòng nhập mô tả")
         @Size(max = 500) String description,
         JsonNode scope,
         /**
