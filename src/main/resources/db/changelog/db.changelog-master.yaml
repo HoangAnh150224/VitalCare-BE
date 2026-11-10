@@ -132,3 +132,5 @@ databaseChangeLog:
       file: db/changelog/changes/064-desk-payment-choice.sql
   - include:
       file: db/changelog/changes/065-seed-test-accounts-per-role.sql
+  - include:
+      file: db/changelog/changes/066-first-aid-content.sql
