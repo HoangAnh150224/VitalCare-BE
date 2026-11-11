@@ -25,7 +25,19 @@ public final class UserSpecifications {
 
     public static Specification<User> from(ListParams params) {
         List<Specification<User>> specs = new ArrayList<>();
-        specs.add((root, query, cb) -> cb.isNull(root.get("deletedAt")));
+        String deletionState = params.filters().stream()
+                .filter(c -> "deletionState".equals(c.field()) && c.operator() == ListParams.Operator.EQ)
+                .map(ListParams.Criterion::value)
+                .findFirst().orElseGet(() -> params.filters().stream()
+                        .anyMatch(c -> "status".equals(c.field())
+                                && c.operator() == ListParams.Operator.EQ
+                                && "inactive".equalsIgnoreCase(c.value()))
+                        ? "all" : "current");
+        switch (deletionState) {
+            case "all" -> { }
+            case "deleted" -> specs.add((root, query, cb) -> cb.isNotNull(root.get("deletedAt")));
+            default -> specs.add((root, query, cb) -> cb.isNull(root.get("deletedAt")));
+        }
 
         for (ListParams.Criterion criterion : params.filters()) {
             Specification<User> spec = switch (criterion.field()) {
