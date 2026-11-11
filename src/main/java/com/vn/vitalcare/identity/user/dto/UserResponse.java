@@ -27,7 +27,8 @@ public record UserResponse(
         List<RoleSummary> roles,
         Instant createdAt,
         Instant updatedAt,
-        Instant lastLoginAt) {
+        Instant lastLoginAt,
+        Instant deletedAt) {
 
     /**
      * The role as this endpoint reports it.
@@ -59,6 +60,7 @@ public record UserResponse(
                         .toList(),
                 user.getCreatedAt(),
                 user.getUpdatedAt(),
-                user.getLastLoginAt());
+                user.getLastLoginAt(),
+                user.getDeletedAt());
     }
 }

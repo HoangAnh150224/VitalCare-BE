@@ -21,6 +21,32 @@ class UserQuickSearchTest {
     private UserRepository users;
 
     @Test
+    void deletionFiltersIncludeArchivedUsersOnlyWhenRequested() {
+        String marker = UUID.randomUUID().toString();
+        User current = users.saveAndFlush(new User(
+                marker.substring(0, 12) + "a", null, "hash", marker, UserStatus.INACTIVE));
+        User deleted = new User(marker.substring(0, 12) + "b", null, "hash", marker, UserStatus.INACTIVE);
+        deleted.setDeletedAt(java.time.Instant.now());
+        users.saveAndFlush(deleted);
+        LinkedMultiValueMap<String, String> query = new LinkedMultiValueMap<>();
+        query.add("q", marker);
+        assertThat(users.findAll(UserSpecifications.from(new ListParams(query))))
+                .extracting(User::getId).containsExactly(current.getId());
+        query.set("status", "inactive");
+        assertThat(users.findAll(UserSpecifications.from(new ListParams(query))))
+                .extracting(User::getId).containsExactlyInAnyOrder(current.getId(), deleted.getId());
+        query.set("deletionState", "current");
+        assertThat(users.findAll(UserSpecifications.from(new ListParams(query))))
+                .extracting(User::getId).containsExactly(current.getId());
+        query.set("deletionState", "deleted");
+        assertThat(users.findAll(UserSpecifications.from(new ListParams(query))))
+                .extracting(User::getId).containsExactly(deleted.getId());
+        query.set("deletionState", "all");
+        assertThat(users.findAll(UserSpecifications.from(new ListParams(query))))
+                .extracting(User::getId).containsExactlyInAnyOrder(current.getId(), deleted.getId());
+    }
+
+    @Test
     void quickSearchMatchesNumericIdAndStillMatchesPhoneDigits() {
         String salt = UUID.randomUUID().toString().replace("-", "");
         User byId = users.saveAndFlush(new User(
