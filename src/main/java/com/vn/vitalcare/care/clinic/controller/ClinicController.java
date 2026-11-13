@@ -73,4 +73,14 @@ public class ClinicController {
     public ClinicResponse update(@PathVariable UUID id, @Valid @RequestBody ClinicRequest request) {
         return ClinicResponse.from(service.update(id, request));
     }
+
+    public record StatusRequest(
+            @jakarta.validation.constraints.NotBlank
+            @jakarta.validation.constraints.Pattern(regexp = "OPERATING|INACTIVE") String operatingStatus) {}
+
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/operating-status")
+    @PreAuthorize("hasAuthority('" + Permissions.CLINICS_WRITE + "')")
+    public ClinicResponse changeStatus(@PathVariable UUID id, @Valid @RequestBody StatusRequest request) {
+        return ClinicResponse.from(service.changeOperatingStatus(id, request.operatingStatus()));
+    }
 }

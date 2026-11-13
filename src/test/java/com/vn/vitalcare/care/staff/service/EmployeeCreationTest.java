@@ -107,6 +107,7 @@ class EmployeeCreationTest {
     }
 
     private void assertCreates(StaffType type) {
+
         Clinic clinic = mock(Clinic.class);
         User user = mock(User.class);
         when(clinics.get(clinicId)).thenReturn(clinic);
@@ -127,5 +128,97 @@ class EmployeeCreationTest {
             verify(rowLevel).checkWritable(created);
         }
         verify(memberships).save(any(StaffMembership.class));
+    }
+
+    @Test
+    void systemAdminMayGrantDoctorAndReceptionistWithoutEmployeeWrite() {
+        signIn("ROLE_ADMIN", "clinic_roles:write");
+        Employee employee = roleEmployee(java.util.Set.of("DOCTOR"));
+        service.setClinicRoles(42L, java.util.Set.of("DOCTOR", "MANAGER"));
+        verify(users).replaceRolesWithin(eq(7L), any(), eq(java.util.Set.of("DOCTOR", "MANAGER")));
+    }
+
+    @Test
+    void lastClinicAdminCannotBeRemoved() {
+        signIn("ROLE_ADMIN", "clinic_roles:write");
+        roleEmployee(java.util.Set.of("CLINIC_ADMIN"));
+        assertThrows(com.vn.vitalcare.share.exception.ConflictException.class,
+                () -> service.setClinicRoles(42L, java.util.Set.of("DOCTOR")));
+        verify(users, never()).replaceRolesWithin(any(), any(), any());
+    }
+
+    @Test
+    void doctorCannotGrantRolesEvenWithWritePermission() {
+        signIn("ROLE_DOCTOR", "employees:write", "clinic_roles:write");
+        roleEmployee(java.util.Set.of("DOCTOR"));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.setClinicRoles(42L, java.util.Set.of("DOCTOR", "MANAGER")));
+        verify(users, never()).replaceRolesWithin(any(), any(), any());
+    }
+
+    private Employee roleEmployee(java.util.Set<String> roles) {
+        Employee employee = new Employee();
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        when(user.roleCodes()).thenReturn(roles);
+        employee.setUser(user);
+        Clinic clinic = mock(Clinic.class);
+        when(clinic.getClinicId()).thenReturn(clinicId);
+        employee.setClinic(clinic);
+        when(rowLevel.byId(Employee.class, com.vn.vitalcare.share.security.rowlevel.Action.WRITE, 42L))
+                .thenReturn((root, query, cb) -> cb.conjunction());
+        when(employees.findOne((org.springframework.data.jpa.domain.Specification<Employee>) any()))
+                .thenReturn(java.util.Optional.of(employee));
+        when(employees.lockRoleClinic(any())).thenReturn(java.util.Optional.of(clinic));
+        return employee;
+    }
+
+    @Test
+    void softDeleteRetainsEmployeeAndDisablesSignIn() {
+        signIn("ROLE_ADMIN", "clinics:write");
+        Employee employee = new Employee();
+        ReflectionTestUtils.setField(employee, "id", 42L);
+        employee.setStaffType(StaffType.CLINIC_ADMIN);
+        employee.setStatus(EmployeeStatus.ACTIVE);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        employee.setUser(user);
+        when(employees.findForUpdate(42L)).thenReturn(java.util.Optional.of(employee));
+        when(employees.exists((org.springframework.data.jpa.domain.Specification<Employee>) null)).thenReturn(true);
+        when(employees.persist(employee)).thenReturn(employee);
+
+        assertSame(employee, service.deleteClinicAdministrator(42L));
+        assertTrue(employee.isDeleted());
+        assertEquals(EmployeeStatus.INACTIVE, employee.getStatus());
+        verify(users).setSignInAllowed(7L, false);
+        verify(employees).persist(employee);
+    }
+
+    @Test
+    void clinicStaffCannotDeleteClinicAdministrator() {
+        signIn("ROLE_CLINIC_ADMIN", "employees:write");
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> service.deleteClinicAdministrator(42L));
+        verifyNoInteractions(employees, users);
+    }
+
+    @Test
+    void adminEditUpdatesLoginDetailsWithoutResettingPasswordWhenOmitted() {
+        signIn("ROLE_ADMIN", "clinics:write");
+        Employee employee = new Employee();
+        employee.setStaffType(StaffType.CLINIC_ADMIN);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(7L);
+        employee.setUser(user);
+        when(employees.findOne((org.springframework.data.jpa.domain.Specification<Employee>) any()))
+                .thenReturn(java.util.Optional.of(employee));
+        when(rowLevel.byId(Employee.class, com.vn.vitalcare.share.security.rowlevel.Action.WRITE, 42L))
+                .thenReturn((root, query, cb) -> cb.conjunction());
+        when(employees.persist(employee)).thenReturn(employee);
+        service.update(42L, new com.vn.vitalcare.care.staff.dto.EmployeePatchRequest(
+                null, null, null, null, null, "0901234567", " Updated Name ", null, null));
+        verify(users).update(7L, new com.vn.vitalcare.identity.user.dto.UserPatchRequest(
+                "0901234567", null, "Updated Name", null, null));
+        verify(users, never()).setPassword(any(), any());
     }
 }

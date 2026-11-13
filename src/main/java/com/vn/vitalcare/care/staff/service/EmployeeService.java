@@ -52,6 +52,7 @@ public interface EmployeeService {
     Employee lockForUpdate(Long id);
 
     Employee update(Long id, EmployeePatchRequest request);
+    Employee deleteClinicAdministrator(Long id);
 
     /**
      * A clinic's active doctors — who a visit can be registered with.

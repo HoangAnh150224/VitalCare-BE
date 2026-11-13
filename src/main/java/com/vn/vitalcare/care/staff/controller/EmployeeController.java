@@ -28,8 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * {@code /api/employees} — clinical staff.
  *
- * <p>No delete: somebody who leaves is set inactive, which keeps the record
- * their patients' history points at.
+ * <p>Clinic administrators can be soft-deleted; referenced history is retained.
  */
 @RestController
 @RequestMapping("/api/employees")
@@ -75,8 +74,14 @@ public class EmployeeController {
     }
 
     @RequestMapping(value = "/{id}", method = {RequestMethod.PATCH, RequestMethod.PUT})
-    @PreAuthorize("hasAuthority('" + Permissions.EMPLOYEES_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.EMPLOYEES_WRITE + "') or (hasRole('ADMIN') and hasAuthority('" + Permissions.CLINICS_WRITE + "'))")
     public EmployeeResponse update(@PathVariable Long id, @Valid @RequestBody EmployeePatchRequest request) {
         return EmployeeResponse.from(service.update(id, request), rowLevel);
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('" + Permissions.CLINICS_WRITE + "')")
+    public EmployeeResponse delete(@PathVariable Long id) {
+        return EmployeeResponse.from(service.deleteClinicAdministrator(id));
     }
 }

@@ -73,4 +73,15 @@ public interface EmployeeRepository extends SecuredRepository<Employee, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Employee e join fetch e.user where e.id = :id and e.deletedAt is null")
     Optional<Employee> findForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Clinic c where c.clinicId = :clinicId")
+    Optional<com.vn.vitalcare.entity.Clinic> lockRoleClinic(@Param("clinicId") UUID clinicId);
+
+    @Query("select count(distinct e.id) from Employee e join e.user u join u.roles r "
+            + "where e.clinicId = :clinicId and e.id <> :excludedId and e.deletedAt is null "
+            + "and e.status = com.vn.vitalcare.entity.EmployeeStatus.ACTIVE "
+            + "and u.deletedAt is null and u.status = com.vn.vitalcare.identity.user.entity.UserStatus.ACTIVE "
+            + "and r.code = 'CLINIC_ADMIN'")
+    long countOtherActiveAdmins(@Param("clinicId") UUID clinicId, @Param("excludedId") Long excludedId);
 }

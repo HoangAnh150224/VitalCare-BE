@@ -24,6 +24,7 @@ public record EmployeeResponse(
         EmployeeStatus status,
         UUID clinicId,
         Instant createdAt,
+        Instant deletedAt,
         /**
          * What the caller may do to this row, from the row-level write and
          * delete policies — the framework's {@code _can}, read by the client's
@@ -55,6 +56,7 @@ public record EmployeeResponse(
                 // The id only: it reads off the proxy without loading the clinic.
                 employee.getClinic() == null ? null : employee.getClinic().getClinicId(),
                 employee.getCreatedAt(),
+                employee.getDeletedAt(),
                 rowLevel == null ? Map.of() : rowLevel.capabilities(employee));
     }
 }

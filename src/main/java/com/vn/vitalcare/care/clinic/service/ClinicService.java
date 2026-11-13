@@ -19,6 +19,7 @@ public interface ClinicService {
     Clinic create(ClinicRequest request);
 
     Clinic update(UUID id, ClinicRequest request);
+    Clinic changeOperatingStatus(UUID id, String status);
 
     /**
      * The clinic, locked for the rest of the caller's transaction — what a

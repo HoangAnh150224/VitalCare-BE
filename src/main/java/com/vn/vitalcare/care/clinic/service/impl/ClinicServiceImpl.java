@@ -84,6 +84,17 @@ public class ClinicServiceImpl implements ClinicService {
 
     @Override
     @Transactional
+    public Clinic changeOperatingStatus(UUID id, String status) {
+        if (!"OPERATING".equals(status) && !"INACTIVE".equals(status)) {
+            throw new IllegalArgumentException("Invalid clinic status");
+        }
+        Clinic clinic = getForUpdate(id);
+        clinic.setOperatingStatus(status);
+        return repository.save(clinic);
+    }
+
+    @Override
+    @Transactional
     public Clinic getForUpdate(UUID id) {
         return repository.findForUpdate(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Clinic", id));
