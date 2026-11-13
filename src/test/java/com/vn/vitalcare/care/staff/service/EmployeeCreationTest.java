@@ -69,6 +69,31 @@ class EmployeeCreationTest {
     }
 
     @Test
+    void transferRejectsMissingReasonBeforeChangingAnything() {
+        for (String reason : new String[] { null, "", "   " }) {
+            var error = assertThrows(com.vn.vitalcare.share.exception.FieldValidationException.class,
+                    () -> service.transfer(1L, java.util.UUID.randomUUID(), reason));
+            assertTrue(error.getMessage().contains("Vui lòng nhập lý do chuyển cơ sở."));
+        }
+        verifyNoInteractions(employees);
+    }
+
+    @Test
+    void retiredClinicAdministratorCannotBeUpdated() {
+        Employee employee = new Employee();
+        employee.setStaffType(StaffType.CLINIC_ADMIN);
+        employee.setStatus(EmployeeStatus.INACTIVE);
+        when(employees.findForUpdate(42L)).thenReturn(java.util.Optional.of(employee));
+        when(employees.exists((org.springframework.data.jpa.domain.Specification<Employee>) null)).thenReturn(true);
+        var request = mock(com.vn.vitalcare.care.staff.dto.EmployeePatchRequest.class);
+        var error = assertThrows(com.vn.vitalcare.share.exception.ConflictException.class,
+                () -> service.update(42L, request));
+        assertEquals("Quản trị viên đã nghỉ việc.", error.getMessage());
+        verify(employees, never()).persist(any());
+        verifyNoInteractions(users);
+    }
+
+    @Test
     void clinicAdminRequiresExplicitClinic() {
         signIn("ROLE_ADMIN", "employees:write", "clinics:write");
         assertThrows(FieldValidationException.class,
@@ -210,6 +235,8 @@ class EmployeeCreationTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn(7L);
         employee.setUser(user);
+        when(employees.findForUpdate(42L)).thenReturn(java.util.Optional.of(employee));
+        when(employees.exists((org.springframework.data.jpa.domain.Specification<Employee>) any())).thenReturn(true);
         when(employees.findOne((org.springframework.data.jpa.domain.Specification<Employee>) any()))
                 .thenReturn(java.util.Optional.of(employee));
         when(rowLevel.byId(Employee.class, com.vn.vitalcare.share.security.rowlevel.Action.WRITE, 42L))

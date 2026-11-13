@@ -176,7 +176,10 @@ public class EmployeeServiceImpl implements EmployeeService {
         // member of staff the caller may see but not edit is a 404. A status
         // change takes the lock a care-team assignment takes, so leaving and
         // being assigned cannot interleave.
-        Employee employee = request.status() == null ? find(id, Action.WRITE) : lock(id, Action.WRITE);
+        Employee employee = lock(id, Action.WRITE);
+        if (employee.getStaffType() == StaffType.CLINIC_ADMIN && employee.getStatus() == EmployeeStatus.INACTIVE) {
+            throw new ConflictException("Quản trị viên đã nghỉ việc.");
+        }
         if (CurrentUser.has("ROLE_ADMIN") && employee.getStaffType() != StaffType.CLINIC_ADMIN) {
             throw new org.springframework.security.access.AccessDeniedException("Only clinic administrators can be managed here");
         }
@@ -286,6 +289,9 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public Employee transfer(Long id, java.util.UUID clinicId, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("reason", "Vui lòng nhập lý do chuyển cơ sở.");
+        }
         Employee employee = lock(id, Action.WRITE);
         if (employee.getStatus() != EmployeeStatus.ACTIVE) {
             throw new ConflictException("Only somebody still on staff can move to another clinic");
@@ -303,7 +309,7 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ConflictException("They still have visits to see at this clinic; hand them over first");
         }
         OffsetDateTime now = OffsetDateTime.now(clock);
-        String why = reason == null || reason.isBlank() ? "Chuyển cơ sở" : reason.trim();
+        String why = reason.trim();
         memberships.findActive(id).ifPresent(m -> m.end(now, why));
         // Written before the new one goes in: at most one membership is active (uq_staff_membership_active),
         // and the new row's IDENTITY insert happens at once, ahead of the flush that would carry this update.
@@ -329,8 +335,10 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ConflictException("Their membership has already ended");
         }
         changeStatus(employee, EmployeeStatus.INACTIVE, reason == null || reason.isBlank() ? "Kết thúc thành viên" : reason.trim());
-        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", id, "membership_end", null,
-                java.util.Map.of("reason", reason == null ? "" : reason)));
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", id, "membership_end",
+                java.util.Map.of("status", "active", "userId", employee.getUser().getId()),
+                java.util.Map.of("status", "inactive", "userId", employee.getUser().getId(),
+                        "reason", reason == null || reason.isBlank() ? "Kết thúc thành viên" : reason.trim())));
         return repository.persist(employee);
     }
 

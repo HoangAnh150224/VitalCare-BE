@@ -51,7 +51,8 @@ public class User {
      * say so if a single spelling is stored. {@code UserService} owns that
      * conversion, on the way in and on the way to a lookup.
      */
-    @Column(nullable = false, length = 20, unique = true)
+    // Uniqueness applies only to non-deleted accounts (partial database index).
+    @Column(nullable = false, length = 20)
     private String phone;
 
     /**

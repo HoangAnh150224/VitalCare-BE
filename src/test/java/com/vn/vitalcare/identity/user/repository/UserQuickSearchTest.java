@@ -21,6 +21,20 @@ class UserQuickSearchTest {
     private UserRepository users;
 
     @Test
+    void deletedPhoneCanBelongToANewIdentity() {
+        String phone = UUID.randomUUID().toString().substring(0, 18);
+        User archived = new User(phone, null, "old-hash", "Archived", UserStatus.INACTIVE);
+        archived.setDeletedAt(java.time.Instant.now());
+        users.saveAndFlush(archived);
+        assertThat(users.findByPhone(phone)).isEmpty();
+
+        User replacement = users.saveAndFlush(new User(phone, null, "new-hash", "New", UserStatus.ACTIVE));
+        assertThat(replacement.getId()).isNotEqualTo(archived.getId());
+        assertThat(users.findByPhone(phone)).contains(replacement);
+        assertThat(users.findById(archived.getId())).contains(archived);
+    }
+
+    @Test
     void deletionFiltersIncludeArchivedUsersOnlyWhenRequested() {
         String marker = UUID.randomUUID().toString();
         User current = users.saveAndFlush(new User(
