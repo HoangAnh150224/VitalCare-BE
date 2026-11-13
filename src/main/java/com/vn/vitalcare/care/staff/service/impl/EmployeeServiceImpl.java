@@ -177,6 +177,27 @@ public class EmployeeServiceImpl implements EmployeeService {
         // change takes the lock a care-team assignment takes, so leaving and
         // being assigned cannot interleave.
         Employee employee = request.status() == null ? find(id, Action.WRITE) : lock(id, Action.WRITE);
+        if (CurrentUser.has("ROLE_ADMIN") && employee.getStaffType() != StaffType.CLINIC_ADMIN) {
+            throw new org.springframework.security.access.AccessDeniedException("Only clinic administrators can be managed here");
+        }
+        if (request.phone() != null || request.fullName() != null || request.password() != null || request.clinicId() != null) {
+            if (!CurrentUser.has("ROLE_ADMIN") || !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.CLINICS_WRITE)
+                    || employee.getStaffType() != StaffType.CLINIC_ADMIN) {
+                throw new org.springframework.security.access.AccessDeniedException("Clinic administrator management permission required");
+            }
+            if (request.fullName() != null && request.fullName().isBlank()) {
+                throw new com.vn.vitalcare.share.exception.FieldValidationException("fullName", "Vui lòng nhập họ tên");
+            }
+            if (request.clinicId() != null && !request.clinicId().equals(employee.getClinicId())) {
+                transfer(id, request.clinicId(), "Cập nhật quản trị phòng khám");
+            }
+            userService.update(employee.getUser().getId(),
+                    new com.vn.vitalcare.identity.user.dto.UserPatchRequest(
+                            request.phone(), null, request.fullName() == null ? null : request.fullName().trim(), null, null));
+            if (request.password() != null) {
+                userService.setPassword(employee.getUser().getId(), request.password());
+            }
+        }
 
         if (request.specialty() != null) {
             employee.setSpecialty(blankToNull(request.specialty()));
@@ -206,6 +227,22 @@ public class EmployeeServiceImpl implements EmployeeService {
      * in. The devices their patients wear stay where they are: a device is the
      * patient's, not the carer's.
      */
+    @Override
+    @Transactional
+    public Employee deleteClinicAdministrator(Long id) {
+        if (!CurrentUser.has("ROLE_ADMIN") || !CurrentUser.has(com.vn.vitalcare.share.security.Permissions.CLINICS_WRITE)) {
+            throw new org.springframework.security.access.AccessDeniedException("Clinic administrator management permission required");
+        }
+        Employee employee = lock(id, Action.WRITE);
+        if (employee.getStaffType() != StaffType.CLINIC_ADMIN) {
+            throw new org.springframework.security.access.AccessDeniedException("Only clinic administrators can be deleted here");
+        }
+        changeStatus(employee, EmployeeStatus.INACTIVE, "Xóa mềm quản trị phòng khám");
+        rowLevel.checkWritable(employee);
+        employee.markDeleted(CurrentUser.id().orElse(null), clock.instant());
+        return repository.persist(employee);
+    }
+
     private void changeStatus(Employee employee, EmployeeStatus status) {
         changeStatus(employee, status, "Nghỉ việc");
     }
@@ -307,6 +344,13 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Transactional
     public Employee setClinicRoles(Long id, java.util.Set<String> roles) {
         Employee employee = find(id, Action.WRITE);
+        boolean systemAdmin = CurrentUser.has("ROLE_ADMIN");
+        if (!systemAdmin && (!CurrentUser.has("ROLE_CLINIC_ADMIN")
+                || clinicScope.currentClinicId().filter(c -> c.equals(employee.getClinicId())).isEmpty())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only the clinic administrator can manage roles in their own clinic");
+        }
+        repository.lockRoleClinic(employee.getClinicId())
+                .orElseThrow(() -> new ResourceNotFoundException("Clinic", employee.getClinicId()));
         if (CurrentUser.id().filter(me -> me.equals(employee.getUser().getId())).isPresent()) {
             throw new ConflictException("Your own roles are changed by somebody else");
         }
@@ -319,10 +363,15 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         }
         // Only the system administrator makes a clinic administrator, or takes that away.
-        boolean admin = CurrentUser.has(com.vn.vitalcare.share.security.Permissions.STAFF_MEMBERSHIPS_TRANSFER);
+        boolean admin = systemAdmin;
         java.util.Set<String> had = new java.util.HashSet<>(employee.getUser().roleCodes());
         // The other roles are the clinic's to give: whoever runs its staff (employees:write).
-        boolean staffManager = CurrentUser.has(com.vn.vitalcare.share.security.Permissions.EMPLOYEES_WRITE);
+        boolean staffManager = systemAdmin || (CurrentUser.has("ROLE_CLINIC_ADMIN")
+                && CurrentUser.has(com.vn.vitalcare.share.security.Permissions.EMPLOYEES_WRITE));
+        if (had.contains("CLINIC_ADMIN") && !roles.contains("CLINIC_ADMIN")
+                && repository.countOtherActiveAdmins(employee.getClinicId(), id) == 0) {
+            throw new ConflictException("Cannot remove the last active administrator of this clinic");
+        }
         for (String code : com.vn.vitalcare.care.staff.service.StaffRoles.CLINIC_LEVEL.keySet()) {
             if (roles.contains(code) == had.contains(code)) {
                 continue;
@@ -396,6 +445,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     private Employee lock(Long id, Action action) {
         Employee row = repository.findForUpdate(id)
+                .filter(employee -> !employee.isDeleted())
                 .orElseThrow(() -> new ResourceNotFoundException("Employee", id));
         if (!repository.exists(rowLevel.byId(Employee.class, action, id))) {
             throw new ResourceNotFoundException("Employee", id);

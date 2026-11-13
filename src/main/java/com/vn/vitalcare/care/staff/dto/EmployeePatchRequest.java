@@ -25,5 +25,14 @@ public record EmployeePatchRequest(
         @Size(max = 128, message = "Position must be at most 128 characters")
         String clinicPosition,
 
-        EmployeeStatus status) {
+        EmployeeStatus status,
+        @jakarta.validation.constraints.Pattern(regexp = "^[+0-9 .()-]{10,20}$")
+        String phone,
+        @Size(min = 1, max = 255) String fullName,
+        @Size(min = 8, max = 72) String password,
+        java.util.UUID clinicId) {
+    public EmployeePatchRequest(String specialty, String professionalTitle, String licenseNo,
+                                String clinicPosition, EmployeeStatus status) {
+        this(specialty, professionalTitle, licenseNo, clinicPosition, status, null, null, null, null);
+    }
 }

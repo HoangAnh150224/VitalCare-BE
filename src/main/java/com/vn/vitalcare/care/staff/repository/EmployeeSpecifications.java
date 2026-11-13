@@ -3,7 +3,6 @@ package com.vn.vitalcare.care.staff.repository;
 import com.vn.vitalcare.entity.Employee;
 import com.vn.vitalcare.entity.EmployeeStatus;
 import com.vn.vitalcare.entity.StaffType;
-import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.ArrayList;
@@ -13,7 +12,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 /**
  * Translates the parsed query string into a JPA {@link Specification}, as
- * {@code CustomerSpecifications} does. Deleted rows are always excluded.
+ * {@code CustomerSpecifications} does. Former staff remain visible in the list.
  */
 public final class EmployeeSpecifications {
 
@@ -22,7 +21,6 @@ public final class EmployeeSpecifications {
 
     public static Specification<Employee> from(ListParams params) {
         List<Specification<Employee>> specs = new ArrayList<>();
-        specs.add(BaseEntitySpecifications.notDeleted());
 
         for (ListParams.Criterion criterion : params.filters()) {
             Specification<Employee> spec = switch (criterion.field()) {
