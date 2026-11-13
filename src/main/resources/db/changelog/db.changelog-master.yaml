@@ -136,3 +136,5 @@ databaseChangeLog:
       file: db/changelog/changes/066-first-aid-content.sql
   - include:
       file: db/changelog/changes/067-first-aid-visible.sql
+  - include:
+      file: db/changelog/changes/068-first-aid-video-articles.sql

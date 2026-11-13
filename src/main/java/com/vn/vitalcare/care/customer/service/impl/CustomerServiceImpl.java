@@ -47,7 +47,8 @@ public class CustomerServiceImpl implements CustomerService {
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
 
     /** Relatives under one account; a family, not a register. */
-    private static final int MAX_DEPENDENTS = 10;
+    /** Relatives one account may hold (the owner's own profile aside). */
+    private static final int MAX_DEPENDENTS = 2;
 
     private final CustomerRepository repository;
     private final ClinicScope clinicScope;
@@ -162,10 +163,7 @@ public class CustomerServiceImpl implements CustomerService {
         dependent.setGuardian(owner);
         applyProfile(dependent, request);
         // The same person entered twice -- a double click on Save, usually.
-        if (existing.stream().anyMatch(other -> other.getFullName().equalsIgnoreCase(dependent.getFullName())
-                && request.dateOfBirth().equals(other.getDateOfBirth()))) {
-            throw new ConflictException("This relative is already under your account");
-        }
+        requireNotAnotherRelative(existing, dependent, null);
         Customer saved = repository.save(dependent);
         saved.setCustomerCode("KH%06d".formatted(saved.getId()));
         return saved;
@@ -181,6 +179,10 @@ public class CustomerServiceImpl implements CustomerService {
         Customer profile = repository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
         applyProfile(profile, request);
+        // Renamed into another relative already under the account: two profiles of one person.
+        if (profile.isDependent()) {
+            requireNotAnotherRelative(repository.findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(owner.getId()), profile, id);
+        }
         return repository.save(profile);
     }
 
@@ -189,7 +191,35 @@ public class CustomerServiceImpl implements CustomerService {
      * the owner. The owner's own name and number are the account's and stay
      * out of the profile.
      */
-    private static void applyProfile(Customer profile, ProfileRequest request) {
+    /**
+     * A relative is one person under the account: another with the same name
+     * (case and spacing aside) and date of birth is the same person entered
+     * twice. {@code selfId} is the profile being edited, which may match itself.
+     */
+    private static void requireNotAnotherRelative(List<Customer> relatives, Customer candidate, Long selfId) {
+        String name = candidate.getFullName() == null ? "" : candidate.getFullName().trim().replaceAll("[ \t]+", " ");
+        boolean taken = relatives.stream()
+                .filter(other -> selfId == null || !selfId.equals(other.getId()))
+                .anyMatch(other -> other.getFullName() != null
+                        && other.getFullName().trim().replaceAll("[ \t]+", " ").equalsIgnoreCase(name)
+                        && java.util.Objects.equals(other.getDateOfBirth(), candidate.getDateOfBirth()));
+        if (taken) {
+            throw new FieldValidationException("fullName", "A relative with this name and date of birth is already under your account");
+        }
+    }
+
+    /** Nobody is older than this: a date of birth further back is a typing slip (the forms say the same). */
+    static final int MAX_AGE_YEARS = 120;
+
+    /** A date of birth no more than {@link #MAX_AGE_YEARS} years before today; null is left to the caller. */
+    private void requireLikelyBirthDate(java.time.LocalDate dateOfBirth) {
+        if (dateOfBirth != null && dateOfBirth.isBefore(java.time.LocalDate.now(clock).minusYears(MAX_AGE_YEARS))) {
+            throw new FieldValidationException("dateOfBirth", "Date of birth is more than 120 years ago");
+        }
+    }
+
+    private void applyProfile(Customer profile, ProfileRequest request) {
+        requireLikelyBirthDate(request.dateOfBirth());
         if (profile.isDependent()) {
             String name = request.fullName() == null ? "" : request.fullName().trim();
             String phone = request.phone() == null ? "" : request.phone().trim();
@@ -274,6 +304,7 @@ public class CustomerServiceImpl implements CustomerService {
         customer.setFullName(name);
         customer.setPhone(normalizedPhone);
         customer.setNationalId(normalizedNationalId);
+        requireLikelyBirthDate(dateOfBirth);
         customer.setDateOfBirth(dateOfBirth);
         customer.setGender(gender);
         Customer saved = repository.save(customer);
@@ -305,6 +336,7 @@ public class CustomerServiceImpl implements CustomerService {
         } else {
             profile = new Customer();
             profile.setUser(user);
+            requireLikelyBirthDate(dateOfBirth);
             profile.setDateOfBirth(dateOfBirth);
             profile = repository.save(profile);
             profile.setCustomerCode("KH%06d".formatted(profile.getId()));
@@ -341,6 +373,7 @@ public class CustomerServiceImpl implements CustomerService {
         Customer customer = get(id);
 
         if (request.dateOfBirth() != null) {
+            requireLikelyBirthDate(request.dateOfBirth());
             customer.setDateOfBirth(request.dateOfBirth());
         }
         if (request.gender() != null) {
