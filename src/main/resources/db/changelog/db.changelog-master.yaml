@@ -139,6 +139,8 @@ databaseChangeLog:
   - include:
       file: db/changelog/changes/068-first-aid-video-articles.sql
   - include:
+      file: db/changelog/changes/069-exam-room-per-doctor.sql
+  - include:
       file: db/changelog/changes/069-reuse-deleted-user-phone.sql
   - include:
       file: db/changelog/changes/070-first-publication-version.sql
