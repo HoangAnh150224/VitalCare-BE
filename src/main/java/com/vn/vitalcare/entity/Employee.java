@@ -75,6 +75,13 @@ public class Employee extends BaseEntity {
     public Employee() {
     }
 
+    @org.hibernate.annotations.Formula("(select max(m.ended_at) from staff_membership m where m.employee_id = id and m.status = 'ENDED')")
+    private java.time.Instant membershipEndedAt;
+
+    public java.time.Instant getMembershipEndedAt() {
+        return membershipEndedAt;
+    }
+
     public Long getId() {
         return id;
     }

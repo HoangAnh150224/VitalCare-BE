@@ -17,7 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
      * guess across spellings. No {@code IgnoreCase} variant: the column holds
      * digits and a leading {@code +}.
      */
-    Optional<User> findByPhone(String phone);
+    @Query("select u from User u where u.phone = :phone and u.deletedAt is null")
+    Optional<User> findByPhone(@Param("phone") String phone);
 
     Optional<User> findByEmailIgnoreCase(String email);
 

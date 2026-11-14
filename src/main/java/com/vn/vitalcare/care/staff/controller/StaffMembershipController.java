@@ -44,7 +44,8 @@ public class StaffMembershipController {
     }
 
     public record TransferRequest(@NotNull(message = "Pick a clinic") UUID clinicId,
-                                  @Size(max = 500, message = "At most 500 characters") String reason) {
+                                  @jakarta.validation.constraints.NotBlank(message = "Vui lòng nhập lý do chuyển cơ sở.")
+                                  @Size(max = 500, message = "Lý do không được vượt quá 500 ký tự.") String reason) {
     }
 
     public record EndRequest(@Size(max = 500, message = "At most 500 characters") String reason) {

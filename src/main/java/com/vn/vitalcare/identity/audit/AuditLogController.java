@@ -82,7 +82,7 @@ public class AuditLogController {
         }
     }
 
-    private static Specification<AuditLog> specification(ListParams params) {
+    static Specification<AuditLog> specification(ListParams params) {
         List<Specification<AuditLog>> specs = new ArrayList<>();
         for (ListParams.Criterion criterion : params.filters()) {
             String value = criterion.value() == null ? "" : criterion.value().trim();
@@ -128,10 +128,25 @@ public class AuditLogController {
                 specs.add((root, q, cb) -> cb.disjunction());
             }
         }
-        params.search().ifPresent(term -> specs.add((root, q, cb) -> cb.or(
+        params.search().ifPresent(term -> specs.add((root, q, cb) -> {
+            var textMatch = cb.or(
                 cb.like(cb.lower(root.get("actorName")), ListParams.likePattern(term)),
                 cb.like(cb.lower(root.get("entityType")), ListParams.likePattern(term)),
-                cb.like(cb.lower(root.get("action")), ListParams.likePattern(term)))));
+                cb.like(cb.lower(root.get("action")), ListParams.likePattern(term)));
+            try {
+                long userId = Long.parseLong(term.trim());
+                var employees = q.subquery(Long.class);
+                var employee = employees.from(com.vn.vitalcare.entity.Employee.class);
+                employees.select(employee.get("id"))
+                        .where(cb.equal(employee.get("user").get("id"), userId));
+                return cb.or(textMatch,
+                        cb.equal(root.get("actorId"), userId),
+                        cb.and(cb.equal(root.get("entityType"), "users"), cb.equal(root.get("entityId"), userId)),
+                        cb.and(cb.equal(root.get("entityType"), "employees"), root.get("entityId").in(employees)));
+            } catch (NumberFormatException ignored) {
+                return textMatch;
+            }
+        }));
         return Specification.allOf(specs);
     }
 }
