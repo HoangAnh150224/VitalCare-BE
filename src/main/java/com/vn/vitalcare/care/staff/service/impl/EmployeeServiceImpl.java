@@ -81,8 +81,14 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     public Page<Employee> list(ListParams params) {
+        Specification<Employee> scope = rowLevel.scope(Employee.class, Action.READ);
+        // Clinic administrators are the system administrator's to manage: a clinic's own
+        // staff list is its doctors and front desk, without the administrator reading it.
+        if (!CurrentUser.has("ROLE_ADMIN")) {
+            scope = scope.and(EmployeeSpecifications.notClinicAdministrators());
+        }
         return repository.findAll(
-                rowLevel.scope(Employee.class, Action.READ).and(EmployeeSpecifications.from(params)),
+                scope.and(EmployeeSpecifications.from(params)),
                 params.pageable(SORTABLE, DEFAULT_SORT));
     }
 
@@ -127,6 +133,7 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Only a Clinic Administrator can create clinic staff");
         }
+        checkProfileOptions(request.specialty(), request.professionalTitle(), request.clinicPosition(), null);
         Employee employee = new Employee();
         employee.setStaffType(request.staffType());
         employee.setSpecialty(blankToNull(request.specialty()));
@@ -202,6 +209,7 @@ public class EmployeeServiceImpl implements EmployeeService {
             }
         }
 
+        checkProfileOptions(request.specialty(), request.professionalTitle(), request.clinicPosition(), employee);
         if (request.specialty() != null) {
             employee.setSpecialty(blankToNull(request.specialty()));
         }
@@ -251,6 +259,11 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     private void changeStatus(Employee employee, EmployeeStatus status, String reason) {
+        // Leaving stops the account signing in: nobody locks themselves out by accident.
+        if (status == EmployeeStatus.INACTIVE
+                && CurrentUser.id().filter(me -> me.equals(employee.getUser().getId())).isPresent()) {
+            throw new ConflictException("Bạn không thể tự cho chính mình nghỉ việc.");
+        }
         employee.setStatus(status);
         OffsetDateTime now = OffsetDateTime.now(clock);
         if (status == EmployeeStatus.INACTIVE) {
@@ -459,6 +472,19 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ResourceNotFoundException("Employee", id);
         }
         return row;
+    }
+
+    /** The three picked-from-a-list fields; {@code current} is null for a new record. */
+    private static void checkProfileOptions(String specialty, String title, String position, Employee current) {
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("specialty", specialty,
+                current == null ? null : current.getSpecialty(),
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.SPECIALTIES);
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("professionalTitle", title,
+                current == null ? null : current.getProfessionalTitle(),
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.PROFESSIONAL_TITLES);
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("clinicPosition", position,
+                current == null ? null : current.getClinicPosition(),
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.CLINIC_POSITIONS);
     }
 
     private static String blankToNull(String value) {

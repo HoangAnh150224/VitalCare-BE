@@ -142,3 +142,17 @@ databaseChangeLog:
       file: db/changelog/changes/069-exam-room-per-doctor.sql
   - include:
       file: db/changelog/changes/069-reuse-deleted-user-phone.sql
+  - include:
+      file: db/changelog/changes/070-first-publication-version.sql
+  - include:
+      file: db/changelog/changes/071-first-aid-paused.sql
+  - include:
+      file: db/changelog/changes/072-demo-professional-licenses.sql
+  - include:
+      file: db/changelog/changes/073-demo-revenue-invoices.sql
+  - include:
+      file: db/changelog/changes/074-normalize-staff-profile-options.sql
+  - include:
+      file: db/changelog/changes/075-demo-doctors-by-specialty.sql
+  - include:
+      file: db/changelog/changes/076-cardio-respiratory-services.sql

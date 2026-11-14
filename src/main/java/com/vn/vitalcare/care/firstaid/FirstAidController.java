@@ -94,6 +94,18 @@ public class FirstAidController {
         return response(service.publish(id, request));
     }
 
+    @PostMapping("/{id}/pause")
+    @PreAuthorize("hasAuthority('" + Permissions.FIRST_AID_ARTICLES_REVIEW + "')")
+    public FirstAidResponses.Article pause(@PathVariable Long id) {
+        return response(service.pause(id));
+    }
+
+    @PostMapping("/{id}/resume")
+    @PreAuthorize("hasAuthority('" + Permissions.FIRST_AID_ARTICLES_REVIEW + "')")
+    public FirstAidResponses.Article resume(@PathVariable Long id) {
+        return response(service.resume(id));
+    }
+
     @PostMapping("/{id}/archive")
     @PreAuthorize("hasAuthority('" + Permissions.FIRST_AID_ARTICLES_REVIEW + "')")
     public FirstAidResponses.Article archive(@PathVariable Long id,

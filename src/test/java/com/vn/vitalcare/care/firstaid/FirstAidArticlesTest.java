@@ -62,6 +62,7 @@ class FirstAidArticlesTest {
         // What the public reads: the steps that published the article's published revision, newest first.
         when(history.findPublished()).thenAnswer(call -> steps.reversed().stream()
                 .filter(step -> article.getPublishedRevision() != null
+                        && article.getStatus() != FirstAidStatus.PAUSED
                         && step.getRevision() == article.getPublishedRevision()
                         && step.getToStatus() == FirstAidStatus.PUBLISHED)
                 .toList());
@@ -72,6 +73,42 @@ class FirstAidArticlesTest {
     @AfterEach
     void signOut() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void clinicAdminPublishesOwnDraftWithoutReview() {
+        signIn(DOCTOR, "ROLE_CLINIC_ADMIN", Permissions.FIRST_AID_ARTICLES_WRITE, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        service.create(content("Hướng dẫn"));
+        assertTrue(service.actions(article).contains("publish"));
+        service.publish(5L, null);
+        assertEquals(FirstAidStatus.PUBLISHED, article.getStatus());
+        assertNull(article.getReviewerId());
+        assertEquals("Hướng dẫn", service.publishedOne(5L).getTitle());
+    }
+
+    @Test
+    void pauseAndResumeKeepVersionAndRecordHistory() {
+        signIn(DOCTOR, "ROLE_CLINIC_ADMIN", Permissions.FIRST_AID_ARTICLES_WRITE, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        service.create(content("Hướng dẫn"));
+        assertThrows(ConflictException.class, () -> service.pause(5L));
+        service.publish(5L, null);
+        var publishedAt = article.getPublishedAt();
+        assertTrue(service.actions(article).contains("pause"));
+        service.pause(5L);
+        assertEquals(FirstAidStatus.PAUSED, article.getStatus());
+        assertTrue(service.published(null, null).isEmpty());
+        assertTrue(service.actions(article).contains("resume"));
+        assertTrue(!service.actions(article).contains("edit"));
+        assertThrows(ConflictException.class, () -> service.update(5L, content("Changed")));
+        service.resume(5L);
+        assertEquals(1, article.getRevision());
+        assertEquals(1, article.getPublishedRevision());
+        assertEquals(publishedAt, article.getPublishedAt());
+        assertEquals("Hướng dẫn", service.publishedOne(5L).getTitle());
+        assertEquals(FirstAidStatus.PAUSED, steps.get(steps.size() - 1).getFromStatus());
+        assertThrows(ConflictException.class, () -> service.resume(5L));
+        signIn(NURSE, Permissions.FIRST_AID_ARTICLES_WRITE);
+        assertTrue(!service.actions(article).contains("pause"));
     }
 
     @Test

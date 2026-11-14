@@ -94,6 +94,9 @@ public class FirstAidArticles {
     public FirstAidArticle update(Long id, FirstAidRequests.Content content) {
         FirstAidArticle article = lock(id);
         FirstAidStatus from = article.getStatus();
+        if (from == FirstAidStatus.PAUSED) {
+            throw new ConflictException("Vui lòng mở lại nội dung trước khi chỉnh sửa.");
+        }
         if (from == FirstAidStatus.PENDING_REVIEW) {
             throw new ConflictException("This content is waiting for review; it can be changed once the reviewer has decided");
         }
@@ -147,10 +150,26 @@ public class FirstAidArticles {
     @Transactional
     public FirstAidArticle publish(Long id, FirstAidRequests.Decision decision) {
         FirstAidArticle article = lock(id);
-        require(article, FirstAidStatus.REVIEWED, "Only approved content can be published");
+        if (!(article.getStatus() == FirstAidStatus.DRAFT && canPublishOwnDraft(article))) {
+            require(article, FirstAidStatus.REVIEWED, "Only approved content can be published");
+        }
         article.setPublishedRevision(article.getRevision());
         article.setPublishedAt(OffsetDateTime.now(clock));
         return move(article, FirstAidStatus.PUBLISHED, note(decision));
+    }
+
+    @Transactional
+    public FirstAidArticle pause(Long id) {
+        FirstAidArticle article = lock(id);
+        require(article, FirstAidStatus.PUBLISHED, "Chỉ có thể tạm ngưng nội dung đã xuất bản.");
+        return move(article, FirstAidStatus.PAUSED, "Tạm ngưng hiển thị nội dung");
+    }
+
+    @Transactional
+    public FirstAidArticle resume(Long id) {
+        FirstAidArticle article = lock(id);
+        require(article, FirstAidStatus.PAUSED, "Nội dung không ở trạng thái tạm ngưng.");
+        return move(article, FirstAidStatus.PUBLISHED, "Mở lại nội dung");
     }
 
     /** Off the public pages, whatever stage it was at; kept, with its history. */
@@ -169,6 +188,13 @@ public class FirstAidArticles {
      * What the caller may do to the article now, for the screen to offer only
      * those buttons. The endpoints check the same rules again.
      */
+    private boolean canPublishOwnDraft(FirstAidArticle article) {
+        return CurrentUser.has("ROLE_CLINIC_ADMIN")
+                && CurrentUser.has(Permissions.FIRST_AID_ARTICLES_WRITE)
+                && CurrentUser.has(Permissions.FIRST_AID_ARTICLES_REVIEW)
+                && CurrentUser.id().filter(id -> id.equals(article.getAuthorId())).isPresent();
+    }
+
     public List<String> actions(FirstAidArticle article) {
         boolean write = CurrentUser.has(Permissions.FIRST_AID_ARTICLES_WRITE);
         boolean review = CurrentUser.has(Permissions.FIRST_AID_ARTICLES_REVIEW);
@@ -176,22 +202,24 @@ public class FirstAidArticles {
                 .filter(id -> id.equals(article.getAuthorId()) || writersOf(article).contains(id)).isPresent();
         FirstAidStatus status = article.getStatus();
         List<String> actions = new ArrayList<>();
-        if (write && status != FirstAidStatus.PENDING_REVIEW) {
+        if (write && status != FirstAidStatus.PENDING_REVIEW && status != FirstAidStatus.PAUSED) {
             actions.add("edit");
         }
-        if (write && status == FirstAidStatus.DRAFT) {
+        if (write && status == FirstAidStatus.DRAFT && !canPublishOwnDraft(article)) {
             actions.add("submit");
         }
         if (review && status == FirstAidStatus.PENDING_REVIEW && !ownWork) {
             actions.add("approve");
             actions.add("reject");
         }
-        if (review && status == FirstAidStatus.REVIEWED) {
+        if (review && (status == FirstAidStatus.REVIEWED || (status == FirstAidStatus.DRAFT && canPublishOwnDraft(article)))) {
             actions.add("publish");
         }
         if (review && status != FirstAidStatus.ARCHIVED) {
             actions.add("archive");
         }
+        if (review && status == FirstAidStatus.PUBLISHED) actions.add("pause");
+        if (review && status == FirstAidStatus.PAUSED) actions.add("resume");
         return actions;
     }
 

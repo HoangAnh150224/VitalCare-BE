@@ -19,6 +19,7 @@ public interface FirstAidHistoryRepository extends JpaRepository<FirstAidArticle
      */
     @Query("select h from FirstAidArticleHistory h, FirstAidArticle a "
             + "where h.articleId = a.id and a.deletedAt is null and a.publishedRevision is not null "
+            + "and a.status <> com.vn.vitalcare.entity.FirstAidStatus.PAUSED "
             + "and h.revision = a.publishedRevision "
             + "and h.toStatus = com.vn.vitalcare.entity.FirstAidStatus.PUBLISHED "
             + "order by h.id desc")
