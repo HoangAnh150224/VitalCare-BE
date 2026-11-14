@@ -156,3 +156,7 @@ databaseChangeLog:
       file: db/changelog/changes/075-demo-doctors-by-specialty.sql
   - include:
       file: db/changelog/changes/076-cardio-respiratory-services.sql
+  - include:
+      file: db/changelog/changes/077-backfill-clinic-alert-rules.sql
+  - include:
+      file: db/changelog/changes/078-demo-patient-feedback.sql
