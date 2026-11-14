@@ -68,6 +68,11 @@ public final class EmployeeSpecifications {
         return (root, query, cb) -> cb.equal(root.get("status"), EmployeeStatus.ACTIVE);
     }
 
+    /** Doctors and the front desk: everybody but the clinic's administrators. */
+    public static Specification<Employee> notClinicAdministrators() {
+        return (root, query, cb) -> cb.notEqual(root.get("staffType"), StaffType.CLINIC_ADMIN);
+    }
+
     private static Specification<Employee> statusSpec(String raw) {
         try {
             EmployeeStatus status = EmployeeStatus.from(raw);
