@@ -140,3 +140,9 @@ databaseChangeLog:
       file: db/changelog/changes/068-first-aid-video-articles.sql
   - include:
       file: db/changelog/changes/069-reuse-deleted-user-phone.sql
+  - include:
+      file: db/changelog/changes/070-first-publication-version.sql
+  - include:
+      file: db/changelog/changes/071-first-aid-paused.sql
+  - include:
+      file: db/changelog/changes/072-demo-professional-licenses.sql
