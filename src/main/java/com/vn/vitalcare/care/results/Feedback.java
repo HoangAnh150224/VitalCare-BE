@@ -33,13 +33,15 @@ public class Feedback {
     private final AppointmentService appointments;
     private final CustomerService customers;
     private final RowLevelSecurity rowLevel;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public Feedback(PatientFeedbackRepository feedback, AppointmentService appointments, CustomerService customers,
-                    RowLevelSecurity rowLevel) {
+                    RowLevelSecurity rowLevel, org.springframework.context.ApplicationEventPublisher events) {
         this.feedback = feedback;
         this.appointments = appointments;
         this.customers = customers;
         this.rowLevel = rowLevel;
+        this.events = events;
     }
 
     public List<PatientFeedback> own() {
@@ -86,7 +88,6 @@ public class Feedback {
     public Page<PatientFeedback> list(ListParams params) {
         List<Specification<PatientFeedback>> specs = new ArrayList<>();
         specs.add(rowLevel.scope(PatientFeedback.class, Action.READ));
-        specs.add(BaseEntitySpecifications.notDeleted());
         for (ListParams.Criterion c : params.filters()) {
             if ("rating".equals(c.field())) {
                 Integer r = Integer.valueOf(c.value().trim());
@@ -101,9 +102,32 @@ public class Feedback {
     }
 
     public PatientFeedback get(Long id) {
-        return feedback.findOne(Specification.allOf(rowLevel.byId(PatientFeedback.class, Action.READ, id),
-                        BaseEntitySpecifications.notDeleted()))
+        return feedback.findOne(rowLevel.byId(PatientFeedback.class, Action.READ, id))
                 .orElseThrow(() -> new ResourceNotFoundException("Feedback", id));
+    }
+
+    @Transactional
+    public PatientFeedback reply(Long id, String text) {
+        if (text == null || text.isBlank() || text.trim().length() > 2000)
+            throw new FieldValidationException("reply", "Vui lòng nhập phản hồi từ 1 đến 2000 ký tự.");
+        PatientFeedback f = get(id);
+        if (f.isDeleted()) throw new ConflictException("Góp ý đã xóa, chỉ có thể xem chi tiết.");
+        f.setReply(text.trim());
+        f.setRepliedAt(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
+        events.publishEvent(com.vn.vitalcare.share.audit.AuditEvent.of("feedback", id, "reply"));
+        return feedback.persist(f);
+    }
+
+    @Transactional
+    public void remove(Long id, String reason) {
+        if (reason == null || reason.isBlank() || reason.trim().length() > 500)
+            throw new FieldValidationException("reason", "Vui lòng nhập lý do xóa từ 1 đến 500 ký tự.");
+        PatientFeedback f = get(id);
+        if (f.isDeleted()) throw new ConflictException("Góp ý đã được xóa.");
+        f.setRemovalReason(reason.trim());
+        f.markDeleted(com.vn.vitalcare.share.security.CurrentUser.id().orElse(null), java.time.Instant.now());
+        feedback.persist(f);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("feedback", id, "delete", null, java.util.Map.of("reason", reason.trim())));
     }
 
     private void apply(PatientFeedback f, Integer rating, String comment) {

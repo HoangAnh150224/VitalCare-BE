@@ -79,6 +79,25 @@ class EmployeeCreationTest {
     }
 
     @Test
+    void endMembershipRejectsInvalidReasonBeforeChangingAnything() {
+        for (String reason : new String[] { null, "", "   ", "\t\n", "x".repeat(501) }) {
+            assertThrows(FieldValidationException.class, () -> service.endMembership(1L, reason));
+        }
+        verifyNoInteractions(employees, users, memberships, rowLevel);
+    }
+
+    @Test
+    void endRequestRequiresReasonAndAcceptsValidReason() {
+        try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            for (String reason : new String[] { null, "", "   ", "x".repeat(501) }) {
+                assertFalse(validator.validate(new com.vn.vitalcare.care.staff.controller.StaffMembershipController.EndRequest(reason)).isEmpty());
+            }
+            assertTrue(validator.validate(new com.vn.vitalcare.care.staff.controller.StaffMembershipController.EndRequest("Nghỉ việc theo nguyện vọng")).isEmpty());
+        }
+    }
+
+    @Test
     void retiredClinicAdministratorCannotBeUpdated() {
         Employee employee = new Employee();
         employee.setStaffType(StaffType.CLINIC_ADMIN);
