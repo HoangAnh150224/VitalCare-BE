@@ -17,8 +17,11 @@ public interface SharingPermissionRepository extends JpaRepository<SharingPermis
             + " order by p.createdAt desc")
     List<SharingPermission> findForProfiles(@Param("customerIds") Collection<Long> customerIds);
 
-    /** The grants in force to a caregiver. */
-    @EntityGraph(attributePaths = {"customer", "caregiver"})
+    /**
+     * The grants in force to a caregiver. The patient's account comes too: a patient who holds an
+     * account takes their name from it, and the list is read after this transaction has closed.
+     */
+    @EntityGraph(attributePaths = {"customer", "customer.user", "caregiver"})
     @Query("select p from SharingPermission p where p.caregiver.id = :userId and p.status = 'ACTIVE'"
             + " and p.deletedAt is null and (p.expiresAt is null or p.expiresAt > :now) order by p.createdAt")
     List<SharingPermission> findInForceFor(@Param("userId") Long userId, @Param("now") OffsetDateTime now);
