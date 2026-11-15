@@ -39,13 +39,13 @@ public final class AlertDtos {
      * administrator's to choose — anybody else writes their own clinic's.
      */
     public record RuleRequest(
-            @NotBlank(message = "Name is required") @Size(max = 255) String name,
-            @NotBlank(message = "Choose a measure") String metric,
-            @NotBlank(message = "Choose below or above") String operator,
-            @NotNull(message = "Threshold is required") BigDecimal threshold,
-            @NotBlank(message = "Choose a severity") String severity,
-            Boolean enabled,
-            @Size(max = 1000) String note,
+            @NotBlank(message = "Vui lòng nhập tên quy tắc") @Size(max = 255) String name,
+            @NotBlank(message = "Vui lòng chọn chỉ số") String metric,
+            @NotBlank(message = "Vui lòng chọn điều kiện") String operator,
+            @NotNull(message = "Vui lòng nhập ngưỡng") BigDecimal threshold,
+            @NotBlank(message = "Vui lòng chọn mức độ") String severity,
+            @NotNull(message = "Vui lòng chọn trạng thái") Boolean enabled,
+            @NotBlank(message = "Vui lòng nhập ghi chú") @Size(max = 1000) String note,
             Long customerId,
             UUID clinicId) {
     }
