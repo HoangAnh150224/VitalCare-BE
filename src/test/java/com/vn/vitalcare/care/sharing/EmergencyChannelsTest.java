@@ -48,7 +48,7 @@ class EmergencyChannelsTest {
         try {
             EmergencyChannels.Outcome outcome = channels("AC1", "token", "+17370000000",
                     "http://localhost:" + twilio.getAddress().getPort())
-                    .call("0912345678", "Nhịp tim 150 & SpO2 < 90");
+                    .call("0912345678", "Nhịp tim 150, SpO2 90");
 
             assertThat(outcome.outcome()).isEqualTo("PLACED");
             assertThat(outcome.detail()).contains("CA123");
@@ -63,7 +63,7 @@ class EmergencyChannelsTest {
             // The script rides in the URL, so it is encoded once more than the form itself.
             assertThat(URLDecoder.decode(form.get(), StandardCharsets.UTF_8)).contains(
                     "<Say language=\"vi-VN\" voice=\"Google.vi-VN-Standard-A\" loop=\"2\">"
-                            + "Nhịp tim 150 &amp; SpO2 &lt; 90</Say>");
+                            + "Nhịp tim 150, SpO2 90</Say>");
         } finally {
             twilio.stop(0);
         }
@@ -90,6 +90,16 @@ class EmergencyChannelsTest {
         } finally {
             twilio.stop(0);
         }
+    }
+
+    @Test
+    void theAlertIsSpeltOutForTheVoice() {
+        assertThat(EmergencyChannels.spoken(
+                "VitalCare cảnh báo khẩn: SpO₂ 87.4% dưới ngưỡng 90% (SpO₂ rất thấp) của Nguyễn Văn Bình."))
+                .isEqualTo("VitalCare cảnh báo khẩn: SpO2 87,4 phần trăm dưới ngưỡng 90 phần trăm, "
+                        + "SpO2 rất thấp, của Nguyễn Văn Bình.");
+        assertThat(EmergencyChannels.spoken("Nhịp tim 150 bpm trên ngưỡng 140 bpm"))
+                .isEqualTo("Nhịp tim 150 lần mỗi phút trên ngưỡng 140 lần mỗi phút");
     }
 
     @Test

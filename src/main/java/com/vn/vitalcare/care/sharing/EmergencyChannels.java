@@ -102,8 +102,20 @@ public class EmergencyChannels {
 
     /** What the call says: the alert, read twice because the first seconds after picking up are easily missed. */
     String twiml(String message) {
-        String text = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+        String text = spoken(message).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         return "<Response><Say language=\"vi-VN\" voice=\"" + voice + "\" loop=\"2\">" + text + "</Say></Response>";
+    }
+
+    /**
+     * The alert as words a voice can read: symbols spelt out and brackets dropped. A call whose script
+     * carried "SpO₂ 88% (…)" was cut off after two seconds, where plain words were read through.
+     */
+    static String spoken(String message) {
+        return message.replace("SpO₂", "SpO2").replace("%", " phần trăm").replace("°C", " độ C")
+                .replace("bpm", "lần mỗi phút").replace("lần/phút", "lần mỗi phút")
+                .replaceAll("\\s*\\(", ", ").replace(")", ",")
+                .replaceAll("(\\d)\\.(\\d)", "$1,$2")
+                .replaceAll("[^\\p{L}\\p{N} ,.:;-]", " ").replaceAll("\\s+", " ").replaceAll(" ,", ",").trim();
     }
 
     private static String refusal(String body) {
