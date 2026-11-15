@@ -160,3 +160,5 @@ databaseChangeLog:
       file: db/changelog/changes/077-backfill-clinic-alert-rules.sql
   - include:
       file: db/changelog/changes/078-demo-patient-feedback.sql
+  - include:
+      file: db/changelog/changes/079-demo-revenue-feedback-history.sql
