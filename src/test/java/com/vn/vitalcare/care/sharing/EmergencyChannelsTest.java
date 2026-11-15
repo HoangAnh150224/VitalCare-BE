@@ -59,6 +59,7 @@ class EmergencyChannelsTest {
                     "Url=https://twimlets.com/echo?Twiml=");
             // A trial account refuses any parameter beyond these three.
             assertThat(form.get().split("&")).hasSize(3);
+            assertThat(form.get()).contains("Nh%E1%BB%8Bp%20tim%20150").doesNotContain("Nh%E1%BB%8Bp+tim");
             // The script rides in the URL, so it is encoded once more than the form itself.
             assertThat(URLDecoder.decode(form.get(), StandardCharsets.UTF_8)).contains(
                     "<Say language=\"vi-VN\" voice=\"Google.vi-VN-Standard-A\" loop=\"2\">"

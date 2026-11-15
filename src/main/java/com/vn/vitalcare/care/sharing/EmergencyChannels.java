@@ -79,7 +79,8 @@ public class EmergencyChannels {
         form.add("From", fromNumber);
         // ponytail: the script goes by URL through Twilio's echo twimlet because a trial account refuses the
         // inline Twiml parameter (and anything beyond To, From and Url). On an upgraded account send "Twiml" directly and drop the detour.
-        form.add("Url", TWIML_ECHO + URLEncoder.encode(twiml(message), StandardCharsets.UTF_8));
+        // Spaces as %20, not "+": the form the call made from Twilio's console used, and the one that was read aloud.
+        form.add("Url", TWIML_ECHO + URLEncoder.encode(twiml(message), StandardCharsets.UTF_8).replace("+", "%20"));
         try {
             String body = twilio.post()
                     .uri("/2010-04-01/Accounts/{sid}/Calls.json", accountSid)
