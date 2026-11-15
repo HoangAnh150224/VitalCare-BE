@@ -43,6 +43,19 @@ public class PatientFeedback extends BaseEntity {
 
     @Column(name = "comment")
     private String comment;
+    @Column(name = "reply", length = 2000)
+    private String reply;
+    @Column(name = "replied_at")
+    private OffsetDateTime repliedAt;
+    @Column(name = "removal_reason", length = 500)
+    private String removalReason;
+
+    public String getReply() { return reply; }
+    public void setReply(String value) { reply = value; }
+    public OffsetDateTime getRepliedAt() { return repliedAt; }
+    public void setRepliedAt(OffsetDateTime value) { repliedAt = value; }
+    public void setRemovalReason(String value) { removalReason = value; }
+    public String getRemovalReason() { return removalReason; }
 
     public PatientFeedback() {
     }

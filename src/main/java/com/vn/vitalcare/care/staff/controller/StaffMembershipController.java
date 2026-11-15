@@ -48,7 +48,8 @@ public class StaffMembershipController {
                                   @Size(max = 500, message = "Lý do không được vượt quá 500 ký tự.") String reason) {
     }
 
-    public record EndRequest(@Size(max = 500, message = "At most 500 characters") String reason) {
+    public record EndRequest(@jakarta.validation.constraints.NotBlank(message = "Vui lòng nhập lý do kết thúc thành viên.")
+                             @Size(max = 500, message = "Lý do không được quá 500 ký tự.") String reason) {
     }
 
     public record RolesRequest(Set<String> roles) {

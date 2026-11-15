@@ -162,3 +162,7 @@ databaseChangeLog:
       file: db/changelog/changes/078-demo-patient-feedback.sql
   - include:
       file: db/changelog/changes/079-demo-revenue-feedback-history.sql
+  - include:
+      file: db/changelog/changes/079-clinic-admin-medical-services.sql
+  - include:
+      file: db/changelog/changes/080-feedback-management.sql

@@ -125,7 +125,8 @@ public class ResultsController {
 
     public record FeedbackResponse(Long id, Long appointmentId, String appointmentDate, Long customerId,
                                    String customerName, String doctorName, int rating, String comment,
-                                   OffsetDateTime createdAt) {
+                                   OffsetDateTime createdAt, String reply, OffsetDateTime repliedAt,
+                                   boolean deleted, java.time.Instant deletedAt, String removalReason) {
         static FeedbackResponse of(PatientFeedback f) {
             var doctor = f.getAppointment().getEmployee();
             return new FeedbackResponse(f.getId(), f.getAppointment().getId(),
@@ -133,7 +134,8 @@ public class ResultsController {
                     f.getCustomer().getFullName(),
                     doctor == null || doctor.getUser() == null ? null : doctor.getUser().getFullName(),
                     f.getRating(), f.getComment(),
-                    f.getCreatedAt() == null ? null : f.getCreatedAt().atOffset(java.time.ZoneOffset.UTC));
+                    f.getCreatedAt() == null ? null : f.getCreatedAt().atOffset(java.time.ZoneOffset.UTC), f.getReply(), f.getRepliedAt(),
+                    f.isDeleted(), f.getDeletedAt(), f.getRemovalReason());
         }
     }
 
@@ -176,6 +178,21 @@ public class ResultsController {
     }
 
     // ---- licenses -----------------------------------------------------------------------
+    public record FeedbackReply(String reply) {}
+    public record FeedbackRemoval(String reason) {}
+
+    @PutMapping("/api/feedback/{id}/reply")
+    @PreAuthorize("hasAuthority('feedback:write')")
+    public FeedbackResponse replyFeedback(@PathVariable Long id, @RequestBody FeedbackReply request) {
+        return FeedbackResponse.of(feedback.reply(id, request.reply()));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/api/feedback/{id}")
+    @PreAuthorize("hasAuthority('feedback:delete')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeFeedback(@PathVariable Long id, @RequestBody FeedbackRemoval request) {
+        feedback.remove(id, request.reason());
+    }
 
     public record LicenseResponse(Long id, Long employeeId, String holderName, String kind, String title,
                                   String licenseNumber, String issuer, LocalDate issuedOn, LocalDate expiresOn,

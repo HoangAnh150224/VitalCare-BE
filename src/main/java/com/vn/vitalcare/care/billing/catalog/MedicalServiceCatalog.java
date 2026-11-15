@@ -55,6 +55,12 @@ public class MedicalServiceCatalog {
 
     @Transactional
     public MedicalService create(MedicalServiceRequest request) {
+        if (request.description() == null || request.description().isBlank()) {
+            throw new FieldValidationException("description", "Vui lòng nhập mô tả dịch vụ.");
+        }
+        if (request.status() == null) {
+            throw new FieldValidationException("status", "Vui lòng chọn trạng thái.");
+        }
         MedicalService service = new MedicalService();
         apply(service, request);
         return repository.save(service);

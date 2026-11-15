@@ -343,15 +343,21 @@ public class EmployeeServiceImpl implements EmployeeService {
     @Override
     @Transactional
     public Employee endMembership(Long id, String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("reason", "Vui lòng nhập lý do kết thúc thành viên.");
+        }
+        if (reason.length() > 500) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException("reason", "Lý do không được quá 500 ký tự.");
+        }
         Employee employee = lock(id, Action.WRITE);
         if (employee.getStatus() != EmployeeStatus.ACTIVE) {
             throw new ConflictException("Their membership has already ended");
         }
-        changeStatus(employee, EmployeeStatus.INACTIVE, reason == null || reason.isBlank() ? "Kết thúc thành viên" : reason.trim());
+        changeStatus(employee, EmployeeStatus.INACTIVE, reason.trim());
         events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", id, "membership_end",
                 java.util.Map.of("status", "active", "userId", employee.getUser().getId()),
                 java.util.Map.of("status", "inactive", "userId", employee.getUser().getId(),
-                        "reason", reason == null || reason.isBlank() ? "Kết thúc thành viên" : reason.trim())));
+                        "reason", reason.trim())));
         return repository.persist(employee);
     }
 
