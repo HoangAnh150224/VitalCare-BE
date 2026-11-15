@@ -2,6 +2,8 @@ package com.vn.vitalcare.care.sharing;
 
 import com.vn.vitalcare.care.registration.service.EsmsOtpSender;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +39,8 @@ public class EmergencyChannels {
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    /** Twilio's own helper that answers with the TwiML it is given in the query string. */
+    private static final String TWIML_ECHO = "https://twimlets.com/echo?Twiml=";
 
     private final ObjectProvider<EsmsOtpSender> esms;
     private final RestClient twilio;
@@ -73,7 +77,10 @@ public class EmergencyChannels {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("To", e164(phone));
         form.add("From", fromNumber);
-        form.add("Twiml", twiml(message));
+        // ponytail: the script goes by URL through Twilio's echo twimlet because a trial account refuses the
+        // inline Twiml parameter. On an upgraded account send "Twiml" directly and drop the detour.
+        form.add("Url", TWIML_ECHO + URLEncoder.encode(twiml(message), StandardCharsets.UTF_8));
+        form.add("Method", "GET");
         try {
             String body = twilio.post()
                     .uri("/2010-04-01/Accounts/{sid}/Calls.json", accountSid)
