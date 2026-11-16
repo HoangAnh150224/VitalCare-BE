@@ -33,5 +33,18 @@ public record BookingRequest(
 
         @NotBlank(message = "A reason for the visit is required")
         @Size(max = 255, message = "Reason must be at most 255 characters")
-        String reason) {
+        String reason,
+
+        /**
+         * The department to be seen in ("Tim mạch", "Hô hấp"): only its rooms call the visit in.
+         * Left out by older clients, and then any room may.
+         */
+        @Size(max = 64, message = "The department must be at most 64 characters")
+        String department) {
+
+    /** Older clients, which do not name a department. */
+    public BookingRequest(Long patientId, Long employeeId, java.util.UUID clinicId, LocalDate appointmentDate,
+                          String reason) {
+        this(patientId, employeeId, clinicId, appointmentDate, reason, null);
+    }
 }

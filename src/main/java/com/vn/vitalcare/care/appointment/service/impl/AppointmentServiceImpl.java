@@ -559,6 +559,10 @@ public class AppointmentServiceImpl implements AppointmentService {
         appointment.setCustomer(customer);
         assignToClinic(appointment, customer, clinicFor(request.clinicId(), request.employeeId()), request.appointmentDate(), null);
         appointment.setReason(request.reason().trim());
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("department", request.department(), null,
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.SPECIALTIES);
+        appointment.setDepartment(request.department() == null || request.department().isBlank()
+                ? null : request.department().trim());
         appointment.setBookingCode(newBookingCode());
         Appointment saved = repository.persist(appointment);
         if (byStaff) {

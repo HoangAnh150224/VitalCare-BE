@@ -64,6 +64,6 @@ public record WalkInRequest(
     }
 
     public StaffBookingRequest booking(Long customer, LocalDate today) {
-        return new StaffBookingRequest(customer, employeeId, clinicId, today, reason, note);
+        return new StaffBookingRequest(customer, employeeId, clinicId, today, reason, note, department);
     }
 }

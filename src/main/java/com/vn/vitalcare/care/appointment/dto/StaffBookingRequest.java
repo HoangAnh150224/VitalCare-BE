@@ -27,9 +27,20 @@ public record StaffBookingRequest(
         String reason,
 
         @Size(max = 2000, message = "Note must be at most 2000 characters")
-        String note) {
+        String note,
+
+        /** The department to be seen in; see {@link BookingRequest#department()}. */
+        @Size(max = 64, message = "The department must be at most 64 characters")
+        String department) {
+
+    /** Callers that do not name a department. */
+    public StaffBookingRequest(Long customerId, Long employeeId, java.util.UUID clinicId, LocalDate appointmentDate,
+                               String reason, String note) {
+        this(customerId, employeeId, clinicId, appointmentDate, reason, note, null);
+    }
+
 
     public BookingRequest booking() {
-        return new BookingRequest(null, employeeId, clinicId, appointmentDate, reason);
+        return new BookingRequest(null, employeeId, clinicId, appointmentDate, reason, department);
     }
 }
