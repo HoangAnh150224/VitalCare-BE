@@ -10,9 +10,7 @@ import java.util.Set;
  */
 public final class StaffProfileOptions {
 
-    public static final Set<String> SPECIALTIES = Set.of(
-            "Tim mạch", "Hô hấp", "Tim mạch nhi", "Hô hấp nhi",
-            "Phẫu thuật tim mạch", "Phẫu thuật lồng ngực");
+    public static final Set<String> SPECIALTIES = Set.of("Tim mạch", "Hô hấp");
 
     public static final Set<String> PROFESSIONAL_TITLES = Set.of(
             "Bác sĩ", "Bác sĩ chuyên khoa I", "Bác sĩ chuyên khoa II",
