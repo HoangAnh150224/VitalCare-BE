@@ -34,6 +34,8 @@ public record AppointmentResponse(
         LocalTime startTime,
         LocalTime endTime,
         String reason,
+        /** The department the visit is for; null when none was asked (an online booking). */
+        String department,
         AppointmentStatus status,
         String note,
         OffsetDateTime checkedInAt,
@@ -78,7 +80,7 @@ public record AppointmentResponse(
         return new AppointmentResponse(
                 full.id(), full.bookingCode(), full.customer(), full.clinic(), full.doctor(), full.queueNumber(),
                 full.appointmentDate(), full.startTime(),
-                full.endTime(), full.reason(), full.status(), null, full.checkedInAt(),
+                full.endTime(), full.reason(), full.department(), full.status(), null, full.checkedInAt(),
                 full.examRoom(), full.calledAt(), full.cancelledAt(), full.cancelReason(), full.paidAt(),
                 full.deskPaymentChosenAt(), full.createdAt(), Map.of());
     }
@@ -110,6 +112,7 @@ public record AppointmentResponse(
                 appointment.getStartTime(),
                 appointment.getEndTime(),
                 appointment.getReason(),
+                appointment.getDepartment(),
                 appointment.getStatus(),
                 appointment.getNote(),
                 appointment.getCheckedInAt(),

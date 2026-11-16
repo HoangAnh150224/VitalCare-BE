@@ -49,6 +49,10 @@ public class ExamRoom extends BaseEntity {
     @Column(name = "name", length = 100)
     private String name;
 
+    /** The department the room serves, one of the specialties ("Tim mạch", "Hô hấp"); the board groups by it. */
+    @Column(name = "department", length = 64)
+    private String department;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 16)
     private ExamRoomStatus status = ExamRoomStatus.AVAILABLE;
@@ -107,6 +111,14 @@ public class ExamRoom extends BaseEntity {
 
     public void setCode(String code) {
         this.code = code;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
     }
 
     public String getName() {

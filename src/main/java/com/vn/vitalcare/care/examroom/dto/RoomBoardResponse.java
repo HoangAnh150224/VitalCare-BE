@@ -32,6 +32,8 @@ public record RoomBoardResponse(
             Long id,
             String code,
             String name,
+            /** The department the room serves; null for a room outside any. */
+            String department,
             ExamRoomStatus status,
             /** The doctor whose session puts them in this room now; null outside any session. */
             DoctorRef doctor,
@@ -73,7 +75,9 @@ public record RoomBoardResponse(
             /** Back from ordered services or sent by a colleague: called first. */
             boolean returned,
             /** The doctor who referred the patient here today, if any. */
-            String referredBy) {
+            String referredBy,
+            /** The department the patient came for; null when none was asked. */
+            String department) {
 
         public static Visit of(Appointment appointment) {
             var customer = appointment.getCustomer();
@@ -88,7 +92,8 @@ public record RoomBoardResponse(
                     appointment.getSkippedAt() != null,
                     appointment.getReturnedAt() != null,
                     appointment.getReferredFrom() == null || appointment.getReferredFrom().getEmployee() == null
-                            ? null : appointment.getReferredFrom().getEmployee().getUser().getFullName());
+                            ? null : appointment.getReferredFrom().getEmployee().getUser().getFullName(),
+                    appointment.getDepartment());
         }
     }
 }

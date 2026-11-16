@@ -116,6 +116,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         room.setClinic(clinic);
         room.setCode(code);
         room.setName(blankToNull(request.name()));
+        room.setDepartment(department(request.department(), null));
 
         ExamRoom saved = rooms.persist(room);
         // WITH CHECK against the complete row, after the flush; see DeviceServiceImpl.register.
@@ -134,6 +135,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         }
         room.setCode(code);
         room.setName(blankToNull(request.name()));
+        room.setDepartment(department(request.department(), room.getDepartment()));
         rowLevel.checkWritable(room);
         return rooms.persist(room);
     }
@@ -147,7 +149,9 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                 rowLevel.scope(ExamRoom.class, Action.READ),
                 BaseEntitySpecifications.notDeleted(),
                 ExamRoomSpecifications.ofClinic(clinic))));
-        clinicRooms.sort(Comparator.comparing(ExamRoom::getCode, String.CASE_INSENSITIVE_ORDER));
+        // By department (in the order the specialties are listed, rooms outside any last), then by code.
+        clinicRooms.sort(Comparator.comparingInt((ExamRoom room) -> departmentOrder(room.getDepartment()))
+                .thenComparing(ExamRoom::getCode, String.CASE_INSENSITIVE_ORDER));
 
         // Everyone waiting, per doctor, in call order; a room takes its doctor's
         // queue, and whatever is left over waits with no room.
@@ -188,6 +192,7 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                     room.getId(),
                     room.getCode(),
                     room.getName(),
+                    room.getDepartment(),
                     room.getStatus(),
                     doctor.map(DoctorRef::of).orElse(null),
                     current == null ? null : Visit.of(current),
@@ -352,6 +357,25 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         return rooms.findOne(Specification.allOf(
                         rowLevel.byId(ExamRoom.class, action, id), BaseEntitySpecifications.notDeleted()))
                 .orElseThrow(() -> new ResourceNotFoundException("Exam room", id));
+    }
+
+    /** A department from the list of specialties (the one the room already has stays allowed), or none. */
+    private static String department(String value, String current) {
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("department", value, current,
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.SPECIALTIES);
+        return blankToNull(value);
+    }
+
+    /** Where a department sits on the board: Tim mạch, then Hô hấp, then anything else, then none. */
+    private static int departmentOrder(String department) {
+        if (department == null) {
+            return 3;
+        }
+        return switch (department) {
+            case "Tim mạch" -> 0;
+            case "Hô hấp" -> 1;
+            default -> 2;
+        };
     }
 
     private static String blankToNull(String value) {

@@ -16,5 +16,9 @@ public record ExamRoomRequest(
         String code,
 
         @Size(max = 100, message = "The room name must be at most 100 characters")
-        String name) {
+        String name,
+
+        /** One of the specialties; empty leaves the room outside any department. */
+        @Size(max = 64, message = "The department must be at most 64 characters")
+        String department) {
 }

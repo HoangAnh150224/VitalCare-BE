@@ -127,13 +127,16 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
      */
     @Query(nativeQuery = true, value = "select * from appointment "
             // The doctor's own (a referral, or a visit from before the shared line), and the clinic's shared line.
-            + "where (employee_id = :employeeId or (employee_id is null and clinic_id = :clinicId)) "
+            + "where (employee_id = :employeeId or (employee_id is null and clinic_id = :clinicId "
+            // From the shared line, a room of a department calls only that department's patients (and those of none).
+            + "and (cast(:department as varchar) is null or department is null or department = cast(:department as varchar)))) "
             + "and appointment_date = :date and status = 'READY_FOR_EXAMINATION' "
             + "and deleted_at is null and (skipped_at is null or skipped_at <= :recallAfter) "
             // Keep in step with findWaitingAt: the board shows the order this calls in.
             + "order by returned_at nulls last, skipped_at nulls first, paid_at, queue_number nulls last, checked_in_at "
             + "limit 1 for no key update skip locked")
     Optional<Appointment> lockNextInQueue(@Param("employeeId") Long employeeId, @Param("clinicId") UUID clinicId,
+                                          @Param("department") String department,
                                           @Param("date") LocalDate date,
                                           @Param("recallAfter") OffsetDateTime recallAfter);
 

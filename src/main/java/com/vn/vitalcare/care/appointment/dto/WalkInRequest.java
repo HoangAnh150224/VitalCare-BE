@@ -29,6 +29,10 @@ public record WalkInRequest(
         @Size(max = 255, message = "Reason must be at most 255 characters")
         String reason,
 
+        /** The department to be seen in, one of the specialties; only its rooms call the patient in. */
+        @NotBlank(message = "A department is required")
+        String department,
+
         @Size(max = 2000, message = "Note must be at most 2000 characters")
         String note) {
 

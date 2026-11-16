@@ -168,3 +168,5 @@ databaseChangeLog:
       file: db/changelog/changes/080-feedback-management.sql
   - include:
       file: db/changelog/changes/081-demo-full-patient-account.sql
+  - include:
+      file: db/changelog/changes/082-exam-room-departments.sql

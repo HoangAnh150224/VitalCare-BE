@@ -107,7 +107,7 @@ class ExamRoomDispatchTest {
     void dispatchFillsAFreeRoom() {
         onDuty();
         Appointment next = checkedIn(101L, 3);
-        when(appointments.lockNextInQueue(eq(11L), any(), eq(TODAY), any())).thenReturn(Optional.of(next));
+        when(appointments.lockNextInQueue(eq(11L), any(), any(), eq(TODAY), any())).thenReturn(Optional.of(next));
 
         Optional<Appointment> called = dispatcher.dispatch(7L);
 
@@ -126,7 +126,7 @@ class ExamRoomDispatchTest {
         onDuty();
         Appointment shared = checkedIn(102L, 4);
         shared.setEmployee(null);
-        when(appointments.lockNextInQueue(eq(11L), eq(CLINIC), eq(TODAY), any())).thenReturn(Optional.of(shared));
+        when(appointments.lockNextInQueue(eq(11L), eq(CLINIC), any(), eq(TODAY), any())).thenReturn(Optional.of(shared));
 
         dispatcher.dispatch(7L);
 
@@ -139,12 +139,12 @@ class ExamRoomDispatchTest {
     @DisplayName("BF-02: the room asks for its doctor's own visits and its clinic's shared line, today, sparing who was just passed over")
     void dispatchAsksForTheRoomsClinic() {
         onDuty();
-        when(appointments.lockNextInQueue(anyLong(), any(), any(), any())).thenReturn(Optional.empty());
+        when(appointments.lockNextInQueue(anyLong(), any(), any(), any(), any())).thenReturn(Optional.empty());
 
         dispatcher.dispatch(7L);
 
         // 09:00 at the clinic, three minutes' grace for somebody passed over.
-        verify(appointments).lockNextInQueue(11L, CLINIC, TODAY,
+        verify(appointments).lockNextInQueue(11L, CLINIC, null, TODAY,
                 java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).minus(Duration.ofMinutes(3)));
     }
 
@@ -182,7 +182,7 @@ class ExamRoomDispatchTest {
         room.pause();
         assertTrue(dispatcher.dispatch(7L).isEmpty());
 
-        verify(appointments, never()).lockNextInQueue(anyLong(), any(), any(), any());
+        verify(appointments, never()).lockNextInQueue(anyLong(), any(), any(), any(), any());
     }
 
     @Test
@@ -192,7 +192,7 @@ class ExamRoomDispatchTest {
         assertTrue(dispatcher.dispatch(7L).isEmpty());
 
         onDuty();
-        when(appointments.lockNextInQueue(eq(11L), any(), eq(TODAY), any())).thenReturn(Optional.empty());
+        when(appointments.lockNextInQueue(eq(11L), any(), any(), eq(TODAY), any())).thenReturn(Optional.empty());
         assertTrue(dispatcher.dispatch(7L).isEmpty());
         assertEquals(ExamRoomStatus.AVAILABLE, room.getStatus());
     }

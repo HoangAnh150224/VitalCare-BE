@@ -13,6 +13,7 @@ public record ExamRoomResponse(
         ClinicSummary clinic,
         String code,
         String name,
+        String department,
         ExamRoomStatus status,
         /** What the caller may do to this row; see {@code DeviceResponse}. */
         @JsonProperty("_can")
@@ -27,6 +28,7 @@ public record ExamRoomResponse(
                 new ClinicSummary(room.getClinicId(), room.getClinic().getClinicName()),
                 room.getCode(),
                 room.getName(),
+                room.getDepartment(),
                 room.getStatus(),
                 rowLevel == null ? Map.of() : rowLevel.capabilities(room));
     }

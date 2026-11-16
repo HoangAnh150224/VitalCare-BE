@@ -71,6 +71,10 @@ public class Appointment extends BaseEntity {
     @Column(name = "reason")
     private String reason;
 
+    /** The department the patient came to be seen in ("Tim mạch", "Hô hấp"); only that department's rooms call them from the shared line. */
+    @Column(name = "department", length = 64)
+    private String department;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private AppointmentStatus status = AppointmentStatus.BOOKED;
@@ -311,6 +315,14 @@ public class Appointment extends BaseEntity {
 
     public void setQueueNumber(Integer queueNumber) {
         this.queueNumber = queueNumber;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
     }
 
     public String getReason() {

@@ -37,6 +37,8 @@ public class WalkIns {
 
     @Transactional
     public Appointment register(WalkInRequest request) {
+        com.vn.vitalcare.care.staff.service.StaffProfileOptions.check("department", request.department(), null,
+                com.vn.vitalcare.care.staff.service.StaffProfileOptions.SPECIALTIES);
         Long customerId = request.customerId();
         if (customerId == null) {
             if (request.newPatient() == null) {
@@ -46,7 +48,9 @@ public class WalkIns {
             customerId = customers.createWalkInProfile(patient.fullName(), patient.phone(), patient.dateOfBirth(),
                     patient.gender(), patient.nationalId()).getId();
         }
-        return appointments.walkIn(request.booking(customerId, clinics.today()));
+        Appointment visit = appointments.walkIn(request.booking(customerId, clinics.today()));
+        visit.setDepartment(request.department().trim());
+        return visit;
     }
 
     /**
@@ -74,6 +78,7 @@ public class WalkIns {
         Appointment fresh = appointments.walkIn(new StaffBookingRequest(old.getCustomer().getId(), null,
                 old.getClinicId(), clinics.today(), old.getReason() == null ? "Khám" : old.getReason(),
                 "Thay cho lịch " + old.getBookingCode()));
+        fresh.setDepartment(old.getDepartment());
         // A fee paid on a visit that was late or missed pays for this one (UC-02 B1). A cancelled
         // visit's paid fee is not carried: its cancellation already flagged it for a refund.
         if (old.getStatus() != AppointmentStatus.CANCELLED) {

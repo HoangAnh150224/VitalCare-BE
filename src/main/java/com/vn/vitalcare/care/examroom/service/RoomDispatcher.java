@@ -95,7 +95,7 @@ public class RoomDispatcher {
         OffsetDateTime calledAt = OffsetDateTime.now(clock);
         // The doctor's own visits and the clinic's shared line in one order: referrals and returns first, then by payment.
         Optional<Appointment> next = appointments.lockNextInQueue(
-                doctor.get().getId(), room.getClinicId(), now.toLocalDate(), calledAt.minus(recallAfter));
+                doctor.get().getId(), room.getClinicId(), room.getDepartment(), now.toLocalDate(), calledAt.minus(recallAfter));
         if (next.isEmpty()) {
             return Optional.empty();
         }
