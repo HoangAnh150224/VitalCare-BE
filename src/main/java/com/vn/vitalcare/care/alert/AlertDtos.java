@@ -96,7 +96,7 @@ public final class AlertDtos {
 
     /** One reading on the alert's live panel. */
     public record LiveReading(Long id, OffsetDateTime measuredAt, Integer heartRate, BigDecimal spo2,
-                              BigDecimal bodyTemperature) {
+                              BigDecimal bodyTemperature, BigDecimal skinTemperature) {
     }
 
     public record Note(@Size(max = 4000) String note) {

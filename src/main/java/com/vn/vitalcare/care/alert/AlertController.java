@@ -127,7 +127,7 @@ public class AlertController {
                 .stream()
                 .filter(v -> v.getCustomer() != null && patient.equals(v.getCustomer().getId()))
                 .map(v -> new AlertDtos.LiveReading(v.getId(), v.getMeasuredAt(), v.getHeartRate(), v.getSpo2(),
-                        v.getBodyTemperature()))
+                        v.getBodyTemperature(), v.getTemperature()))
                 .toList();
     }
 
