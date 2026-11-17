@@ -211,8 +211,11 @@ public class ServiceOrders {
      */
     public com.vn.vitalcare.entity.Appointment visitToReturnResultsOf(Long id) {
         ServiceOrder order = find(id, Action.WRITE);
-        if (order.getStatus() != ServiceOrderStatus.RESULT_READY && order.getStatus() != ServiceOrderStatus.REVIEWED) {
-            throw new ConflictException("Record the result before telling the patient when to come back for it");
+        // From the moment the technician takes it on: they know when the result will be in,
+        // and the patient leaves with the time to come back to the doctor's room for it.
+        if (order.getStatus() != ServiceOrderStatus.IN_PROGRESS && order.getStatus() != ServiceOrderStatus.RESULT_READY
+                && order.getStatus() != ServiceOrderStatus.REVIEWED) {
+            throw new ConflictException("Start the service before telling the patient when to come back for its result");
         }
         com.vn.vitalcare.entity.Appointment visit = order.getEncounter().getAppointment();
         if (visit == null) {

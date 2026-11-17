@@ -150,4 +150,31 @@ class ResultsRulesTest {
         assertThat(scheduled.getStatus()).isEqualTo(ResultReturn.SCHEDULED);
         assertThat(scheduled.getNote()).isEqualTo("Phòng P03");
     }
+
+    @Test
+    @DisplayName("Scheduled while the service is done, the patient is told to come back to the doctor's room")
+    void toldWhereToComeBack() {
+        ResultReturnRepository repo = mock(ResultReturnRepository.class);
+        when(repo.persist(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        Notifier notifier = mock(Notifier.class);
+        ResultReturns returns = new ResultReturns(repo, mock(com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository.class),
+                mock(AppointmentService.class), mock(CustomerService.class), mock(RowLevelSecurity.class), notifier,
+                mock(ApplicationEventPublisher.class), CLOCK);
+        Appointment visit = new Appointment();
+        ReflectionTestUtils.setField(visit, "id", 118L);
+        visit.setCustomer(new com.vn.vitalcare.entity.Customer());
+        // Out of the room for the ordered services.
+        ReflectionTestUtils.setField(visit, "status", com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS);
+
+        ResultReturn scheduled = returns.scheduleForVisit(visit, NOW.plusHours(2), "Quay lại phòng P03 – BS. Vũ Đức Anh nhận kết quả",
+                "phòng P03 – BS. Vũ Đức Anh");
+
+        assertThat(scheduled.getStatus()).isEqualTo(ResultReturn.SCHEDULED);
+        assertThat(scheduled.getNote()).contains("P03");
+        org.mockito.Mockito.verify(notifier, org.mockito.Mockito.atLeastOnce()).notify(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.contains("Hẹn trả kết quả"),
+                org.mockito.ArgumentMatchers.contains("phòng P03 – BS. Vũ Đức Anh"),
+                org.mockito.ArgumentMatchers.any());
+    }
 }

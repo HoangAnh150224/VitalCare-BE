@@ -128,10 +128,24 @@ public class ResultReturns {
      */
     @Transactional
     public ResultReturn scheduleForVisit(Appointment visit, OffsetDateTime at, String note) {
-        return schedule(visit, at, note);
+        return schedule(visit, at, note, null);
+    }
+
+    /**
+     * As {@link #scheduleForVisit(Appointment, OffsetDateTime, String)}, telling the
+     * patient where to come back to: the examining doctor's room ({@code place},
+     * e.g. "phòng P03 – BS. Vũ Đức Anh"), where the results are sent on their own.
+     */
+    @Transactional
+    public ResultReturn scheduleForVisit(Appointment visit, OffsetDateTime at, String note, String place) {
+        return schedule(visit, at, note, place);
     }
 
     private ResultReturn schedule(Appointment visit, OffsetDateTime at, String note) {
+        return schedule(visit, at, note, null);
+    }
+
+    private ResultReturn schedule(Appointment visit, OffsetDateTime at, String note, String place) {
         var status = visit.getStatus();
         // Examined: out for services, back with all their results (queued or in the room again), or done.
         boolean examined = status == com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS
@@ -156,8 +170,10 @@ public class ResultReturns {
         ResultReturn saved = returns.persist(r);
         returns.flush();
         rowLevel.checkWritable(saved);
-        tell(saved, "Hẹn trả kết quả", "Mời bạn quay lại phòng khám nhận và nghe tư vấn kết quả lúc "
-                + WHEN.format(at.atZoneSameInstant(ZONE)) + ".");
+        tell(saved, "Hẹn trả kết quả", place == null
+                ? "Mời bạn quay lại phòng khám nhận và nghe tư vấn kết quả lúc " + WHEN.format(at.atZoneSameInstant(ZONE)) + "."
+                : "Mời bạn quay lại " + place + " lúc " + WHEN.format(at.atZoneSameInstant(ZONE))
+                    + " để bác sĩ đọc kết quả và tư vấn. Kết quả được gửi thẳng về phòng khám.");
         events.publishEvent(new AuditEvent("result_returns", saved.getId(), "schedule", null, Map.of("at", at.toString())));
         return saved;
     }

@@ -44,9 +44,12 @@ public class ResultsController {
     private final Feedback feedback;
     private final Licenses licenses;
     private final com.vn.vitalcare.care.serviceorder.ServiceOrders serviceOrders;
+    private final com.vn.vitalcare.care.examroom.service.RoomDispatcher rooms;
 
     public ResultsController(ResultReturns returns, Consultations consultations, Feedback feedback, Licenses licenses,
-                             com.vn.vitalcare.care.serviceorder.ServiceOrders serviceOrders) {
+                             com.vn.vitalcare.care.serviceorder.ServiceOrders serviceOrders,
+                             com.vn.vitalcare.care.examroom.service.RoomDispatcher rooms) {
+        this.rooms = rooms;
         this.returns = returns;
         this.consultations = consultations;
         this.feedback = feedback;
@@ -64,7 +67,30 @@ public class ResultsController {
     @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_PERFORM + "')")
     @org.springframework.transaction.annotation.Transactional
     public ReturnResponse scheduleFromOrder(@PathVariable Long id, @RequestBody ScheduleRequest r) {
-        return ReturnResponse.of(returns.scheduleForVisit(serviceOrders.visitToReturnResultsOf(id), r.scheduledAt(), r.note()));
+        com.vn.vitalcare.entity.Appointment visit = serviceOrders.visitToReturnResultsOf(id);
+        String place = placeToComeBackTo(visit, r.scheduledAt());
+        // Left blank, the note says where: what the patient and the desk read on the return.
+        String note = r.note() == null || r.note().isBlank()
+                ? (place == null ? null : "Quay lại " + place + " nhận kết quả")
+                : r.note();
+        return ReturnResponse.of(returns.scheduleForVisit(visit, r.scheduledAt(), note, place));
+    }
+
+    /**
+     * Where the patient comes back to: the examining doctor's room at that time
+     * (their session's), "phòng P03 – BS. Vũ Đức Anh"; the doctor alone when no
+     * session puts them in a room then; null when the visit has no doctor.
+     */
+    private String placeToComeBackTo(com.vn.vitalcare.entity.Appointment visit, OffsetDateTime at) {
+        var doctor = visit.getEmployee();
+        if (doctor == null || at == null) {
+            return null;
+        }
+        String name = doctor.getUser() == null ? null : doctor.getUser().getFullName();
+        String who = name == null ? "bác sĩ khám" : (name.startsWith("BS") ? name : "BS. " + name);
+        var room = rooms.roomOfDoctor(doctor.getId(),
+                at.atZoneSameInstant(java.time.ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime());
+        return room.map(value -> "phòng " + value.getCode() + " – " + who).orElse("phòng khám của " + who);
     }
 
     // ---- result returns ---------------------------------------------------------------
