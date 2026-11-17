@@ -107,6 +107,25 @@ public class Invoice extends BaseEntity {
     public void addItem(InvoiceItem item) {
         item.setInvoice(this);
         items.add(item);
+        retotal();
+    }
+
+    /**
+     * Takes off the line of one ordered service (cancelled before the bill
+     * was paid) and keeps the totals in step.
+     *
+     * @return whether such a line was on the bill
+     */
+    public boolean removeItemFor(Long serviceOrderId) {
+        boolean removed = items.removeIf(item -> item.getServiceOrder() != null
+                && serviceOrderId.equals(item.getServiceOrder().getId()));
+        if (removed) {
+            retotal();
+        }
+        return removed;
+    }
+
+    private void retotal() {
         subtotal = items.stream().map(InvoiceItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         totalAmount = subtotal.subtract(discountAmount == null ? BigDecimal.ZERO : discountAmount);
     }

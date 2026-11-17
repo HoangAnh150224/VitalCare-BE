@@ -42,8 +42,9 @@ public record InvoiceResponse(
     public record Clinic(UUID id, String name) {
     }
 
+    /** One line; {@code serviceOrderId} is the ordered service it bills, null for the examination. */
     public record Line(String description, ServiceCategory category, int quantity, BigDecimal unitPrice,
-                       BigDecimal amount) {
+                       BigDecimal amount, Long serviceOrderId) {
     }
 
     public record PaymentRow(Long id, PaymentMethod method, PaymentStatus status, BigDecimal amount,
@@ -72,7 +73,8 @@ public record InvoiceResponse(
                         .map(item -> new Line(item.getDescription(),
                                 item.getService() == null ? null : item.getService().getCategory(),
                                 item.getQuantity() == null ? 1 : item.getQuantity(),
-                                Vnd.of(item.getUnitPrice()), Vnd.of(item.getAmount())))
+                                Vnd.of(item.getUnitPrice()), Vnd.of(item.getAmount()),
+                                item.getServiceOrder() == null ? null : item.getServiceOrder().getId()))
                         .toList(),
                 invoice.getPayments().stream()
                         .filter(payment -> payment.getDeletedAt() == null)

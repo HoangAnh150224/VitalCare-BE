@@ -2,6 +2,8 @@ package com.vn.vitalcare.care.billing;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -171,6 +173,54 @@ class BillingTest {
         assertFalse(service.orderPaid(blood));
         invoice.markPaid(java.time.OffsetDateTime.now());
         assertTrue(service.orderPaid(blood));
+    }
+
+    @Test
+    @DisplayName("BF-03: the services of a visit share one unpaid bill, a line each; cancelling one takes its line off")
+    void visitServicesShareOneBill() {
+        ClinicalEncounter encounter = encounter();
+        ServiceOrder blood = order(encounter, service("XN-CTM", ServiceCategory.LAB, 120_000), 120_000);
+        ReflectionTestUtils.setField(blood, "id", 9L);
+        ServiceOrder ecg = order(encounter, service("DT", ServiceCategory.PROCEDURE, 100_000), 100_000);
+        ReflectionTestUtils.setField(ecg, "id", 10L);
+
+        Invoice bill = service.issueForOrder(blood);
+        when(invoices.findOpenServiceBill(encounter.getId())).thenReturn(Optional.of(bill));
+        when(invoices.findForUpdate(bill.getId())).thenReturn(Optional.of(bill));
+
+        assertSame(bill, service.issueForOrder(ecg), "the second service joins the visit's open bill");
+        assertEquals(2, bill.getItems().size());
+        assertEquals(0, new BigDecimal("220000").compareTo(bill.getTotalAmount()));
+        assertEquals(10L, bill.getItems().get(1).getServiceOrder().getId());
+
+        when(invoices.findForOrder(10L)).thenReturn(Optional.of(bill));
+        service.cancelForOrder(ecg);
+        assertEquals(InvoiceStatus.UNPAID, bill.getStatus());
+        assertEquals(1, bill.getItems().size());
+        assertEquals(0, new BigDecimal("120000").compareTo(bill.getTotalAmount()));
+
+        when(invoices.findForOrder(9L)).thenReturn(Optional.of(bill));
+        service.cancelForOrder(blood);
+        assertEquals(InvoiceStatus.CANCELLED, bill.getStatus(), "its last line gone, the bill is called off");
+    }
+
+    @Test
+    @DisplayName("BF-03: a service ordered after the visit's bill was paid starts a new bill")
+    void afterPaymentANewBill() {
+        ClinicalEncounter encounter = encounter();
+        ServiceOrder blood = order(encounter, service("XN-CTM", ServiceCategory.LAB, 120_000), 120_000);
+        ReflectionTestUtils.setField(blood, "id", 9L);
+        Invoice paid = service.issueForOrder(blood);
+        paid.markPaid(java.time.OffsetDateTime.now());
+        ReflectionTestUtils.setField(paid, "id", 41L);
+
+        ServiceOrder xray = order(encounter, service("XQ", ServiceCategory.IMAGING, 180_000), 180_000);
+        ReflectionTestUtils.setField(xray, "id", 11L);
+        Invoice fresh = service.issueForOrder(xray);
+
+        assertNotSame(paid, fresh);
+        assertEquals(1, fresh.getItems().size());
+        assertEquals(InvoiceStatus.UNPAID, fresh.getStatus());
     }
 
     @Test

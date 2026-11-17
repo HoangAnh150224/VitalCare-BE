@@ -60,7 +60,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Bills and their payments (Report 1 FE-23): a visit's examination bill,
  * issued when it is registered and paid before it queues (BF-02), and one bill
- * per ordered service, paid before the service is done (BF-03). Each is paid
+ * for the services ordered in the visit, a line each, paid before they are
+ * done (BF-03). Each is paid
  * once — at the counter, by transfer, or online through VNPay — and the
  * clinic's revenue over a period.
  *
@@ -278,7 +279,13 @@ public class Invoices {
         return number(invoice);
     }
 
-    /** BF-03: an ordered service is billed on its own, at the price it was ordered at, and done once paid. */
+    /**
+     * BF-03: an ordered service is billed at the price it was ordered at, and
+     * done once paid. The services of one visit share one bill while it is
+     * unpaid — a line each — so the desk takes the money once; a service
+     * ordered after that bill was paid starts a new one. A bill the patient is
+     * paying online right now is not added to: VNPay was asked for its total.
+     */
     @Transactional
     public Invoice issueForOrder(ServiceOrder order) {
         var existing = invoices.findForOrder(order.getId());
@@ -286,26 +293,45 @@ public class Invoices {
             return existing.get();
         }
         ClinicalEncounter encounter = order.getEncounter();
+        var open = invoices.findOpenServiceBill(encounter.getId());
+        if (open.isPresent()) {
+            Invoice invoice = lock(open.get().getId());
+            boolean payingOnline = invoice.getPayments().stream()
+                    .anyMatch(payment -> payment.getStatus() == PaymentStatus.PENDING);
+            if (invoice.getStatus() == InvoiceStatus.UNPAID && !payingOnline) {
+                invoice.addItem(InvoiceItem.forOrder(order));
+                return invoices.persist(invoice);
+            }
+        }
         Invoice invoice = newInvoice(InvoiceKind.SERVICE, order.getCustomer(), encounter.getAppointment(),
                 encounter.getClinic());
         invoice.setEncounter(encounter);
-        invoice.setServiceOrder(order);
-        invoice.addItem(new InvoiceItem(order.getService(), order.getService().getName(), 1, order.getUnitPrice()));
+        invoice.addItem(InvoiceItem.forOrder(order));
         return number(invoice);
     }
 
-    /** A cancelled service's bill is called off; one already paid is kept and flagged for a refund. */
+    /**
+     * A cancelled service comes off its unpaid bill — the whole bill is called
+     * off when it was the last line. On a paid bill it is kept and flagged for
+     * a refund.
+     */
     @Transactional
     public void cancelForOrder(ServiceOrder order) {
         invoices.findForOrder(order.getId()).ifPresent(found -> {
             Invoice invoice = lock(found.getId());
-            if (invoice.getStatus() == InvoiceStatus.UNPAID) {
-                invoice.cancel();
-                invoices.persist(invoice);
-            } else {
+            if (invoice.getStatus() != InvoiceStatus.UNPAID) {
                 log.warn("Service order {} was cancelled after its bill {} was paid: refund needed",
                         order.getId(), invoice.getInvoiceNumber());
+                return;
             }
+            boolean ownBill = invoice.getServiceOrder() != null
+                    && order.getId().equals(invoice.getServiceOrder().getId());
+            if (ownBill || invoice.getItems().size() <= 1) {
+                invoice.cancel();
+            } else {
+                invoice.removeItemFor(order.getId());
+            }
+            invoices.persist(invoice);
         });
     }
 

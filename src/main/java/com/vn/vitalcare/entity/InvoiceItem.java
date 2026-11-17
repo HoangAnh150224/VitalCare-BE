@@ -30,6 +30,11 @@ public class InvoiceItem extends BaseEntity {
     @JoinColumn(name = "clinic_service_id")
     private MedicalService service;
 
+    /** The ordered service this line bills; null for the examination. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "service_order_id")
+    private ServiceOrder serviceOrder;
+
     @Column(name = "description")
     private String description;
 
@@ -52,6 +57,17 @@ public class InvoiceItem extends BaseEntity {
         this.quantity = quantity;
         this.unitPrice = unitPrice;
         this.amount = unitPrice.multiply(BigDecimal.valueOf(quantity));
+    }
+
+    /** A line for one ordered service, at the price it was ordered at. */
+    public static InvoiceItem forOrder(ServiceOrder order) {
+        InvoiceItem item = new InvoiceItem(order.getService(), order.getService().getName(), 1, order.getUnitPrice());
+        item.serviceOrder = order;
+        return item;
+    }
+
+    public ServiceOrder getServiceOrder() {
+        return serviceOrder;
     }
 
     public Long getId() {

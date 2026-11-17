@@ -56,14 +56,31 @@ public interface InvoiceRepository extends SecuredRepository<Invoice, Long> {
     @Query("select i from Invoice i where i.encounter.id = :encounterId and i.deletedAt is null")
     List<Invoice> findAllOfEncounter(@Param("encounterId") Long encounterId);
 
-    /** An ordered service's bill, cancelled or not: whether it was ever billed on its own. */
-    @Query("select i from Invoice i where i.serviceOrder.id = :orderId and i.deletedAt is null")
+    /**
+     * The bills an ordered service was ever on, cancelled or not: whether it
+     * was billed at all. A line names its order; a bill from when each service
+     * had its own names it on the bill too.
+     */
+    @Query("select distinct i from Invoice i left join i.items it "
+            + "where (i.serviceOrder.id = :orderId or it.serviceOrder.id = :orderId) and i.deletedAt is null")
     List<Invoice> findAnyForOrder(@Param("orderId") Long orderId);
 
-    /** An ordered service's bill, the live one. */
-    @Query("select i from Invoice i where i.serviceOrder.id = :orderId "
+    /** The live (not cancelled) bill an ordered service is on. */
+    @Query("select distinct i from Invoice i left join i.items it "
+            + "where (i.serviceOrder.id = :orderId or it.serviceOrder.id = :orderId) "
             + "and i.status <> com.vn.vitalcare.entity.InvoiceStatus.CANCELLED and i.deletedAt is null")
     Optional<Invoice> findForOrder(@Param("orderId") Long orderId);
+
+    /**
+     * The visit's service bill still open for more lines: unpaid, so a service
+     * ordered now joins the services ordered before it and the desk takes the
+     * money once. Not scoped: the doctor ordering in that encounter.
+     */
+    @Query("select i from Invoice i where i.encounter.id = :encounterId "
+            + "and i.kind = com.vn.vitalcare.entity.InvoiceKind.SERVICE "
+            + "and i.status = com.vn.vitalcare.entity.InvoiceStatus.UNPAID and i.deletedAt is null "
+            + "order by i.id desc limit 1")
+    Optional<Invoice> findOpenServiceBill(@Param("encounterId") Long encounterId);
 
     /** The bill, locked: what any change of its status takes first, so it is settled once. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
