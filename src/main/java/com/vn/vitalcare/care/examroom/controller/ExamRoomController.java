@@ -4,8 +4,10 @@ import com.vn.vitalcare.care.examroom.dto.ExamRoomRequest;
 import com.vn.vitalcare.care.examroom.dto.ExamRoomResponse;
 import com.vn.vitalcare.care.examroom.dto.RoomBoardResponse;
 import com.vn.vitalcare.care.examroom.service.ExamRoomService;
+import com.vn.vitalcare.care.staff.service.EmployeeService;
 import com.vn.vitalcare.entity.ExamRoom;
 import com.vn.vitalcare.identity.rowlevel.service.RowLevelSecurity;
+import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
@@ -39,10 +41,12 @@ public class ExamRoomController {
 
     private final ExamRoomService service;
     private final RowLevelSecurity rowLevel;
+    private final EmployeeService employees;
 
-    public ExamRoomController(ExamRoomService service, RowLevelSecurity rowLevel) {
+    public ExamRoomController(ExamRoomService service, RowLevelSecurity rowLevel, EmployeeService employees) {
         this.service = service;
         this.rowLevel = rowLevel;
+        this.employees = employees;
     }
 
     @GetMapping
@@ -65,6 +69,47 @@ public class ExamRoomController {
     @PreAuthorize("hasAuthority('" + Permissions.EXAM_ROOMS_READ + "')")
     public RoomBoardResponse board(@RequestParam(required = false) UUID clinicId) {
         return service.board(clinicId);
+    }
+
+    /**
+     * The caller's own slice of their clinic's board — a doctor's queue: the
+     * room their session puts them in now (who is inside, who waits, who is
+     * out for services), their patients waiting with no room, those of theirs
+     * still to pay the fee, and the clinic's shared line any free room of
+     * theirs calls from. Nothing of another doctor's.
+     *
+     * <p>Answers an empty board to an account without a staff profile.
+     * Before {@code /{id}}, so "mine" is not read as an id.
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("hasAuthority('" + Permissions.EXAM_ROOMS_READ + "')")
+    public RoomBoardResponse mine() {
+        RoomBoardResponse board = service.board(null);
+        Long me = myEmployeeId();
+        if (me == null) {
+            return new RoomBoardResponse(board.clinicId(), board.at(), List.of(), List.of(), List.of(), List.of());
+        }
+        return new RoomBoardResponse(
+                board.clinicId(),
+                board.at(),
+                board.rooms().stream().filter(room -> isMe(room.doctor(), me)).toList(),
+                board.withoutRoom().stream().filter(queue -> isMe(queue.doctor(), me)).toList(),
+                board.awaitingPayment() == null ? List.of()
+                        : board.awaitingPayment().stream().filter(unpaid -> isMe(unpaid.doctor(), me)).toList(),
+                board.sharedQueue() == null ? List.of() : board.sharedQueue());
+    }
+
+    /** The caller's staff profile, or null for an account without one. */
+    private Long myEmployeeId() {
+        try {
+            return employees.getForCurrentUser().getId();
+        } catch (ConflictException noStaffProfile) {
+            return null;
+        }
+    }
+
+    private static boolean isMe(RoomBoardResponse.DoctorRef doctor, Long me) {
+        return doctor != null && me.equals(doctor.id());
     }
 
     @GetMapping("/{id}")
