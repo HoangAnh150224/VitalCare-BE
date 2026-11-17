@@ -141,6 +141,20 @@ public interface AppointmentRepository extends SecuredRepository<Appointment, Lo
                                           @Param("recallAfter") OffsetDateTime recallAfter);
 
     /**
+     * Waiting today for a named doctor and never yet called in: a booking from
+     * before the shared line (or seeded with a doctor) rather than a referral
+     * or a patient back from their services, who belong with their doctor.
+     * The dispatcher releases those whose doctor has no room now. Not scoped:
+     * the dispatcher's.
+     */
+    @Query("select a from Appointment a join fetch a.employee "
+            + "where a.appointmentDate = :date "
+            + "and a.status = com.vn.vitalcare.entity.AppointmentStatus.READY_FOR_EXAMINATION "
+            + "and a.calledAt is null and a.skippedAt is null and a.returnedAt is null "
+            + "and a.referredFrom is null and a.deletedAt is null")
+    List<Appointment> findNeverCalledWithDoctorOn(@Param("date") LocalDate date);
+
+    /**
      * Everyone checked in and paid at a clinic today and not yet called, in
      * the order they will be called (BF-02: by when they paid, the smaller
      * number on a tie), for the board. Not scoped: the board has already

@@ -188,6 +188,35 @@ public class RoomDispatcher {
                         && period.getEndTime().isAfter(at.toLocalTime()));
     }
 
+    /**
+     * Patients nobody chose a doctor for wait on the clinic's shared line; a
+     * visit that still names one (booked before the shared line, or seeded so)
+     * would otherwise wait for that doctor's room all day when their session
+     * has none, or they have blocked it off. Such a visit, never called, goes
+     * to the shared line of its department, where the first free room of that
+     * department calls it and its doctor becomes the visit's. A referral and
+     * a patient back with results stay with their doctor.
+     *
+     * @return how many were released
+     */
+    @Transactional
+    public int releaseStranded() {
+        LocalDateTime now = now();
+        int released = 0;
+        for (Appointment visit : appointments.findNeverCalledWithDoctorOn(now.toLocalDate())) {
+            Long doctorId = visit.getEmployee().getId();
+            if (roomOfDoctor(doctorId, now).isPresent() && !isBlocked(doctorId, now)) {
+                continue;
+            }
+            visit.setEmployee(null);
+            appointments.persist(visit);
+            released++;
+            events.publishEvent(new ExamRoomEvents.BoardChanged(visit.getClinicId()));
+            events.publishEvent(new ExamRoomEvents.QueueJoined(visit.getClinicId(), null));
+        }
+        return released;
+    }
+
     /** The room the doctor's current session puts them in, if any. */
     public Optional<ExamRoom> roomOfDoctor(Long doctorId, LocalDateTime at) {
         return hours.findRoomOfDoctorAt(doctorId, (short) at.getDayOfWeek().getValue(), at.toLocalTime()).stream()

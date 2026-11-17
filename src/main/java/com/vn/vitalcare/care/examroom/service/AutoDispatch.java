@@ -83,6 +83,15 @@ public class AutoDispatch {
                 log.warn("Closing an earlier day's visits out of the room failed; the next sweep retries it", e);
             }
         });
+        // A visit waiting for a doctor with no room now joins the shared line;
+        // the QueueJoined it raises sends the clinic's free rooms after it.
+        executor.execute(() -> {
+            try {
+                dispatcher.releaseStranded();
+            } catch (RuntimeException e) {
+                log.warn("Releasing visits stranded without their doctor's room failed; the next sweep retries it", e);
+            }
+        });
         for (Long roomId : rooms.findAvailableIds()) {
             executor.execute(() -> dispatchQuietly(roomId));
         }

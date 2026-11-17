@@ -295,6 +295,28 @@ class ExamRoomDispatchTest {
         assertEquals(ExamRoomStatus.AVAILABLE, room.getStatus());
     }
 
+    @Test
+    @DisplayName("a visit waiting for a doctor with no room now joins the shared line; one whose doctor has a room stays")
+    void strandedVisitJoinsTheSharedLine() {
+        Appointment stranded = checkedIn(110L, 1);
+        when(appointments.findNeverCalledWithDoctorOn(TODAY)).thenReturn(List.of(stranded));
+        when(hours.findRoomOfDoctorAt(eq(11L), anyShort(), any())).thenReturn(List.of());
+
+        assertEquals(1, dispatcher.releaseStranded());
+
+        assertNull(stranded.getEmployee());
+        verify(events).publishEvent(new ExamRoomEvents.QueueJoined(stranded.getClinicId(), null));
+
+        Appointment kept = checkedIn(111L, 2);
+        when(appointments.findNeverCalledWithDoctorOn(TODAY)).thenReturn(List.of(kept));
+        DoctorWorkingHours session = new DoctorWorkingHours(doctor, DayOfWeek.TUESDAY, LocalTime.of(8, 0),
+                LocalTime.of(12, 0), 30, room);
+        when(hours.findRoomOfDoctorAt(eq(11L), anyShort(), any())).thenReturn(List.of(session));
+
+        assertEquals(0, dispatcher.releaseStranded());
+        assertSame(doctor, kept.getEmployee());
+    }
+
     private void onDuty() {
         DoctorWorkingHours session = new DoctorWorkingHours(doctor, DayOfWeek.TUESDAY, LocalTime.of(8, 0),
                 LocalTime.of(12, 0), 30, room);
