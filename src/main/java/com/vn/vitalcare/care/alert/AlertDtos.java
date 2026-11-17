@@ -55,7 +55,7 @@ public final class AlertDtos {
                                 BigDecimal lastValue, String severity, String status, String message,
                                 int occurrences, OffsetDateTime triggeredAt, OffsetDateTime lastTriggeredAt,
                                 OffsetDateTime acknowledgedAt, OffsetDateTime resolvedAt, OffsetDateTime dismissedAt,
-                                Long ruleId, String ruleName) {
+                                Long ruleId, String ruleName, String source) {
         public static AlertResponse of(Alert a) {
             return new AlertResponse(a.getId(), Patient.of(a.getCustomer()), a.getClinicId(),
                     a.getDevice() == null ? null : a.getDevice().getId(),
@@ -64,7 +64,8 @@ public final class AlertDtos {
                     a.getMessage(), a.getOccurrences(), a.getTriggeredAt(), a.getLastTriggeredAt(),
                     a.getAcknowledgedAt(), a.getResolvedAt(), a.getDismissedAt(),
                     a.getRule() == null ? null : a.getRule().getId(),
-                    a.getRule() == null ? null : a.getRule().getName());
+                    a.getRule() == null ? null : a.getRule().getName(),
+                    Alert.DEVICE.equals(a.getAlertType()) ? "DEVICE" : "RULE");
         }
     }
 

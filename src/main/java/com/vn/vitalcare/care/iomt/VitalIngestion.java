@@ -274,7 +274,7 @@ public class VitalIngestion {
             VitalSigns saved = vitals.save(vital);
             if (saved.isValid()) {
                 events.publishEvent(new VitalEvents.Recorded(saved.getId(), wearer.getCustomer().getId(),
-                        device.getId()));
+                        device.getId(), reading.alerts()));
             }
             return new SyncResult.RecordResult(id, saved.isValid() ? ACCEPTED : INVALID, implausible, saved.getId());
         }

@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.alert;
 
+import com.vn.vitalcare.care.iomt.DeviceUpload;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -214,5 +215,73 @@ class AlertEngineTest {
         orphan.setCustomer(null);
         engine.evaluate(orphan);
         assertThat(open).isEmpty();
+    }
+
+    @Test
+    @DisplayName("A device raises the alarm by its own thresholds with every rule switched off")
+    void deviceVerdictWithoutRules() {
+        when(rules.findApplicable(37L, CLINIC)).thenReturn(List.of());
+
+        engine.evaluate(reading("88", 80), List.of(
+                new DeviceUpload.DeviceAlert("spo2", "critical", "below", new BigDecimal("90"))));
+
+        assertThat(open).singleElement().satisfies(a -> {
+            assertThat(a.getSeverity()).isEqualTo(Alert.CRITICAL);
+            assertThat(a.getMetric()).isEqualTo("SPO2");
+            assertThat(a.getAlertType()).isEqualTo(Alert.DEVICE);
+            assertThat(a.getRule()).isNull();
+            assertThat(a.getMessage()).isEqualTo("SpO₂ 88% dưới ngưỡng 90% (thiết bị báo)");
+            assertThat(a.getClinicId()).isEqualTo(CLINIC);
+        });
+        ArgumentCaptor<AlertEvents.Raised> raised = ArgumentCaptor.forClass(AlertEvents.Raised.class);
+        verify(events).publishEvent(raised.capture());
+        assertThat(raised.getValue().severity()).isEqualTo(Alert.CRITICAL);
+        assertThat(raised.getValue().fresh()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Rule and device on one reading make one alert, at the more severe of the two")
+    void deviceAndRuleMakeOneAlert() {
+        when(rules.findApplicable(37L, CLINIC)).thenReturn(List.of(rule("SPO2", "BELOW", "94", "WARNING", null)));
+
+        engine.evaluate(reading("88", null), List.of(new DeviceUpload.DeviceAlert("SPO2", "CRITICAL", null, null)));
+
+        assertThat(open).singleElement().satisfies(a -> {
+            assertThat(a.getSeverity()).isEqualTo(Alert.CRITICAL);
+            assertThat(a.getAlertType()).isEqualTo(Alert.DEVICE);
+            assertThat(a.getMessage()).isEqualTo("SpO₂ 88% bất thường (thiết bị báo)");
+        });
+        assertThat(written).extracting(AlertAction::getAction).containsExactly(AlertAction.TRIGGERED);
+    }
+
+    @Test
+    @DisplayName("At equal severity the rule speaks, and the alert stays a rule's")
+    void ruleSpeaksAtEqualSeverity() {
+        clinicRules();
+
+        engine.evaluate(reading("88", null), List.of(
+                new DeviceUpload.DeviceAlert("SPO2", "CRITICAL", "BELOW", new BigDecimal("92"))));
+
+        assertThat(open).singleElement().satisfies(a -> {
+            assertThat(a.getAlertType()).isEqualTo("VITAL_SIGN");
+            assertThat(a.getRule()).isNotNull();
+            assertThat(a.getMessage()).contains("dưới ngưỡng 90%");
+        });
+    }
+
+    @Test
+    @DisplayName("A device verdict on an unknown measure, an unknown severity or a measure not in the reading is ignored")
+    void badDeviceVerdictsAreIgnored() {
+        when(rules.findApplicable(37L, CLINIC)).thenReturn(List.of());
+
+        engine.evaluate(reading("88", null), java.util.Arrays.asList(
+                new DeviceUpload.DeviceAlert("BLOOD_PRESSURE", "CRITICAL", null, null),
+                new DeviceUpload.DeviceAlert("SPO2", "URGENT", null, null),
+                new DeviceUpload.DeviceAlert("HEART_RATE", "CRITICAL", "ABOVE", new BigDecimal("140")),
+                new DeviceUpload.DeviceAlert(null, "CRITICAL", null, null),
+                null));
+
+        assertThat(open).isEmpty();
+        verify(events, never()).publishEvent(any(AlertEvents.Raised.class));
     }
 }

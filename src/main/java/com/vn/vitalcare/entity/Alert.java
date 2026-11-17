@@ -33,6 +33,7 @@ public class Alert extends BaseEntity {
     public static final String DISMISSED = "DISMISSED";
     public static final String WARNING = "WARNING";
     public static final String CRITICAL = "CRITICAL";
+    public static final String DEVICE = "DEVICE";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -59,7 +60,7 @@ public class Alert extends BaseEntity {
     @JoinColumn(name = "rule_id")
     private AlertRule rule;
 
-    /** Kept from 008: {@code VITAL_SIGN}. */
+    /** {@code VITAL_SIGN} from 008, raised by a rule here; {@link #DEVICE} when the device itself raised it. */
     @Column(name = "alert_type", length = 64)
     private String alertType = "VITAL_SIGN";
 
@@ -136,7 +137,7 @@ public class Alert extends BaseEntity {
         this.customer = reading.getCustomer();
         this.device = reading.getDevice();
         this.clinicId = reading.getDevice() == null ? rule.getClinicId() : reading.getDevice().getClinicId();
-        this.rule = rule;
+        by(rule);
         this.metric = rule.getMetric();
         this.operator = rule.getOperator();
         this.threshold = rule.getThreshold();
@@ -155,13 +156,20 @@ public class Alert extends BaseEntity {
         lastTriggeredAt = when;
         if (rank(rule.getSeverity()) > rank(severity)) {
             this.severity = rule.getSeverity();
-            this.rule = rule;
+            by(rule);
             this.operator = rule.getOperator();
             this.threshold = rule.getThreshold();
             this.message = message;
             return true;
         }
         return false;
+    }
+
+    /** The verdict of a device is carried as a rule that is never saved: there is no rule to point at. */
+    private void by(AlertRule rule) {
+        boolean device = rule.isDeviceVerdict();
+        this.rule = device ? null : rule;
+        this.alertType = device ? DEVICE : "VITAL_SIGN";
     }
 
     public void acknowledge(Long by, OffsetDateTime when) {

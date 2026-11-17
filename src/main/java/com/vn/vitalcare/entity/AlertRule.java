@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -63,7 +64,29 @@ public class AlertRule extends BaseEntity {
     @Column(name = "note", length = 1000)
     private String note;
 
+    /** Not a stored rule: the verdict a device gave on a reading by its own thresholds, carried as one. */
+    @Transient
+    private boolean deviceVerdict;
+
     public AlertRule() {
+    }
+
+    /** The verdict of a device on one measure; never saved. Operator and threshold may be unknown. */
+    public static AlertRule ofDevice(UUID clinicId, String metric, String severity, String operator,
+                                     BigDecimal threshold) {
+        AlertRule verdict = new AlertRule();
+        verdict.deviceVerdict = true;
+        verdict.clinicId = clinicId;
+        verdict.name = "thiết bị báo";
+        verdict.metric = metric;
+        verdict.severity = severity;
+        verdict.operator = operator;
+        verdict.threshold = threshold;
+        return verdict;
+    }
+
+    public boolean isDeviceVerdict() {
+        return deviceVerdict;
     }
 
     /** Whether a value breaks this rule. */

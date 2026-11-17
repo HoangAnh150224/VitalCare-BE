@@ -88,10 +88,24 @@ public class DeviceOperationsController {
     /**
      * {@code scenario}: NORMAL, LOW_SPO2, HIGH_HEART_RATE, FEVER (a high body
      * temperature) or SENSOR_FAULT (implausible values, stored as INVALID).
+     * {@code deviceAlert}: the readings carry the alert a device with built-in
+     * thresholds would raise for that scenario, as real firmware does.
      */
     public record SimulationRequest(Integer count, Integer intervalSeconds, String scenario,
                                     BigDecimal spo2, Integer heartRate, BigDecimal skinTemperature,
-                                    BigDecimal bodyTemperature) {
+                                    BigDecimal bodyTemperature, Boolean deviceAlert) {
+    }
+
+    /** What a device with built-in thresholds flags in each scenario; nothing for the others. */
+    private static List<DeviceUpload.DeviceAlert> flaggedBy(String scenario) {
+        return switch (scenario) {
+            case "LOW_SPO2" -> List.of(new DeviceUpload.DeviceAlert("SPO2", "CRITICAL", "BELOW", new BigDecimal("90")));
+            case "HIGH_HEART_RATE" ->
+                    List.of(new DeviceUpload.DeviceAlert("HEART_RATE", "WARNING", "ABOVE", new BigDecimal("120")));
+            case "FEVER" ->
+                    List.of(new DeviceUpload.DeviceAlert("BODY_TEMPERATURE", "CRITICAL", "ABOVE", new BigDecimal("38.5")));
+            default -> List.of();
+        };
     }
 
     @PostMapping("/{id}/simulate")
@@ -133,6 +147,8 @@ public class DeviceOperationsController {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         OffsetDateTime now = OffsetDateTime.now(clock);
         String session = "sim-" + UUID.randomUUID();
+        List<DeviceUpload.DeviceAlert> flagged = Boolean.TRUE.equals(request.deviceAlert())
+                ? flaggedBy(scenario) : List.of();
         List<DeviceUpload.Reading> readings = new ArrayList<>(count);
         for (int i = count - 1; i >= 0; i--) {
             boolean fault = "SENSOR_FAULT".equals(scenario);
@@ -144,7 +160,7 @@ public class DeviceOperationsController {
                     fault ? heartRate : heartRate + random.nextInt(-3, 4),
                     skin.add(BigDecimal.valueOf(random.nextInt(-2, 3), 1)).setScale(1, RoundingMode.HALF_UP),
                     body.add(BigDecimal.valueOf(random.nextInt(-1, 2), 1)).setScale(1, RoundingMode.HALF_UP),
-                    session));
+                    session, flagged));
         }
         DeviceUpload upload = new DeviceUpload("sim-" + now.toEpochSecond(), 0, random.nextInt(40, 101), "sim-1.0",
                 new DeviceUpload.Session(session, now.minus(java.time.Duration.ofMillis((count - 1) * intervalMs)).toString(),

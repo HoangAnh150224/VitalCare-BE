@@ -292,4 +292,19 @@ class VitalIngestionTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> ingestion.ingest("nope", upload(), "REST"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
+
+    @Test
+    @DisplayName("What the device flagged in a reading is announced with it; an invalid reading announces nothing")
+    void carriesDeviceAlerts() {
+        DeviceUpload.DeviceAlert low = new DeviceUpload.DeviceAlert("SPO2", "CRITICAL", "BELOW", new BigDecimal("90"));
+        ingestion.ingest("vc-band-07", upload(
+                new DeviceUpload.Reading("flagged", NOW.minusMinutes(2).toString(), new BigDecimal("88"), 76, null,
+                        null, null, java.util.Arrays.asList(low, null)),
+                new DeviceUpload.Reading("broken", NOW.minusMinutes(1).toString(), new BigDecimal("140"), 0, null,
+                        null, null, List.of(low))), "REST");
+
+        ArgumentCaptor<VitalEvents.Recorded> recorded = ArgumentCaptor.forClass(VitalEvents.Recorded.class);
+        verify(events, times(1)).publishEvent(recorded.capture());
+        assertThat(recorded.getValue().deviceAlerts()).containsExactly(low);
+    }
 }

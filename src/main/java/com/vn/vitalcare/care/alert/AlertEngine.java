@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.alert;
 
+import com.vn.vitalcare.care.iomt.DeviceUpload;
 import com.vn.vitalcare.care.iomt.VitalEvents;
 import com.vn.vitalcare.care.iomt.VitalSignsRepository;
 import com.vn.vitalcare.entity.Alert;
@@ -11,11 +12,13 @@ import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -34,6 +37,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * (BR-21); of the rules broken, the most severe one speaks. An alert already
  * open for that patient and measure takes the reading in instead of a second
  * alert being raised.
+ *
+ * <p>A device carries thresholds of its own and may flag a reading itself. Its
+ * verdict stands beside the rules, so an alarm is raised with every rule
+ * switched off, and the more severe of the two speaks.
  */
 @Component
 public class AlertEngine {
@@ -67,15 +74,21 @@ public class AlertEngine {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void on(VitalEvents.Recorded recorded) {
         try {
-            vitals.findWithDetailsById(recorded.vitalId()).ifPresent(this::evaluate);
+            vitals.findWithDetailsById(recorded.vitalId())
+                    .ifPresent(reading -> evaluate(reading, recorded.deviceAlerts()));
         } catch (RuntimeException e) {
             log.error("Alert rules could not be checked for reading {}", recorded.vitalId(), e);
             throw e;
         }
     }
 
-    /** Evaluates one reading; package-visible for tests. */
+    /** Evaluates one reading by the rules alone; package-visible for tests. */
     void evaluate(VitalSigns reading) {
+        evaluate(reading, List.of());
+    }
+
+    /** Evaluates one reading by the rules and by what the device flagged in it. */
+    void evaluate(VitalSigns reading, List<DeviceUpload.DeviceAlert> deviceAlerts) {
         if (!reading.isValid() || reading.getCustomer() == null) {
             return;
         }
@@ -88,11 +101,34 @@ public class AlertEngine {
             if (value == null) {
                 continue;
             }
-            applicable.stream()
-                    .filter(r -> metric.equals(r.getMetric()) && r.breachedBy(value))
+            // Rules first: at equal severity the rule speaks, it has a name and a threshold on record.
+            Stream.concat(
+                            applicable.stream().filter(r -> metric.equals(r.getMetric()) && r.breachedBy(value)),
+                            deviceAlerts.stream().map(a -> deviceVerdict(a, clinicId))
+                                    .filter(r -> r != null && metric.equals(r.getMetric())))
                     .max(Comparator.comparingInt((AlertRule r) -> Alert.rank(r.getSeverity())))
                     .ifPresent(rule -> raise(reading, rule, value));
         }
+    }
+
+    /**
+     * The verdict of the device as a rule that is never saved, so it runs through the same path as one;
+     * null for a verdict that names no known measure or severity.
+     */
+    static AlertRule deviceVerdict(DeviceUpload.DeviceAlert alert, UUID clinicId) {
+        if (alert == null || alert.metric() == null || alert.severity() == null) {
+            return null;
+        }
+        String metric = alert.metric().trim().toUpperCase(Locale.ROOT);
+        String severity = alert.severity().trim().toUpperCase(Locale.ROOT);
+        if (!LABELS.containsKey(metric) || Alert.rank(severity) == 0) {
+            return null;
+        }
+        String operator = alert.operator() == null ? "" : alert.operator().trim().toUpperCase(Locale.ROOT);
+        boolean worded = alert.threshold() != null
+                && (AlertRule.BELOW.equals(operator) || AlertRule.ABOVE.equals(operator));
+        return AlertRule.ofDevice(clinicId, metric, severity, worded ? operator : null,
+                worded ? alert.threshold() : null);
     }
 
     /** BR-21: for a measure and direction, the patient's own rules, if there are any, else the clinic's. */
@@ -129,6 +165,10 @@ public class AlertEngine {
 
     static String message(AlertRule rule, BigDecimal value) {
         String unit = UNITS.get(rule.getMetric());
+        if (rule.getThreshold() == null) {
+            return "%s %s%s bất thường (%s)".formatted(LABELS.get(rule.getMetric()), plain(value), unit,
+                    rule.getName());
+        }
         return "%s %s%s %s ngưỡng %s%s (%s)".formatted(LABELS.get(rule.getMetric()), plain(value), unit,
                 AlertRule.BELOW.equals(rule.getOperator()) ? "dưới" : "vượt", plain(rule.getThreshold()), unit,
                 rule.getName());

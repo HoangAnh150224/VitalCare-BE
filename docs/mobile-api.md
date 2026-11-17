@@ -77,10 +77,34 @@ Có hai đường gửi, dùng chung một định dạng payload:
     "clientRecordId": "r-1a2…",         // BẮT BUỘC, duy nhất theo thiết bị (nên dùng UUID)
     "measuredAt": "2026-11-02T08:15:00+07:00",
     "spo2": 97.5, "heartRate": 76, "skinTemperature": 33.4,
-    "sessionId": "s-9f2…"               // tuỳ chọn: phiên đo mà bản ghi thuộc về
+    "sessionId": "s-9f2…",              // tuỳ chọn: phiên đo mà bản ghi thuộc về
+    "alerts": [{                        // tuỳ chọn: cảnh báo do chính thiết bị/app phát hiện (xem bên dưới)
+      "metric": "SPO2", "severity": "CRITICAL", "operator": "BELOW", "threshold": 90
+    }]
   }]
 }
 ```
+
+### Cảnh báo do thiết bị tự phát hiện (`alerts`)
+
+Ngưỡng cảnh báo được đặt cứng trên thiết bị (hoặc trong app). Khi một lần đo vượt ngưỡng, thiết bị gửi kèm `alerts` trong chính bản ghi đó. Server lưu lần đo, sinh cảnh báo, gửi thông báo cho phòng khám, bệnh nhân và người chăm sóc; mức `CRITICAL` kích hoạt luồng báo khẩn và gọi điện (BF-06). Web và app đọc cảnh báo từ server như trước (`GET /alerts`, `GET /my_alerts`, thông báo).
+
+| Trường | Bắt buộc | Giá trị |
+|---|---|---|
+| `metric` | Có | `SPO2`, `HEART_RATE`, `SKIN_TEMPERATURE` hoặc `BODY_TEMPERATURE` |
+| `severity` | Có | `WARNING` hoặc `CRITICAL` |
+| `operator` | Không | `BELOW` hoặc `ABOVE`, chỉ để ghi lời cảnh báo |
+| `threshold` | Không | Ngưỡng của thiết bị, chỉ để ghi lời cảnh báo |
+
+Quy ước:
+- Bản ghi phải có giá trị của chính chỉ số được báo (báo `SPO2` thì phải có `spo2`); thiếu thì cảnh báo đó bị bỏ qua.
+- `metric` hoặc `severity` không hợp lệ thì cảnh báo đó bị bỏ qua, lần đo vẫn được lưu.
+- Bản ghi `INVALID` không sinh cảnh báo.
+- Gửi lại cùng `clientRecordId` không sinh cảnh báo lần hai.
+- Nếu bệnh nhân đang có cảnh báo chưa đóng cho cùng chỉ số, lần đo mới được gộp vào cảnh báo đó; mức nặng hơn sẽ nâng mức cảnh báo.
+- Quy tắc cảnh báo trên web của phòng khám vẫn chạy song song như lớp dự phòng. Khi cả hai cùng báo một lần đo, chỉ có một cảnh báo, lấy mức nặng hơn.
+- Cảnh báo sinh từ thiết bị có `source = "DEVICE"` trong kết quả `GET /alerts`; sinh từ quy tắc của phòng khám là `"RULE"`.
+- Log `#v2` của vòng tay chưa mang được `alerts`; muốn tự báo thì gửi JSON.
 
 ### Kết quả trả về
 ```json
@@ -141,7 +165,7 @@ Kết quả trả về giống mục trên.
 |---|---|
 | Broker | EMQX: `tcp://<host>:1883` (TLS: `8883`) |
 | Username / password | `deviceCode` / mã bí mật thiết bị (lấy ở trang thiết bị → "Cấp mã bí mật") |
-| Publish số đo | `vitalcare/devices/{deviceCode}/vitals`, QoS 1, payload như mục 3 |
+| Publish số đo | `vitalcare/devices/{deviceCode}/vitals`, QoS 1, payload như mục 3 (kể cả `alerts` do thiết bị tự phát hiện) |
 | Publish trạng thái | `vitalcare/devices/{deviceCode}/status` với `{ "battery": 80, "firmware": "1.2.0" }` |
 | Nhận kết quả | subscribe `vitalcare/devices/{deviceCode}/ack`, nhận lại kết quả như mục 3 |
 

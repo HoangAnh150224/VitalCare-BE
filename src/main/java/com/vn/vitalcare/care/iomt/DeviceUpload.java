@@ -34,9 +34,28 @@ public record DeviceUpload(
      * @param sessionId       the {@link Session#clientSessionId()} it was taken in, if any
      * @param skinTemperature wrist skin temperature, °C
      * @param bodyTemperature estimated body temperature, °C — only once the skin reading has settled
+     * @param alerts          what the device itself found abnormal in this reading, by its own thresholds
      */
     public record Reading(String clientRecordId, String measuredAt, BigDecimal spo2, Integer heartRate,
-                          BigDecimal skinTemperature, BigDecimal bodyTemperature, String sessionId) {
+                          BigDecimal skinTemperature, BigDecimal bodyTemperature, String sessionId,
+                          List<DeviceAlert> alerts) {
+
+        public Reading(String clientRecordId, String measuredAt, BigDecimal spo2, Integer heartRate,
+                       BigDecimal skinTemperature, BigDecimal bodyTemperature, String sessionId) {
+            this(clientRecordId, measuredAt, spo2, heartRate, skinTemperature, bodyTemperature, sessionId, null);
+        }
+    }
+
+    /**
+     * The device's own verdict on one measure of a reading: its thresholds are
+     * built into it, so it can raise the alarm while the server's rules are off.
+     *
+     * @param metric    HEART_RATE, SPO2, SKIN_TEMPERATURE or BODY_TEMPERATURE
+     * @param severity  WARNING or CRITICAL
+     * @param operator  BELOW or ABOVE the threshold; optional, for the wording
+     * @param threshold the device's threshold; optional, for the wording
+     */
+    public record DeviceAlert(String metric, String severity, String operator, BigDecimal threshold) {
     }
 
     /** {@code status}: IN_PROGRESS while measuring, COMPLETED or CANCELLED to close it. */
