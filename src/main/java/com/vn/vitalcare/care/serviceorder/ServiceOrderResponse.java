@@ -36,7 +36,9 @@ public record ServiceOrderResponse(
         @JsonProperty("_can")
         Map<String, Boolean> can,
         /** Its own bill is paid (BF-03), or it predates services being billed one by one. */
-        boolean paid) {
+        boolean paid,
+        /** The registered visit it was ordered in, where its result is returned; null for one with none. */
+        Long appointmentId) {
 
     public record Patient(Long id, String customerCode, String fullName) {
     }
@@ -85,6 +87,7 @@ public record ServiceOrderResponse(
                                 file.getSizeBytes(), file.getCreatedAt()))
                         .toList(),
                 can,
-                paid);
+                paid,
+                order.getEncounter().getAppointment() == null ? null : order.getEncounter().getAppointment().getId());
     }
 }

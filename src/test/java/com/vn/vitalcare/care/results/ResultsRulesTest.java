@@ -128,4 +128,26 @@ class ResultsRulesTest {
                 .isInstanceOf(com.vn.vitalcare.share.exception.ConflictException.class)
                 .hasMessageContaining("reschedule");
     }
+
+    @Test
+    @DisplayName("The technician schedules a return once all results are in, the patient queued back for their doctor")
+    void schedulingWhenBackWithResults() {
+        ResultReturnRepository repo = mock(ResultReturnRepository.class);
+        when(repo.persist(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> invocation.getArgument(0));
+        ResultReturns returns = new ResultReturns(repo, mock(com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository.class),
+                mock(AppointmentService.class), mock(CustomerService.class), mock(RowLevelSecurity.class), mock(Notifier.class),
+                mock(ApplicationEventPublisher.class), CLOCK);
+        Appointment visit = new Appointment();
+        ReflectionTestUtils.setField(visit, "id", 117L);
+        visit.setCustomer(new com.vn.vitalcare.entity.Customer());
+        ReflectionTestUtils.setField(visit, "status", com.vn.vitalcare.entity.AppointmentStatus.READY_FOR_EXAMINATION);
+
+        assertThatThrownBy(() -> returns.scheduleForVisit(visit, NOW.plusHours(1), null))
+                .isInstanceOf(com.vn.vitalcare.share.exception.ConflictException.class);
+
+        ReflectionTestUtils.setField(visit, "returnedAt", NOW);
+        ResultReturn scheduled = returns.scheduleForVisit(visit, NOW.plusHours(1), "Phòng P03");
+        assertThat(scheduled.getStatus()).isEqualTo(ResultReturn.SCHEDULED);
+        assertThat(scheduled.getNote()).isEqualTo("Phòng P03");
+    }
 }

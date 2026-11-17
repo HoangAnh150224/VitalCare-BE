@@ -204,6 +204,23 @@ public class ServiceOrders {
         return order;
     }
 
+    /**
+     * The visit an order's result is returned on, for whoever works the order
+     * (the service technician): only once the order has a result, and only
+     * for a registered visit.
+     */
+    public com.vn.vitalcare.entity.Appointment visitToReturnResultsOf(Long id) {
+        ServiceOrder order = find(id, Action.WRITE);
+        if (order.getStatus() != ServiceOrderStatus.RESULT_READY && order.getStatus() != ServiceOrderStatus.REVIEWED) {
+            throw new ConflictException("Record the result before telling the patient when to come back for it");
+        }
+        com.vn.vitalcare.entity.Appointment visit = order.getEncounter().getAppointment();
+        if (visit == null) {
+            throw new ConflictException("This order's visit was not registered; there is no visit to return to");
+        }
+        return visit;
+    }
+
     /** A file of an order the caller may read, with its bytes. */
     public StoredFile file(Long id, Long fileId) {
         find(id, Action.READ);

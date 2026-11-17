@@ -43,12 +43,28 @@ public class ResultsController {
     private final Consultations consultations;
     private final Feedback feedback;
     private final Licenses licenses;
+    private final com.vn.vitalcare.care.serviceorder.ServiceOrders serviceOrders;
 
-    public ResultsController(ResultReturns returns, Consultations consultations, Feedback feedback, Licenses licenses) {
+    public ResultsController(ResultReturns returns, Consultations consultations, Feedback feedback, Licenses licenses,
+                             com.vn.vitalcare.care.serviceorder.ServiceOrders serviceOrders) {
         this.returns = returns;
         this.consultations = consultations;
         this.feedback = feedback;
         this.licenses = licenses;
+        this.serviceOrders = serviceOrders;
+    }
+
+    /**
+     * The service technician, having recorded a result, tells the patient when
+     * to come back for it: the return is scheduled on the order's visit. The
+     * front desk sees it; it does not set it.
+     */
+    @PostMapping("/api/service_orders/{id}/result_return")
+    @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_PERFORM + "')")
+    @org.springframework.transaction.annotation.Transactional
+    public ReturnResponse scheduleFromOrder(@PathVariable Long id, @RequestBody ScheduleRequest r) {
+        return ReturnResponse.of(returns.scheduleForVisit(serviceOrders.visitToReturnResultsOf(id), r.scheduledAt(), r.note()));
     }
 
     // ---- result returns ---------------------------------------------------------------

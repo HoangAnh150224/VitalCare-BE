@@ -174,3 +174,5 @@ databaseChangeLog:
       file: db/changelog/changes/083-one-bill-for-a-visits-services.sql
   - include:
       file: db/changelog/changes/084-service-technicians.sql
+  - include:
+      file: db/changelog/changes/085-technician-schedules-result-returns.sql

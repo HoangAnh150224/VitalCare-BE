@@ -121,9 +121,25 @@ public class ResultReturns {
         return schedule(e.getAppointment(), at, note);
     }
 
+    /**
+     * From an ordered service: the service technician who records a result
+     * tells the patient when to come back for it. The caller has already
+     * reached the visit through the order it may work.
+     */
+    @Transactional
+    public ResultReturn scheduleForVisit(Appointment visit, OffsetDateTime at, String note) {
+        return schedule(visit, at, note);
+    }
+
     private ResultReturn schedule(Appointment visit, OffsetDateTime at, String note) {
-        if (visit.getStatus() != com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS
-                && visit.getStatus() != com.vn.vitalcare.entity.AppointmentStatus.COMPLETED) {
+        var status = visit.getStatus();
+        // Examined: out for services, back with all their results (queued or in the room again), or done.
+        boolean examined = status == com.vn.vitalcare.entity.AppointmentStatus.AWAITING_RESULTS
+                || status == com.vn.vitalcare.entity.AppointmentStatus.COMPLETED
+                || (visit.getReturnedAt() != null
+                    && (status == com.vn.vitalcare.entity.AppointmentStatus.READY_FOR_EXAMINATION
+                        || status == com.vn.vitalcare.entity.AppointmentStatus.IN_EXAM));
+        if (!examined) {
             throw new ConflictException("Results are returned for a visit that was examined");
         }
         if (returns.hasOpen(visit.getId())) {
