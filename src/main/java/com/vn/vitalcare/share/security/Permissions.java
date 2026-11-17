@@ -150,6 +150,8 @@ public final class Permissions {
     public static final String MEDICAL_SERVICES_WRITE = "medical_services:write";
     public static final String SERVICE_ORDERS_READ = "service_orders:read";
     public static final String SERVICE_ORDERS_WRITE = "service_orders:write";
+    /** Carrying an ordered service out: starting it, recording its result, attaching files. The technician's. */
+    public static final String SERVICE_ORDERS_PERFORM = "service_orders:perform";
     public static final String INVOICES_READ = "invoices:read";
     public static final String INVOICES_WRITE = "invoices:write";
     public static final String INVOICES_REPORT = "invoices:report";

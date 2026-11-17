@@ -172,3 +172,5 @@ databaseChangeLog:
       file: db/changelog/changes/082-exam-room-departments.sql
   - include:
       file: db/changelog/changes/083-one-bill-for-a-visits-services.sql
+  - include:
+      file: db/changelog/changes/084-service-technicians.sql

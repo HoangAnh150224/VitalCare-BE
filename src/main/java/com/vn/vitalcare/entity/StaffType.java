@@ -17,6 +17,13 @@ public enum StaffType {
     RECEPTIONIST("receptionist", "MANAGER"),
 
     /**
+     * A service technician (Bác sĩ kỹ thuật): carries out the services the
+     * examining doctor ordered and records their results; orders nothing,
+     * sees no patient of their own.
+     */
+    TECHNICIAN("technician", "TECHNICIAN"),
+
+    /**
      * Runs one clinic: its staff, devices and appointments, through the
      * row-level policies on {@code CLINIC_ADMIN}. Creating this staff type
      * requires clinic management permission and an explicitly selected clinic.

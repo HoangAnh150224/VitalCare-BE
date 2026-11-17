@@ -69,20 +69,21 @@ public class ServiceOrderController {
         return ResponseEntity.created(URI.create("/api/service_orders/" + created.getId())).body(response(created));
     }
 
+    /** Carrying the order out is the service technician's, never the doctor who ordered it. */
     @PostMapping("/service_orders/{id}/start")
-    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_PERFORM + "')")
     public ServiceOrderResponse start(@PathVariable Long id) {
         return response(service.start(id));
     }
 
     @RequestMapping(value = "/service_orders/{id}/result", method = {RequestMethod.PATCH, RequestMethod.PUT})
-    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_PERFORM + "')")
     public ServiceOrderResponse result(@PathVariable Long id, @Valid @RequestBody ServiceOrderRequests.Result request) {
         return response(service.recordResult(id, request));
     }
 
     @PostMapping(value = "/service_orders/{id}/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_WRITE + "')")
+    @PreAuthorize("hasAuthority('" + Permissions.SERVICE_ORDERS_PERFORM + "')")
     public ServiceOrderResponse attach(@PathVariable Long id, @RequestPart("file") MultipartFile file) {
         return response(service.attach(id, file));
     }
