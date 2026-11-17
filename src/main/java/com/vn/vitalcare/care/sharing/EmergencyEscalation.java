@@ -28,7 +28,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p>A critical alert, new or raised to critical, is told to every caregiver
  * whose grant in force covers alerts: a notification of type
  * {@code emergency}, which the portal and the app pop up. If it is not
- * acknowledged within {@code app.escalation.delay} (30 s), the emergency
+ * acknowledged within {@code app.escalation.delay} (2 min) by the caregiver, nor
+ * taken up by the clinic (the alert is still open), the emergency
  * number on the grant gets a call and an SMS; each is written to the call log,
  * the alert's history and the care team is told.
  * ponytail: one sweeping node; rows are taken with SKIP LOCKED, so two would not call twice.
@@ -51,7 +52,7 @@ public class EmergencyEscalation {
                                EscalationCallRepository calls, com.vn.vitalcare.care.alert.AlertRepository alerts,
                                com.vn.vitalcare.care.alert.AlertActionRepository actions,
                                MonitoringAssignmentRepository careTeams, EmergencyChannels channels, Notifier notifier,
-                               Clock clock, @Value("${app.escalation.delay:30s}") Duration delay) {
+                               Clock clock, @Value("${app.escalation.delay:2m}") Duration delay) {
         this.permissions = permissions;
         this.notices = notices;
         this.calls = calls;

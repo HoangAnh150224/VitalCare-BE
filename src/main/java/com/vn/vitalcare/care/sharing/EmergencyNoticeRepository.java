@@ -23,11 +23,14 @@ public interface EmergencyNoticeRepository extends JpaRepository<EmergencyNotice
     @Query("select n from EmergencyNotice n where n.id = :id")
     Optional<EmergencyNotice> findWithDetails(@Param("id") Long id);
 
-    /** Due: still pending past the delay. Locked and skipped if another sweep holds them. */
+    /**
+     * Due: still pending past the delay, on an alert nobody at the clinic has taken up either (acknowledged,
+     * resolved or dismissed alerts are left alone). Locked and skipped if another sweep holds them.
+     */
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.QueryHints(@jakarta.persistence.QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
     @EntityGraph(attributePaths = {"alert", "customer", "recipient"})
-    @Query("select n from EmergencyNotice n where n.status = 'PENDING' and n.notifiedAt <= :cutoff order by n.notifiedAt")
+    @Query("select n from EmergencyNotice n where n.status = 'PENDING' and n.alert.status = 'OPEN' and n.notifiedAt <= :cutoff order by n.notifiedAt")
     List<EmergencyNotice> findDue(@Param("cutoff") OffsetDateTime cutoff, Pageable page);
 
     boolean existsByAlertIdAndRecipientId(Long alertId, Long recipientId);

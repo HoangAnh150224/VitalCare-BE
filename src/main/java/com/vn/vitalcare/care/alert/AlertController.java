@@ -34,8 +34,10 @@ public class AlertController {
 
     private final AlertRules rules;
     private final Alerts alerts;
+    private final com.vn.vitalcare.care.iomt.VitalSignsRepository vitals;
 
-    public AlertController(AlertRules rules, Alerts alerts) {
+    public AlertController(AlertRules rules, Alerts alerts, com.vn.vitalcare.care.iomt.VitalSignsRepository vitals) {
+        this.vitals = vitals;
         this.rules = rules;
         this.alerts = alerts;
     }
@@ -105,6 +107,28 @@ public class AlertController {
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
     public AlertDtos.AlertDetail alert(@PathVariable Long id) {
         return detail(alerts.get(id));
+    }
+
+    /**
+     * The patient's latest readings from the alert's device, newest first, so whoever opens the alert watches
+     * the measures move while deciding. Seen by whoever may see the alert itself.
+     */
+    @GetMapping("/alerts/{id}/live")
+    @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<AlertDtos.LiveReading> live(@PathVariable Long id) {
+        com.vn.vitalcare.entity.Alert alert = alerts.get(id);
+        if (alert.getDevice() == null) {
+            return List.of();
+        }
+        Long patient = alert.getCustomer().getId();
+        return vitals.findByDeviceIdOrderByMeasuredAtDescIdDesc(alert.getDevice().getId(),
+                        org.springframework.data.domain.PageRequest.of(0, 30))
+                .stream()
+                .filter(v -> v.getCustomer() != null && patient.equals(v.getCustomer().getId()))
+                .map(v -> new AlertDtos.LiveReading(v.getId(), v.getMeasuredAt(), v.getHeartRate(), v.getSpo2(),
+                        v.getBodyTemperature()))
+                .toList();
     }
 
     @PostMapping("/alerts/{id}/acknowledge")
