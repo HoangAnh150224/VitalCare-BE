@@ -180,3 +180,5 @@ databaseChangeLog:
       file: db/changelog/changes/086-demo-doctors-for-clinics-without.sql
   - include:
       file: db/changelog/changes/087-remove-demo-doctors-of-086.sql
+  - include:
+      file: db/changelog/changes/088-healthcare-staff-replies-to-feedback.sql
