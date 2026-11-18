@@ -137,7 +137,31 @@ public class EmergencyChannels {
         return phone.startsWith("0") ? "+84" + phone.substring(1) : "+" + phone;
     }
 
+    /** The text goes out through Twilio when it is configured (the same number as the call), otherwise eSMS. */
     public Outcome sms(String phone, String text) {
+        if (callsConfigured) {
+            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+            form.add("To", e164(phone));
+            form.add("From", fromNumber);
+            form.add("Body", text);
+            try {
+                String body = twilio.post()
+                        .uri("/2010-04-01/Accounts/{sid}/Messages.json", accountSid)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .body(form)
+                        .retrieve()
+                        .body(String.class);
+                // Accepted, not yet delivered: the carrier's verdict comes later, in Twilio's message log.
+                return new Outcome("SENT", "Twilio đã nhận tin, mã "
+                        + JSON.readTree(body == null ? "{}" : body).path("sid").asString(""));
+            } catch (RestClientResponseException e) {
+                return new Outcome("FAILED", "Twilio từ chối tin nhắn (HTTP " + e.getStatusCode().value() + "): "
+                        + refusal(e.getResponseBodyAsString()));
+            } catch (RuntimeException e) {
+                log.error("Twilio SMS to {} failed: {}", PhoneNumbers.mask(phone), e.getClass().getSimpleName());
+                return new Outcome("FAILED", "Không gọi được Twilio (" + e.getClass().getSimpleName() + ")");
+            }
+        }
         EsmsOtpSender sender = esms.getIfAvailable();
         if (sender == null) {
             log.warn("EMERGENCY SMS (eSMS not configured) to {}: {}", PhoneNumbers.mask(phone), text);
