@@ -37,6 +37,9 @@ import org.springframework.web.multipart.MultipartFile;
  * (+ {@code /api/my_feedback}), {@code /api/licenses} (+ {@code /api/my_licenses}).
  */
 @RestController
+// The answers read the patient through their account (an online registrant’s name is the
+// account’s): mapped inside the transaction, or a lazy account fails outside it.
+@org.springframework.transaction.annotation.Transactional
 public class ResultsController {
 
     private final ResultReturns returns;
