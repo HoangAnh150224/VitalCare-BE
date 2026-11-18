@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -60,8 +59,10 @@ public class EmergencyChannels {
         this.fromNumber = e164(fromNumber.trim());
         this.voice = voice.trim();
         this.callsConfigured = !this.accountSid.isEmpty() && !authToken.isBlank() && !this.fromNumber.isEmpty();
-        SimpleClientHttpRequestFactory timeouts = new SimpleClientHttpRequestFactory();
-        timeouts.setConnectTimeout(Duration.ofSeconds(5));
+        // The JDK's HttpClient, not HttpURLConnection: that one drops the body of a 401, and with it Twilio's reason.
+        org.springframework.http.client.JdkClientHttpRequestFactory timeouts =
+                new org.springframework.http.client.JdkClientHttpRequestFactory(
+                        java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
         timeouts.setReadTimeout(Duration.ofSeconds(15));
         this.twilio = RestClient.builder().baseUrl(baseUrl).requestFactory(timeouts)
                 .defaultHeaders(h -> h.setBasicAuth(this.accountSid, authToken.trim()))
