@@ -93,7 +93,8 @@ public class EmergencyChannels {
                     + JSON.readTree(body == null ? "{}" : body).path("sid").asString(""));
         } catch (RestClientResponseException e) {
             // Twilio says why in the body: an unverified number on a trial account, no credit, a bad number.
-            return new Outcome("FAILED", "Twilio từ chối cuộc gọi: " + refusal(e.getResponseBodyAsString()));
+            return new Outcome("FAILED", "Twilio từ chối cuộc gọi (HTTP " + e.getStatusCode().value() + "): "
+                    + refusal(e.getResponseBodyAsString()));
         } catch (RuntimeException e) {
             log.error("Twilio call to {} failed: {}", PhoneNumbers.mask(phone), e.getClass().getSimpleName());
             return new Outcome("FAILED", "Không gọi được Twilio (" + e.getClass().getSimpleName() + ")");
