@@ -30,9 +30,13 @@ public class Consultations {
     private final RowLevelSecurity rowLevel;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    /** Lazily: concluding a visit reaches billing and appointments, none of which needs this. */
+    private final org.springframework.beans.factory.ObjectProvider<com.vn.vitalcare.care.encounter.service.ClinicalEncounterService> visits;
 
     public Consultations(ClinicalEncounterRepository encounters, RowLevelSecurity rowLevel,
-                         ApplicationEventPublisher events, Clock clock) {
+                         ApplicationEventPublisher events, Clock clock,
+                         org.springframework.beans.factory.ObjectProvider<com.vn.vitalcare.care.encounter.service.ClinicalEncounterService> visits) {
+        this.visits = visits;
         this.encounters = encounters;
         this.rowLevel = rowLevel;
         this.events = events;
@@ -44,10 +48,6 @@ public class Consultations {
         ClinicalEncounter e = encounters.findOne(Specification.allOf(
                         rowLevel.byId(ClinicalEncounter.class, Action.WRITE, encounterId), BaseEntitySpecifications.notDeleted()))
                 .orElseThrow(() -> new ResourceNotFoundException("Clinical encounter", encounterId));
-        // After the visit is concluded and its results are back, never in place of concluding it.
-        if (e.getStatus() != com.vn.vitalcare.entity.EncounterStatus.COMPLETED) {
-            throw new com.vn.vitalcare.share.exception.ConflictException("Complete the visit before the consultation");
-        }
         if (conclusion == null || conclusion.isBlank()) {
             throw new FieldValidationException("finalConclusion", "Write the final conclusion");
         }
@@ -56,6 +56,12 @@ public class Consultations {
                 CurrentUser.id().orElse(null), now);
         encounters.persist(e);
         events.publishEvent(new AuditEvent("clinical_encounters", encounterId, "consult", null, Map.of("at", now.toString())));
+        // The patient is back with their results: the doctor's conclusion on them is what ends
+        // the visit — no separate diagnosis first. Concluding still needs every result read.
+        if (e.getStatus() != com.vn.vitalcare.entity.EncounterStatus.COMPLETED) {
+            encounters.flush();
+            visits.getObject().complete(encounterId);
+        }
         Map<String, Object> body = new HashMap<>();
         body.put("id", encounterId);
         body.put("finalConclusion", e.getFinalConclusion());

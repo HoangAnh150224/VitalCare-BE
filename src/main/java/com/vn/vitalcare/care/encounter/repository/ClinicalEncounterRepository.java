@@ -17,6 +17,17 @@ import org.springframework.data.repository.query.Param;
 public interface ClinicalEncounterRepository extends SecuredRepository<ClinicalEncounter, Long> {
 
     /**
+     * The patient, when this member of staff has examined them at least once:
+     * their record is open to that doctor though nobody assigned them to follow
+     * the patient. Not scoped: the caller checks it is their own staff id.
+     */
+    @Query("select e.customer from ClinicalEncounter e where e.customer.id = :customerId "
+            + "and e.employee.id = :employeeId and e.deletedAt is null")
+    java.util.List<com.vn.vitalcare.entity.Customer> examinedPatient(@Param("customerId") Long customerId,
+                                                                     @Param("employeeId") Long employeeId,
+                                                                     org.springframework.data.domain.Pageable first);
+
+    /**
      * Locks the row and nothing else: taken before the scoped read, so that
      * read sees the row as the previous holder left it. Ordering a service and
      * concluding the visit both take it, so an order cannot slip in after the

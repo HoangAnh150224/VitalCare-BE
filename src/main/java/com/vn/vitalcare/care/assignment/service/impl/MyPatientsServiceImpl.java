@@ -25,13 +25,24 @@ public class MyPatientsServiceImpl implements MyPatientsService {
     private final EmployeeService employeeService;
     private final MonitoringAssignmentRepository careTeams;
     private final DeviceAssignmentRepository deviceAssignments;
+    /** Null where nothing but the caseload is asked for (some tests). */
+    private final com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository encounters;
 
     public MyPatientsServiceImpl(EmployeeService employeeService,
                                  MonitoringAssignmentRepository careTeams,
                                  DeviceAssignmentRepository deviceAssignments) {
+        this(employeeService, careTeams, deviceAssignments, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public MyPatientsServiceImpl(EmployeeService employeeService,
+                                 MonitoringAssignmentRepository careTeams,
+                                 DeviceAssignmentRepository deviceAssignments,
+                                 com.vn.vitalcare.care.encounter.repository.ClinicalEncounterRepository encounters) {
         this.employeeService = employeeService;
         this.careTeams = careTeams;
         this.deviceAssignments = deviceAssignments;
+        this.encounters = encounters;
     }
 
     @Override
@@ -97,13 +108,21 @@ public class MyPatientsServiceImpl implements MyPatientsService {
                 .stream()
                 .filter(assignment -> assignment.getCustomer().getId().equals(customerId))
                 .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException("Patient", customerId));
+                .orElse(null);
+        // Not followed, but examined by this doctor — a new patient in their room: their
+        // record (visits, results, conclusion) is the doctor's to read and work on all the same.
+        com.vn.vitalcare.entity.Customer examined = mine != null || encounters == null ? null
+                : encounters.examinedPatient(customerId, me.getId(), org.springframework.data.domain.PageRequest.of(0, 1))
+                        .stream().findFirst().orElse(null);
+        if (mine == null && examined == null) {
+            throw new ResourceNotFoundException("Patient", customerId);
+        }
 
         DeviceAssignment device = deviceAssignments
                 .findFirstByCustomerIdAndUnassignedAtIsNullAndDeletedAtIsNull(customerId)
                 .orElse(null);
         List<MonitoringAssignment> team =
                 careTeams.findByCustomerIdAndUnassignedAtIsNullAndDeletedAtIsNull(customerId);
-        return MyPatientResponse.from(mine, device, team);
+        return mine != null ? MyPatientResponse.from(mine, device, team) : MyPatientResponse.examined(examined, device, team);
     }
 }

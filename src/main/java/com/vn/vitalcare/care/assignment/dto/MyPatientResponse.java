@@ -27,6 +27,27 @@ public record MyPatientResponse(
         DeviceAssignmentResponse.DeviceSummary device,
         List<CareTeamMemberResponse> careTeam) {
 
+    /**
+     * A patient the doctor examined but nobody assigned them to follow: the
+     * same person, with no "following since" and no care team of theirs.
+     */
+    public static MyPatientResponse examined(Customer customer, DeviceAssignment device,
+                                             List<MonitoringAssignment> careTeam) {
+        return new MyPatientResponse(
+                customer.getId(),
+                customer.getCustomerCode(),
+                customer.getFullName(),
+                customer.getPhone(),
+                customer.getDateOfBirth(),
+                customer.getGender(),
+                customer.getEmergencyContactName(),
+                customer.getEmergencyContactPhone(),
+                null,
+                device == null ? null : new DeviceAssignmentResponse.DeviceSummary(
+                        device.getDevice().getId(), device.getDevice().getDeviceCode(), device.getDevice().getModel()),
+                careTeam == null ? List.of() : careTeam.stream().map(CareTeamMemberResponse::from).toList());
+    }
+
     public static MyPatientResponse from(MonitoringAssignment mine, DeviceAssignment device,
                                          List<MonitoringAssignment> careTeam) {
         Customer customer = mine.getCustomer();
