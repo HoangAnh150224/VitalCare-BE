@@ -70,33 +70,23 @@ class EmergencyChannelsTest {
     }
 
     @Test
-    void theTextGoesOutThroughTwilioFromTheSameNumber() throws Exception {
-        AtomicReference<String> path = new AtomicReference<>();
-        AtomicReference<String> form = new AtomicReference<>();
-        HttpServer twilio = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-        twilio.createContext("/", exchange -> {
-            path.set(exchange.getRequestURI().getPath());
-            form.set(URLDecoder.decode(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8),
-                    StandardCharsets.UTF_8));
-            byte[] answer = "{\"sid\":\"SM123\",\"status\":\"queued\"}".getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(201, answer.length);
-            exchange.getResponseBody().write(answer);
-            exchange.close();
-        });
-        twilio.start();
-        try {
-            EmergencyChannels.Outcome outcome = channels("AC1", "token", "+17370000000",
-                    "http://localhost:" + twilio.getAddress().getPort())
-                    .sms("0912345678", "VitalCare KHAN CAP: Binh");
+    @SuppressWarnings("unchecked")
+    void theTextGoesOutThroughTheSmsGateway() {
+        com.vn.vitalcare.care.registration.service.SmsGateSender gateway =
+                mock(com.vn.vitalcare.care.registration.service.SmsGateSender.class);
+        ObjectProvider<com.vn.vitalcare.care.registration.service.SmsGateSender> provider = mock(ObjectProvider.class);
+        org.mockito.Mockito.when(provider.getIfAvailable()).thenReturn(gateway);
+        EmergencyChannels channels = new EmergencyChannels(provider, "AC1", "token", "+17370000000",
+                "Google.vi-VN-Standard-A", "http://localhost:1");
 
-            assertThat(outcome.outcome()).isEqualTo("SENT");
-            assertThat(outcome.detail()).contains("SM123");
-            assertThat(path.get()).isEqualTo("/2010-04-01/Accounts/AC1/Messages.json");
-            assertThat(form.get()).contains("To=+84912345678", "From=+17370000000", "Body=VitalCare KHAN CAP: Binh");
-        } finally {
-            twilio.stop(0);
-        }
+        org.mockito.Mockito.when(gateway.deliver("+84912345678", "x")).thenReturn(null, "HTTP 401 Unauthorized");
+        assertThat(channels.sms("+84912345678", "x").outcome()).isEqualTo("SENT");
+        EmergencyChannels.Outcome refused = channels.sms("+84912345678", "x");
+        assertThat(refused.outcome()).isEqualTo("FAILED");
+        assertThat(refused.detail()).contains("HTTP 401");
+        // Without a gateway the text is only logged, whether or not Twilio is there for the call.
+        assertThat(channels("AC1", "token", "+17370000000", "http://localhost:1").sms("+84912345678", "x").outcome())
+                .isEqualTo("NOT_SENT");
     }
 
     @Test

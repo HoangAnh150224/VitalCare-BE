@@ -34,11 +34,14 @@ public class RegistrationServiceImpl implements RegistrationService {
     private final CustomerService customerService;
     private final AuthService authService;
     private final PhoneCodes codes;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public RegistrationServiceImpl(UserService userService,
                                    CustomerService customerService,
                                    AuthService authService,
-                                   PhoneCodes codes) {
+                                   PhoneCodes codes,
+                                   org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
         this.userService = userService;
         this.customerService = customerService;
         this.authService = authService;
@@ -83,6 +86,8 @@ public class RegistrationServiceImpl implements RegistrationService {
         User user = userService.createSelfRegistered(
                 phone, request.email(), request.password(), request.fullName(), GUEST_ROLE);
         customerService.registerAccountProfile(user, request.claimProfileId(), request.dateOfBirth());
+        // Told by SMS once this commits (RegistrationSms).
+        events.publishEvent(new com.vn.vitalcare.care.registration.service.AccountRegistered(phone));
         return authService.signInVerified(user);
     }
 

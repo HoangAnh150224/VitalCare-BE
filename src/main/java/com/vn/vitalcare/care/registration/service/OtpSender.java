@@ -6,7 +6,7 @@ import com.vn.vitalcare.care.registration.entity.VerificationPurpose;
  * Delivers a one-time code by SMS to a phone number.
  *
  * <p>An interface so the delivery channel is a bean to swap, not a change to
- * the recovery flow: {@link EsmsOtpSender} when eSMS is configured,
+ * the recovery flow: {@link SmsGateSender} when eSMS is configured,
  * {@link LoggingOtpSender} in development.
  */
 public interface OtpSender {

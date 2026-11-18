@@ -1,6 +1,6 @@
 package com.vn.vitalcare.care.sharing;
 
-import com.vn.vitalcare.care.registration.service.EsmsOtpSender;
+import com.vn.vitalcare.care.registration.service.SmsGateSender;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -41,20 +41,20 @@ public class EmergencyChannels {
     /** Twilio's own helper that answers with the TwiML it is given in the query string. */
     private static final String TWIML_ECHO = "https://twimlets.com/echo?Twiml=";
 
-    private final ObjectProvider<EsmsOtpSender> esms;
+    private final ObjectProvider<SmsGateSender> gateway;
     private final RestClient twilio;
     private final String accountSid;
     private final String fromNumber;
     private final String voice;
     private final boolean callsConfigured;
 
-    public EmergencyChannels(ObjectProvider<EsmsOtpSender> esms,
+    public EmergencyChannels(ObjectProvider<SmsGateSender> gateway,
                              @Value("${app.call.twilio.account-sid:}") String accountSid,
                              @Value("${app.call.twilio.auth-token:}") String authToken,
                              @Value("${app.call.twilio.from-number:}") String fromNumber,
                              @Value("${app.call.twilio.voice:Google.vi-VN-Standard-A}") String voice,
                              @Value("${app.call.twilio.base-url:https://api.twilio.com}") String baseUrl) {
-        this.esms = esms;
+        this.gateway = gateway;
         this.accountSid = accountSid.trim();
         this.fromNumber = e164(fromNumber.trim());
         this.voice = voice.trim();
@@ -137,42 +137,21 @@ public class EmergencyChannels {
         return phone.startsWith("0") ? "+84" + phone.substring(1) : "+" + phone;
     }
 
-    /** The text goes out through Twilio when it is configured (the same number as the call), otherwise eSMS. */
+    /** The text goes out through the SMS gateway, as every other SMS does. */
     public Outcome sms(String phone, String text) {
-        if (callsConfigured) {
-            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-            form.add("To", e164(phone));
-            form.add("From", fromNumber);
-            form.add("Body", text);
-            try {
-                String body = twilio.post()
-                        .uri("/2010-04-01/Accounts/{sid}/Messages.json", accountSid)
-                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .body(form)
-                        .retrieve()
-                        .body(String.class);
-                // Accepted, not yet delivered: the carrier's verdict comes later, in Twilio's message log.
-                return new Outcome("SENT", "Twilio đã nhận tin, mã "
-                        + JSON.readTree(body == null ? "{}" : body).path("sid").asString(""));
-            } catch (RestClientResponseException e) {
-                return new Outcome("FAILED", "Twilio từ chối tin nhắn (HTTP " + e.getStatusCode().value() + "): "
-                        + refusal(e.getResponseBodyAsString()));
-            } catch (RuntimeException e) {
-                log.error("Twilio SMS to {} failed: {}", PhoneNumbers.mask(phone), e.getClass().getSimpleName());
-                return new Outcome("FAILED", "Không gọi được Twilio (" + e.getClass().getSimpleName() + ")");
-            }
-        }
-        EsmsOtpSender sender = esms.getIfAvailable();
+        SmsGateSender sender = gateway.getIfAvailable();
         if (sender == null) {
-            log.warn("EMERGENCY SMS (eSMS not configured) to {}: {}", PhoneNumbers.mask(phone), text);
-            return new Outcome("NOT_SENT", "Chưa cấu hình eSMS (ESMS_API_KEY); nội dung đã ghi vào log");
+            log.warn("EMERGENCY SMS (SMS gateway not configured) to {}: {}", PhoneNumbers.mask(phone), text);
+            return new Outcome("NOT_SENT", "Chưa cấu hình cổng SMS (SMSGATE_USERNAME); nội dung đã ghi vào log");
         }
         try {
             String error = sender.deliver(phone, text);
-            return error == null ? new Outcome("SENT", "eSMS đã nhận tin")
-                    : new Outcome("FAILED", "eSMS từ chối: " + error);
+            // Queued for the phone that sends it; whether it then went out shows in the SMSGate app.
+            return error == null ? new Outcome("SENT", "Cổng SMS đã nhận tin")
+                    : new Outcome("FAILED", "Cổng SMS từ chối: " + error);
         } catch (RuntimeException e) {
-            return new Outcome("FAILED", "Không gọi được eSMS: " + e.getMessage());
+            log.error("SMS gateway unreachable for {}: {}", PhoneNumbers.mask(phone), e.getClass().getSimpleName());
+            return new Outcome("FAILED", "Không gọi được cổng SMS (" + e.getClass().getSimpleName() + ")");
         }
     }
 }

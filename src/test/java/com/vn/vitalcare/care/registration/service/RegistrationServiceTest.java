@@ -36,6 +36,7 @@ class RegistrationServiceTest {
     private AuthService authService;
     private PhoneCodes codes;
     private RegistrationService service;
+    private org.springframework.context.ApplicationEventPublisher events;
 
     @BeforeEach
     void setUp() {
@@ -43,7 +44,8 @@ class RegistrationServiceTest {
         customerService = mock(CustomerService.class);
         authService = mock(AuthService.class);
         codes = mock(PhoneCodes.class);
-        service = new RegistrationServiceImpl(userService, customerService, authService, codes);
+        events = mock(org.springframework.context.ApplicationEventPublisher.class);
+        service = new RegistrationServiceImpl(userService, customerService, authService, codes, events);
     }
 
     @Test
@@ -58,6 +60,7 @@ class RegistrationServiceTest {
         verify(codes).verify("+84912345678", VerificationPurpose.REGISTER, "123456");
         verify(customerService).registerAccountProfile(user, null, null);
         verify(authService).signInVerified(user);
+        verify(events).publishEvent(new AccountRegistered("+84912345678"));
     }
 
     @Test

@@ -23,9 +23,12 @@ Mọi request sau đó gửi header `Authorization: Bearer <accessToken>`. Khi n
 | | |
 |---|---|
 | `POST /auth/register/otp` | `{ "phone": "0901234567" }` → `{ "expiresIn": 300, "resendAfter": 60 }` |
-| `POST /auth/register` | `{ "phone": "0901234567", "otp": "123456", "fullName": "Nguyen Van A", "password": "..." }` → cặp token mới |
+| `POST /auth/register/otp/check` | `{ "phone": "0901234567", "otp": "123456" }` → danh sách hồ sơ chưa có tài khoản trùng số (`id`, `maskedName`, `birthYear`); kiểm mã mà không tiêu mã |
+| `POST /auth/register` | `{ "phone": "0901234567", "otp": "123456", "fullName": "Nguyen Van A", "password": "...", "claimProfileId": 12 }` → cặp token mới (`claimProfileId` tùy chọn: nhận một hồ sơ ở bước trên) |
 
 Request đăng ký cuối chỉ tạo user và hồ sơ khách hàng khi OTP còn hạn, chưa dùng và đúng với số điện thoại đã gửi mã. Mã sai, hết hạn, đã dùng hoặc vượt số lần thử trả lỗi tại `errors.otp`; request OTP áp dụng giới hạn theo số điện thoại và địa chỉ IP. `email` là trường tùy chọn.
+
+Mã OTP là bắt buộc và được gửi bằng SMS. Đăng ký xong, số điện thoại đó nhận thêm một SMS báo đăng ký thành công; đặt lịch khám xong cũng có SMS xác nhận (ngày khám, số thứ tự, mã đặt lịch). Mọi SMS đi qua cổng SMSGate của hệ thống, nên người nhận thấy tin đến từ một số điện thoại thường.
 
 ## 3. Thiết bị của tôi (FE-02)
 

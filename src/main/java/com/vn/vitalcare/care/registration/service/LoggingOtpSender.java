@@ -22,8 +22,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile("!prod")
-// Stands aside as soon as eSMS is configured (EsmsOtpSender).
-@ConditionalOnExpression("'${app.sms.esms.api-key:}'.isBlank()")
+// Stands aside as soon as the SMS gateway is configured (SmsGateSender).
+@ConditionalOnExpression("'${app.sms.gate.username:}'.isBlank()")
 public class LoggingOtpSender implements OtpSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingOtpSender.class);

@@ -15,9 +15,9 @@ import org.junit.jupiter.api.Test;
 /** UC-01 step 4: what the patient who pays at the desk is texted. */
 class DeskPaymentSmsTest {
 
-    private DeskPaymentSms sms(String template) {
+    private DeskPaymentSms sms() {
         return new DeskPaymentSms(mock(AppointmentRepository.class), mock(InvoiceRepository.class),
-                mock(BookingConfirmationSms.class), template);
+                mock(BookingConfirmationSms.class));
     }
 
     @Test
@@ -33,7 +33,7 @@ class DeskPaymentSmsTest {
 
         assertEquals("VitalCare: Tran Thu Trang dang ky kham thanh cong cho Tran Thu Trang ngay 11/11/2026, "
                 + "STT 5, ma AB12CD34. Vui long tra 150.000d tai quay le tan.",
-                sms("").text(visit, new BigDecimal("150000.0000")));
-        assertEquals("Lich 11/11/2026 so 5 tien theo bang gia", sms("Lich {date} so {number} tien {amount}").text(visit, null));
+                sms().text(visit, new BigDecimal("150000.0000")));
+        assertEquals(true, sms().text(visit, null).contains("Vui long tra theo bang gia tai quay le tan."));
     }
 }
