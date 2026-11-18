@@ -160,8 +160,9 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         if (encounter.getStatus() == EncounterStatus.COMPLETED) {
             throw new ConflictException("This encounter is already completed");
         }
-        // Concluding is the doctor signing the visit off: there has to be something to sign.
-        if (encounter.getDiagnosis() == null) {
+        // Concluding is the doctor signing the visit off: there has to be something to sign —
+        // a diagnosis, or the conclusion written once the results were back.
+        if (encounter.getDiagnosis() == null && encounter.getFinalConclusion() == null) {
             throw new ConflictException("Write the diagnosis before concluding the visit");
         }
         // Report 1 FE-22: the doctor concludes having seen every result.
