@@ -13,6 +13,7 @@ import com.vn.vitalcare.identity.user.repository.UserSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.audit.AuditEvent;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
@@ -20,8 +21,10 @@ import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
@@ -252,12 +255,15 @@ public class UserService {
         requireRoleCreationWorkflow(roles);
         user.setRoles(roles);
 
-        return repository.save(user);
+        User saved = repository.save(user);
+        events.publishEvent(new AuditEvent("users", saved.getId(), "create", null, accountState(saved)));
+        return saved;
     }
 
     @Transactional
     public User update(Long id, UserPatchRequest request) {
         User user = get(id);
+        Map<String, Object> profileBefore = profileState(user);
 
         boolean phoneChanged = false;
         if (request.phone() != null) {
@@ -299,6 +305,10 @@ public class UserService {
         }
         user.setStatus(status);
         User saved = repository.save(user);
+        Map<String, Object> profileAfter = profileState(saved);
+        if (!profileBefore.equals(profileAfter)) {
+            events.publishEvent(new AuditEvent("users", saved.getId(), "update", profileBefore, profileAfter));
+        }
         if (request.roles() != null && !rolesBefore.equals(roleCodes(saved.getRoles()))) {
             events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
                     java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
@@ -407,6 +417,22 @@ public class UserService {
         return passwordEncoder.encode(rawPassword);
     }
 
+    /** The fields an administrator can edit, excluding passwords and other secrets. */
+    private static Map<String, Object> profileState(User user) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("fullName", user.getFullName());
+        state.put("phone", user.getPhone());
+        state.put("email", user.getEmail());
+        return state;
+    }
+
+    private Map<String, Object> accountState(User user) {
+        Map<String, Object> state = new LinkedHashMap<>(profileState(user));
+        state.put("status", user.getStatus().name());
+        state.put("roles", roleCodes(user.getRoles()));
+        return state;
+    }
+
     /** Stamps the successful sign-in. Called by the auth domain. */
     @Transactional
     public void recordLogin(User user, Instant when) {
@@ -440,13 +466,17 @@ public class UserService {
         }
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
+        Map<String, Object> before = accountState(user);
+        before.put("deletedAt", user.getDeletedAt() == null ? null : user.getDeletedAt().toString());
         Instant deletedAt = Instant.now();
         user.setStatus(UserStatus.INACTIVE);
         user.setDeletedAt(deletedAt);
         User archived = repository.save(user);
         refreshTokenService.revokeAllFor(archived, deletedAt);
+        Map<String, Object> after = accountState(archived);
+        after.put("deletedAt", archived.getDeletedAt().toString());
         events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", archived.getId(), "delete",
-                java.util.Map.of("phone", archived.getPhone(), "fullName", archived.getFullName()), null));
+                before, after));
         events.publishEvent(new AuthoritiesChanged.ForUser(archived.getId()));
 
         // Keep referenced customer and employee rows intact; the tombstone

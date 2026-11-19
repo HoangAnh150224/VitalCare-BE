@@ -12,8 +12,11 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -40,6 +43,37 @@ public class AuditLogController {
     private static final Set<String> SORTABLE = Set.of("id", "occurredAt", "action", "entityType");
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+    private static final Map<String, String> ENTITY_LABELS = Map.ofEntries(
+            Map.entry("users", "Người dùng"),
+            Map.entry("employees", "Nhân viên"),
+            Map.entry("clinics", "Cơ sở"),
+            Map.entry("invoices", "Invoices"),
+            Map.entry("medical_records", "Hồ sơ bệnh án"),
+            Map.entry("device_assignments", "Phân công thiết bị"),
+            Map.entry("clinical_encounters", "Lần khám"),
+            Map.entry("result_returns", "Hẹn trả kết quả"),
+            Map.entry("alert_rules", "Quy tắc cảnh báo"),
+            Map.entry("alerts", "Cảnh báo"),
+            Map.entry("feedback", "Góp ý của bệnh nhân"),
+            Map.entry("reports", "Báo cáo tổng hợp"),
+            Map.entry("licenses", "Chứng chỉ hành nghề"),
+            Map.entry("sharing_permissions", "Quyền chia sẻ"),
+            Map.entry("shared_patients", "Người tôi chăm sóc"),
+            Map.entry("monitoring_orders", "Chỉ định theo dõi"),
+            Map.entry("emergency_alerts", "Cảnh báo khẩn"));
+    private static final Map<String, String> ACTION_LABELS = Map.ofEntries(
+            Map.entry("create", "Tạo mới"),
+            Map.entry("view", "Xem"),
+            Map.entry("update", "Cập nhật"),
+            Map.entry("role_change", "Đổi vai trò"),
+            Map.entry("status_change", "Đổi trạng thái"),
+            Map.entry("membership_end", "Kết thúc thành viên"),
+            Map.entry("transfer", "Chuyển cơ sở"),
+            Map.entry("password_reset", "Đặt lại mật khẩu"),
+            Map.entry("delete", "Xóa"),
+            Map.entry("assign", "Cấp / gán"),
+            Map.entry("return", "Thu hồi"),
+            Map.entry("pay", "Thu tiền"));
 
     private final AuditLogRepository logs;
     private final ObjectMapper json;
@@ -129,24 +163,45 @@ public class AuditLogController {
             }
         }
         params.search().ifPresent(term -> specs.add((root, q, cb) -> {
+            String normalizedTerm = normalize(term);
             var textMatch = cb.or(
                 cb.like(cb.lower(root.get("actorName")), ListParams.likePattern(term)),
                 cb.like(cb.lower(root.get("entityType")), ListParams.likePattern(term)),
                 cb.like(cb.lower(root.get("action")), ListParams.likePattern(term)));
+            List<jakarta.persistence.criteria.Predicate> labelMatches = new ArrayList<>();
+            ENTITY_LABELS.forEach((type, label) -> {
+                if (normalize(label).contains(normalizedTerm)) {
+                    labelMatches.add(cb.equal(root.get("entityType"), type));
+                }
+            });
+            ACTION_LABELS.forEach((action, label) -> {
+                if (normalize(label).contains(normalizedTerm)) {
+                    labelMatches.add(cb.equal(root.get("action"), action));
+                }
+            });
+            var matchesTextOrLabels = labelMatches.isEmpty()
+                    ? textMatch
+                    : cb.or(textMatch, cb.or(labelMatches.toArray(jakarta.persistence.criteria.Predicate[]::new)));
             try {
                 long userId = Long.parseLong(term.trim());
                 var employees = q.subquery(Long.class);
                 var employee = employees.from(com.vn.vitalcare.entity.Employee.class);
                 employees.select(employee.get("id"))
                         .where(cb.equal(employee.get("user").get("id"), userId));
-                return cb.or(textMatch,
+                return cb.or(matchesTextOrLabels,
                         cb.equal(root.get("actorId"), userId),
                         cb.and(cb.equal(root.get("entityType"), "users"), cb.equal(root.get("entityId"), userId)),
                         cb.and(cb.equal(root.get("entityType"), "employees"), root.get("entityId").in(employees)));
             } catch (NumberFormatException ignored) {
-                return textMatch;
+                return matchesTextOrLabels;
             }
         }));
         return Specification.allOf(specs);
+    }
+
+    /** Fold case and accents so visible Vietnamese labels search like their stored resource keys. */
+    private static String normalize(String value) {
+        return Normalizer.normalize(value.toLowerCase(Locale.ROOT), Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
     }
 }

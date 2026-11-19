@@ -7,11 +7,17 @@ import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.entity.Clinic;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
+import com.vn.vitalcare.share.audit.AuditEvent;
+import com.vn.vitalcare.share.security.CurrentUser;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,11 +29,14 @@ public class ClinicServiceImpl implements ClinicService {
     private final ClinicRepository repository;
     private final ClinicProperties properties;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
-    public ClinicServiceImpl(ClinicRepository repository, ClinicProperties properties, Clock clock) {
+    public ClinicServiceImpl(ClinicRepository repository, ClinicProperties properties, Clock clock,
+                             ApplicationEventPublisher events) {
         this.repository = repository;
         this.properties = properties;
         this.clock = clock;
+        this.events = events;
     }
 
     @Override
@@ -44,16 +53,36 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public Clinic create(ClinicRequest request) {
+        ensureNameAvailable(request.name(), null);
         Clinic clinic = new Clinic();
         clinic.setClinicId(UUID.randomUUID());
         clinic.setOperatingStatus("OPERATING");
-        return repository.save(apply(clinic, request));
+        Clinic saved = repository.save(apply(clinic, request));
+        events.publishEvent(new AuditEvent("clinics", null, "create", null, state(saved)));
+        return saved;
     }
 
     @Override
     @Transactional
     public Clinic update(UUID id, ClinicRequest request) {
-        return repository.save(apply(get(id), request));
+        Clinic clinic = get(id);
+        ensureNameAvailable(request.name(), id);
+        Map<String, Object> before = state(clinic);
+        Clinic saved = repository.save(apply(clinic, request));
+        Map<String, Object> after = state(saved);
+        String action = statusOnlyChange(before, after) ? "status_change" : "update";
+        events.publishEvent(new AuditEvent("clinics", null, action, before, after));
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public void delete(UUID id) {
+        Clinic clinic = get(id);
+        Map<String, Object> before = state(clinic);
+        clinic.markDeleted(CurrentUser.id().orElse(null), clock.instant());
+        repository.save(clinic);
+        events.publishEvent(new AuditEvent("clinics", null, "delete", before, null));
     }
 
     @Override
@@ -82,6 +111,16 @@ public class ClinicServiceImpl implements ClinicService {
         return clinic;
     }
 
+    private void ensureNameAvailable(String name, UUID clinicId) {
+        String normalized = name.trim();
+        boolean taken = clinicId == null
+                ? repository.existsByClinicNameIgnoreCaseAndDeletedAtIsNull(normalized)
+                : repository.existsByClinicNameIgnoreCaseAndDeletedAtIsNullAndClinicIdNot(normalized, clinicId);
+        if (taken) {
+            throw new FieldValidationException("name", "Tên cơ sở đã tồn tại. Hãy đặt tên khác.");
+        }
+    }
+
     @Override
     @Transactional
     public Clinic changeOperatingStatus(UUID id, String status) {
@@ -89,8 +128,11 @@ public class ClinicServiceImpl implements ClinicService {
             throw new IllegalArgumentException("Invalid clinic status");
         }
         Clinic clinic = getForUpdate(id);
+        Map<String, Object> before = state(clinic);
         clinic.setOperatingStatus(status);
-        return repository.save(clinic);
+        Clinic saved = repository.save(clinic);
+        events.publishEvent(new AuditEvent("clinics", null, "status_change", before, state(saved)));
+        return saved;
     }
 
     @Override
@@ -118,5 +160,25 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     public boolean isWithinBookingWindow(LocalDate date) {
         return !date.isBefore(today()) && !date.isAfter(lastBookableDate());
+    }
+
+    private static Map<String, Object> state(Clinic clinic) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("clinicId", clinic.getClinicId().toString());
+        state.put("name", clinic.getClinicName());
+        state.put("address", clinic.getAddress());
+        state.put("contactPhone", clinic.getContactPhone());
+        state.put("contactEmail", clinic.getContactEmail());
+        state.put("contactPerson", clinic.getContactPerson());
+        state.put("operatingStatus", clinic.getOperatingStatus());
+        return state;
+    }
+
+    private static boolean statusOnlyChange(Map<String, Object> before, Map<String, Object> after) {
+        Map<String, Object> beforeOther = new LinkedHashMap<>(before);
+        Map<String, Object> afterOther = new LinkedHashMap<>(after);
+        Object beforeStatus = beforeOther.remove("operatingStatus");
+        Object afterStatus = afterOther.remove("operatingStatus");
+        return !java.util.Objects.equals(beforeStatus, afterStatus) && beforeOther.equals(afterOther);
     }
 }

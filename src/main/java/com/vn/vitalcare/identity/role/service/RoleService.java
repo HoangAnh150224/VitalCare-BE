@@ -10,11 +10,15 @@ import com.vn.vitalcare.identity.role.repository.RoleRepository;
 import com.vn.vitalcare.identity.role.repository.RoleSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.audit.AuditEvent;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -112,6 +116,7 @@ public class RoleService {
     @Transactional
     public Role update(Long id, RolePatchRequest request) {
         Role role = get(id);
+        Map<String, Object> before = roleState(role);
 
         if (request.code() != null) {
             String code = request.code().trim();
@@ -136,7 +141,24 @@ public class RoleService {
             role.setPermissions(resolvePermissions(request.permissions()));
             events.publishEvent(new AuthoritiesChanged.ForEveryone());
         }
-        return repository.save(role);
+        Role saved = repository.save(role);
+        Map<String, Object> after = roleState(saved);
+        if (!before.equals(after)) {
+            events.publishEvent(new AuditEvent("roles", saved.getId(), "update", before, after));
+        }
+        return saved;
+    }
+
+    private static Map<String, Object> roleState(Role role) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("code", role.getCode());
+        state.put("name", role.getName());
+        state.put("description", role.getDescription());
+        state.put("permissions", role.getPermissions().stream()
+                .map(Permission::getCode)
+                .sorted()
+                .collect(Collectors.toList()));
+        return state;
     }
 
     /**
@@ -149,15 +171,16 @@ public class RoleService {
     public Role delete(Long id) {
         Role role = get(id);
         if (role.isSystemRole()) {
-            throw new ConflictException(
-                    "%s is a system role and cannot be deleted".formatted(role.getCode()));
+            throw new ConflictException("Không thể xoá vai trò %s.".formatted(role.getCode()));
         }
+        Map<String, Object> before = roleState(role);
         repository.delete(role);
         // The RESTRICT foreign key means nobody still held it, so strictly
         // nothing cached can be wrong. Published anyway: the cost is one reload
         // per active account, and an eviction that turns out to be unnecessary
         // is a far better failure than one that turns out to be missing.
         events.publishEvent(new AuthoritiesChanged.ForEveryone());
+        events.publishEvent(new AuditEvent("roles", role.getId(), "delete", before, null));
 
         // Returned so the controller can echo the deleted row.
         return role;

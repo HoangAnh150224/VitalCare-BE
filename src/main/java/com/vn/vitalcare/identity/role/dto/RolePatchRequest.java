@@ -20,7 +20,8 @@ public record RolePatchRequest(
                 message = "Code must be upper case letters, digits and underscores, starting with a letter")
         String code,
 
-        @Size(min = 1, max = 255, message = "Name must be between 1 and 255 characters")
+        @Pattern(regexp = "(?s).*\\S.*", message = "Tên vai trò không hợp lệ. Vui lòng thử lại.")
+        @Size(min = 1, max = 255, message = "Tên vai trò chỉ trong khoảng 1-255 ký tự")
         String name,
 
         @Size(max = 500, message = "Description must be at most 500 characters")

@@ -16,6 +16,8 @@ public record ClinicRequest(
         String address,
 
         @NotBlank(message = "Contact phone is required")
+        @Pattern(regexp = "^\\+?(?=(?:\\D*\\d){8,15}\\D*$)[0-9\\s().-]+$",
+                message = "Số điện thoại không hợp lệ. Vui lòng nhập một số khác")
         @Size(max = 50, message = "Phone must be at most 50 characters")
         String contactPhone,
 

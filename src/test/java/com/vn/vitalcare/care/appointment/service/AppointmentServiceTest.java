@@ -124,7 +124,7 @@ class AppointmentServiceTest {
         ClinicRepository clinics = mock(ClinicRepository.class);
         when(clinics.findByClinicIdAndDeletedAtIsNull(CLINIC)).thenReturn(Optional.of(clinic));
         ClinicService clinicService = new ClinicServiceImpl(
-                clinics, new ClinicProperties(ZoneId.of("Asia/Ho_Chi_Minh"), 30), clock);
+                clinics, new ClinicProperties(ZoneId.of("Asia/Ho_Chi_Minh"), 30), clock, event -> {});
 
         doctor = mock(Employee.class);
         when(doctor.getId()).thenReturn(DOCTOR);
