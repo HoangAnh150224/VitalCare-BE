@@ -38,4 +38,29 @@ class AuditUserSearchTest {
         assertThat(logs.findAll(AuditLogController.specification(new ListParams(query))))
                 .extracting(AuditLog::getId).contains(entry.getId());
     }
+
+    /** KAN-50: the search box finds rows by the labels the list shows, not only by stored codes. */
+    @Test
+    void findsRowsByTheirVietnameseLabels() {
+        AuditLog entry = logs.saveAndFlush(new AuditLog(null, "Administrator", "users", 1L, "delete",
+                null, null, java.time.OffsetDateTime.now(), null, null, null));
+        for (String term : new String[] {"Người dùng", "người dùng", "nguoi dung", "Xóa", "xoá"}) {
+            var query = new LinkedMultiValueMap<String, String>();
+            query.add("q", term);
+            assertThat(logs.findAll(AuditLogController.specification(new ListParams(query))))
+                    .as(term).extracting(AuditLog::getId).contains(entry.getId());
+        }
+        AuditLog clinic = logs.saveAndFlush(new AuditLog(null, "Administrator", "clinics", null, "create",
+                null, "{\"name\":\"PK\"}", java.time.OffsetDateTime.now(), null, null, null));
+        for (String term : new String[] {"Phòng khám", "Cơ sở", "Tạo mới"}) {
+            var query = new LinkedMultiValueMap<String, String>();
+            query.add("q", term);
+            assertThat(logs.findAll(AuditLogController.specification(new ListParams(query))))
+                    .as(term).extracting(AuditLog::getId).contains(clinic.getId());
+        }
+        var miss = new LinkedMultiValueMap<String, String>();
+        miss.add("q", "Hóa đơn không có");
+        assertThat(logs.findAll(AuditLogController.specification(new ListParams(miss))))
+                .extracting(AuditLog::getId).doesNotContain(entry.getId());
+    }
 }

@@ -210,6 +210,30 @@ public class UserService {
         return saved;
     }
 
+    /** The fields an edit can change besides roles and status, which have records of their own. */
+    private static java.util.Map<String, Object> profile(User user) {
+        java.util.Map<String, Object> state = new java.util.LinkedHashMap<>();
+        state.put("phone", user.getPhone());
+        state.put("email", user.getEmail());
+        state.put("fullName", user.getFullName());
+        return state;
+    }
+
+    /** Records an edit to the profile fields, naming only the ones that moved. */
+    private void publishProfileChange(Long id, java.util.Map<String, Object> before, java.util.Map<String, Object> after) {
+        java.util.Map<String, Object> was = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Object> now = new java.util.LinkedHashMap<>();
+        before.forEach((field, value) -> {
+            if (!java.util.Objects.equals(value, after.get(field))) {
+                was.put(field, value);
+                now.put(field, after.get(field));
+            }
+        });
+        if (!was.isEmpty()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", id, "update", was, now));
+        }
+    }
+
     private static java.util.List<String> roleCodes(java.util.Collection<Role> roles) {
         return roles.stream().map(Role::getCode).sorted().toList();
     }
@@ -258,6 +282,7 @@ public class UserService {
     @Transactional
     public User update(Long id, UserPatchRequest request) {
         User user = get(id);
+        java.util.Map<String, Object> profileBefore = profile(user);
 
         boolean phoneChanged = false;
         if (request.phone() != null) {
@@ -299,6 +324,7 @@ public class UserService {
         }
         user.setStatus(status);
         User saved = repository.save(user);
+        publishProfileChange(saved.getId(), profileBefore, profile(saved));
         if (request.roles() != null && !rolesBefore.equals(roleCodes(saved.getRoles()))) {
             events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", saved.getId(), "role_change",
                     java.util.Map.of("roles", rolesBefore), java.util.Map.of("roles", roleCodes(saved.getRoles()))));
@@ -441,12 +467,20 @@ public class UserService {
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
         Instant deletedAt = Instant.now();
+        UserStatus statusBefore = user.getStatus();
         user.setStatus(UserStatus.INACTIVE);
         user.setDeletedAt(deletedAt);
         User archived = repository.save(user);
         refreshTokenService.revokeAllFor(archived, deletedAt);
+        // A soft delete, so the record says what the account became rather
+        // than nothing: the row is still there, switched off and tombstoned.
+        java.util.Map<String, Object> before = profile(archived);
+        before.put("status", String.valueOf(statusBefore));
+        java.util.Map<String, Object> after = profile(archived);
+        after.put("status", String.valueOf(archived.getStatus()));
+        after.put("deletedAt", deletedAt.toString());
         events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", archived.getId(), "delete",
-                java.util.Map.of("phone", archived.getPhone(), "fullName", archived.getFullName()), null));
+                before, after));
         events.publishEvent(new AuthoritiesChanged.ForUser(archived.getId()));
 
         // Keep referenced customer and employee rows intact; the tombstone

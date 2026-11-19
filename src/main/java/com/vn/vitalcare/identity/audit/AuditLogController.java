@@ -7,6 +7,7 @@ import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -14,6 +15,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
@@ -40,6 +43,56 @@ public class AuditLogController {
     private static final Set<String> SORTABLE = Set.of("id", "occurredAt", "action", "entityType");
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
+    /**
+     * What the audit screen shows for an entity type and an action — the FE's
+     * {@code humanizeResource} and {@code AUDIT_ACTION_LABELS} — so a search for
+     * the words on screen ("Người dùng", "Xoá") finds the rows they label, and
+     * not only a search for the stored code. Keep in step with those two.
+     */
+    private static final Map<String, String> ENTITY_LABELS = Map.ofEntries(
+            Map.entry("users", "Người dùng"),
+            Map.entry("employees", "Nhân viên"),
+            Map.entry("medical_records", "Hồ sơ bệnh án"),
+            Map.entry("vital_signs", "Sinh hiệu"),
+            Map.entry("alerts", "Cảnh báo"),
+            Map.entry("alert_rules", "Quy tắc cảnh báo"),
+            Map.entry("emergency_alerts", "Cảnh báo khẩn"),
+            Map.entry("monitoring_orders", "Chỉ định theo dõi"),
+            Map.entry("shared_patients", "Người tôi chăm sóc"),
+            Map.entry("result_returns", "Hẹn trả kết quả"),
+            Map.entry("feedback", "Góp ý của bệnh nhân"),
+            Map.entry("licenses", "Chứng chỉ hành nghề"),
+            Map.entry("reports", "Báo cáo tổng hợp"),
+            Map.entry("clinical_encounters", "Lần khám"),
+            Map.entry("roles", "Vai trò"),
+            Map.entry("row_level_policies", "Phạm vi dữ liệu"),
+            // Shown as "Cơ sở"; "Phòng khám" is what the issue tracker and most people call one.
+            Map.entry("clinics", "Cơ sở phòng khám"));
+    private static final Map<String, String> ACTION_LABELS = Map.ofEntries(
+            Map.entry("view", "Xem"),
+            Map.entry("update", "Cập nhật"),
+            Map.entry("role_change", "Đổi vai trò"),
+            Map.entry("status_change", "Đổi trạng thái"),
+            Map.entry("membership_end", "Kết thúc thành viên"),
+            Map.entry("transfer", "Chuyển cơ sở"),
+            Map.entry("password_reset", "Đặt lại mật khẩu"),
+            Map.entry("delete", "Xoá"),
+            Map.entry("assign", "Cấp / gán"),
+            Map.entry("return", "Thu hồi"),
+            Map.entry("pay", "Thu tiền"),
+            Map.entry("create", "Tạo mới"),
+            Map.entry("consent", "Đồng ý theo dõi"),
+            Map.entry("end", "Kết thúc"),
+            Map.entry("export", "Xuất dữ liệu"),
+            Map.entry("consult", "Tư vấn"),
+            Map.entry("schedule", "Hẹn lịch"),
+            Map.entry("reschedule", "Đổi lịch hẹn"),
+            Map.entry("arrive", "Đã đến"),
+            Map.entry("acknowledge", "Xác nhận"),
+            Map.entry("grant", "Cấp quyền"),
+            Map.entry("revoke", "Thu hồi quyền"),
+            Map.entry("reply", "Phản hồi"));
 
     private final AuditLogRepository logs;
     private final ObjectMapper json;
@@ -129,10 +182,14 @@ public class AuditLogController {
             }
         }
         params.search().ifPresent(term -> specs.add((root, q, cb) -> {
+            // "Device assignments" as shown for a type with no label is stored as device_assignments.
+            String code = term.replace(' ', '_');
             var textMatch = cb.or(
                 cb.like(cb.lower(root.get("actorName")), ListParams.likePattern(term)),
-                cb.like(cb.lower(root.get("entityType")), ListParams.likePattern(term)),
-                cb.like(cb.lower(root.get("action")), ListParams.likePattern(term)));
+                cb.like(cb.lower(root.get("entityType")), ListParams.likePattern(code)),
+                cb.like(cb.lower(root.get("action")), ListParams.likePattern(code)),
+                root.get("entityType").in(labelled(ENTITY_LABELS, term)),
+                root.get("action").in(labelled(ACTION_LABELS, term)));
             try {
                 long userId = Long.parseLong(term.trim());
                 var employees = q.subquery(Long.class);
@@ -148,5 +205,26 @@ public class AuditLogController {
             }
         }));
         return Specification.allOf(specs);
+    }
+
+    /**
+     * The codes whose label contains the term, ignoring case and tone marks —
+     * "Xóa", "Xoá" and "xoa" are one word to the person typing it; a
+     * placeholder that matches nothing when none does.
+     */
+    static List<String> labelled(Map<String, String> labels, String term) {
+        String needle = fold(term);
+        List<String> codes = labels.entrySet().stream()
+                .filter(e -> fold(e.getValue()).contains(needle))
+                .map(Map.Entry::getKey)
+                .toList();
+        // An empty IN list is not valid SQL everywhere.
+        return codes.isEmpty() ? List.of("") : codes;
+    }
+
+    private static String fold(String text) {
+        // NFD leaves đ whole: "doi vai tro" has to find "Đổi vai trò".
+        return Normalizer.normalize(text, Normalizer.Form.NFD).replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT)
+                .replace('đ', 'd');
     }
 }
