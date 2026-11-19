@@ -141,20 +141,20 @@ public class ExamRoomController {
 
     @PostMapping("/{id}/pass-over")
     @PreAuthorize("hasAuthority('" + Permissions.EXAM_ROOMS_OPERATE + "')")
-    public RoomBoardResponse passOver(@PathVariable Long id) {
-        return service.passOver(id);
+    public RoomBoardResponse passOver(@PathVariable Long id, @RequestParam(required = false) Long appointmentId) {
+        return service.passOver(id, appointmentId);
     }
 
     @PostMapping("/{id}/no-show")
     @PreAuthorize("hasAuthority('" + Permissions.EXAM_ROOMS_OPERATE + "')")
-    public RoomBoardResponse noShow(@PathVariable Long id) {
-        return service.noShow(id);
+    public RoomBoardResponse noShow(@PathVariable Long id, @RequestParam(required = false) Long appointmentId) {
+        return service.noShow(id, appointmentId);
     }
 
     @PostMapping("/{id}/finish")
     @PreAuthorize("hasAuthority('" + Permissions.EXAM_ROOMS_OPERATE + "')")
-    public RoomBoardResponse finish(@PathVariable Long id) {
-        return service.finish(id);
+    public RoomBoardResponse finish(@PathVariable Long id, @RequestParam(required = false) Long appointmentId) {
+        return service.finish(id, appointmentId);
     }
 
     @PostMapping("/{id}/pause")

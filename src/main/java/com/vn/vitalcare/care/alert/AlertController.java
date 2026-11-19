@@ -35,9 +35,12 @@ public class AlertController {
     private final AlertRules rules;
     private final Alerts alerts;
     private final com.vn.vitalcare.care.iomt.VitalSignsRepository vitals;
+    private final com.vn.vitalcare.identity.audit.AuditTrail audit;
 
-    public AlertController(AlertRules rules, Alerts alerts, com.vn.vitalcare.care.iomt.VitalSignsRepository vitals) {
+    public AlertController(AlertRules rules, Alerts alerts, com.vn.vitalcare.care.iomt.VitalSignsRepository vitals,
+                           com.vn.vitalcare.identity.audit.AuditTrail audit) {
         this.vitals = vitals;
+        this.audit = audit;
         this.rules = rules;
         this.alerts = alerts;
     }
@@ -112,6 +115,10 @@ public class AlertController {
     /**
      * The patient's latest readings from the alert's device, newest first, so whoever opens the alert watches
      * the measures move while deciding. Seen by whoever may see the alert itself.
+     *
+     * <p>Only valid readings: a sensor fault (SpO2 30, a pulse of 0) is not the patient, and the history
+     * hides it the same way. Watching them is a look at health data, so it is on record (BR-24) like
+     * {@code /vital_signs} — once per viewer and alert every {@link #LIVE_AUDIT_EVERY}, not once per poll.
      */
     @GetMapping("/alerts/{id}/live")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
@@ -122,10 +129,12 @@ public class AlertController {
             return List.of();
         }
         Long patient = alert.getCustomer().getId();
+        recordLiveView(id, patient);
         return vitals.findByDeviceIdOrderByMeasuredAtDescIdDesc(alert.getDevice().getId(),
                         org.springframework.data.domain.PageRequest.of(0, 30))
                 .stream()
                 .filter(v -> v.getCustomer() != null && patient.equals(v.getCustomer().getId()))
+                .filter(com.vn.vitalcare.entity.VitalSigns::isValid)
                 .map(v -> new AlertDtos.LiveReading(v.getId(), v.getMeasuredAt(), v.getHeartRate(), v.getSpo2(),
                         v.getBodyTemperature(), v.getTemperature()))
                 .toList();
@@ -165,6 +174,25 @@ public class AlertController {
             @RequestParam(name = "_end", defaultValue = "20") int end) {
         Page<Alert> page = alerts.own(profileId, start, end);
         return ListResponse.of(page.getContent().stream().map(AlertDtos.AlertResponse::of).toList(), page.getTotalElements());
+    }
+
+    private static final java.time.Duration LIVE_AUDIT_EVERY = java.time.Duration.ofMinutes(10);
+
+    // ponytail: in-memory, per instance — a second instance records its own; a shared store if it ever scales out.
+    private final java.util.Map<String, java.time.Instant> liveAudited = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void recordLiveView(Long alertId, Long patientId) {
+        java.time.Instant now = java.time.Instant.now();
+        String key = com.vn.vitalcare.share.security.CurrentUser.id().orElse(null) + ":" + alertId;
+        java.time.Instant last = liveAudited.get(key);
+        if (last != null && last.plus(LIVE_AUDIT_EVERY).isAfter(now)) {
+            return;
+        }
+        liveAudited.put(key, now);
+        if (liveAudited.size() > 10_000) {
+            liveAudited.values().removeIf(at -> at.plus(LIVE_AUDIT_EVERY).isBefore(now));
+        }
+        audit.record("vital_signs", patientId, "view", null, java.util.Map.of("what", "alert " + alertId + " live"));
     }
 
     private AlertDtos.AlertDetail detail(Alert alert) {

@@ -41,14 +41,19 @@ public interface ExamRoomService {
      */
     RoomBoardResponse callNext(Long roomId);
 
+    /*
+     * passOver, noShow and finish act on whoever is in the room. With an expected appointment id they
+     * refuse when somebody else is inside now (the board was stale), instead of acting on the wrong visit.
+     */
+
     /** The patient in the room was called and is not there: back to the queue, behind those not yet called. */
-    RoomBoardResponse passOver(Long roomId);
+    RoomBoardResponse passOver(Long roomId, Long expectedAppointmentId);
 
     /** The patient called into the room never came: the visit is a no-show and the room is free for the next. */
-    RoomBoardResponse noShow(Long roomId);
+    RoomBoardResponse noShow(Long roomId, Long expectedAppointmentId);
 
     /** The patient in the room has been seen: the visit is completed and the room is free for the next. */
-    RoomBoardResponse finish(Long roomId);
+    RoomBoardResponse finish(Long roomId, Long expectedAppointmentId);
 
     /** No next patient goes in; whoever is inside stays until finished. */
     RoomBoardResponse pause(Long roomId);

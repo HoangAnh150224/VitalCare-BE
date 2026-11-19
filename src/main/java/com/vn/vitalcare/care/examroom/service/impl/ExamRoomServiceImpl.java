@@ -238,9 +238,9 @@ public class ExamRoomServiceImpl implements ExamRoomService {
 
     @Override
     @Transactional
-    public RoomBoardResponse passOver(Long roomId) {
+    public RoomBoardResponse passOver(Long roomId, Long expectedAppointmentId) {
         ExamRoom room = lockForWrite(roomId);
-        Appointment current = requireOccupant(room);
+        Appointment current = requireOccupant(room, expectedAppointmentId);
         current.passOver(OffsetDateTime.now(clock));
         room.release();
         appointments.persist(current);
@@ -251,9 +251,9 @@ public class ExamRoomServiceImpl implements ExamRoomService {
 
     @Override
     @Transactional
-    public RoomBoardResponse noShow(Long roomId) {
+    public RoomBoardResponse noShow(Long roomId, Long expectedAppointmentId) {
         ExamRoom room = lockForWrite(roomId);
-        Appointment current = requireOccupant(room);
+        Appointment current = requireOccupant(room, expectedAppointmentId);
         current.markNoShow();
         room.release();
         appointments.persist(current);
@@ -265,9 +265,9 @@ public class ExamRoomServiceImpl implements ExamRoomService {
 
     @Override
     @Transactional
-    public RoomBoardResponse finish(Long roomId) {
+    public RoomBoardResponse finish(Long roomId, Long expectedAppointmentId) {
         ExamRoom room = lockForWrite(roomId);
-        Appointment current = requireOccupant(room);
+        Appointment current = requireOccupant(room, expectedAppointmentId);
         current.complete();
         room.release();
         appointments.persist(current);
@@ -327,10 +327,13 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         return dispatcher.lock(roomId).orElseThrow(() -> new ResourceNotFoundException("Exam room", roomId));
     }
 
-    private static Appointment requireOccupant(ExamRoom room) {
+    private static Appointment requireOccupant(ExamRoom room, Long expectedAppointmentId) {
         Appointment current = room.getCurrentAppointment();
         if (current == null) {
             throw new ConflictException("Nobody is in this room");
+        }
+        if (expectedAppointmentId != null && !expectedAppointmentId.equals(current.getId())) {
+            throw new ConflictException("Somebody else is in this room now");
         }
         return current;
     }

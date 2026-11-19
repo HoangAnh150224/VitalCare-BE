@@ -202,7 +202,7 @@ class ExamRoomDispatchTest {
     void finishFreesTheRoom() {
         Appointment inside = inRoom(100L);
 
-        service.finish(7L);
+        service.finish(7L, null);
 
         assertEquals(AppointmentStatus.COMPLETED, inside.getStatus());
         assertSame(room, inside.getExamRoom(), "the room stays on the visit as a record");
@@ -216,7 +216,7 @@ class ExamRoomDispatchTest {
     void passOverRequeues() {
         Appointment inside = inRoom(100L);
 
-        service.passOver(7L);
+        service.passOver(7L, null);
 
         assertEquals(AppointmentStatus.READY_FOR_EXAMINATION, inside.getStatus());
         assertNull(inside.getExamRoom());
@@ -228,8 +228,22 @@ class ExamRoomDispatchTest {
     @Test
     @DisplayName("an empty room cannot be finished or passed over")
     void emptyRoomHasNobodyToFinish() {
-        assertThrows(ConflictException.class, () -> service.finish(7L));
-        assertThrows(ConflictException.class, () -> service.passOver(7L));
+        assertThrows(ConflictException.class, () -> service.finish(7L, null));
+        assertThrows(ConflictException.class, () -> service.passOver(7L, null));
+    }
+
+    @Test
+    @DisplayName("an action meant for one visit is refused once somebody else is in the room")
+    void staleBoardActsOnNobody() {
+        Appointment inside = inRoom(100L);
+        AppointmentStatus before = inside.getStatus();
+
+        assertThrows(ConflictException.class, () -> service.noShow(7L, 99L));
+        assertThrows(ConflictException.class, () -> service.finish(7L, 99L));
+        assertEquals(before, inside.getStatus(), "the visit inside is left alone");
+
+        service.finish(7L, 100L);
+        assertEquals(AppointmentStatus.COMPLETED, inside.getStatus());
     }
 
     @Test
@@ -274,7 +288,7 @@ class ExamRoomDispatchTest {
     void noShowFreesTheRoom() {
         Appointment inside = inRoom(100L);
 
-        service.noShow(7L);
+        service.noShow(7L, null);
 
         assertEquals(AppointmentStatus.NO_SHOW, inside.getStatus());
         assertEquals(ExamRoomStatus.AVAILABLE, room.getStatus());
