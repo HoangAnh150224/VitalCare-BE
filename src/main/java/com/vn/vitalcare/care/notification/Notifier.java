@@ -5,6 +5,8 @@ import com.vn.vitalcare.entity.NotificationLevel;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.web.ListParams;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Order;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -75,7 +78,36 @@ public class Notifier {
     /** A page of the Notification Center: simple-rest paging, sorting, the quick filter and the advanced filter. */
     public Page<Notification> own(Long userId, ListParams params) {
         Specification<Notification> mine = (root, query, cb) -> cb.equal(root.get("userId"), userId);
-        return notifications.findAll(mine.and(specification(params)), params.pageable(SORTABLE, DEFAULT_SORT));
+        Pageable asked = params.pageable(SORTABLE, DEFAULT_SORT);
+        // Newest, then id, after whatever was asked: rows tied on a level or a title keep one order across pages.
+        Sort sort = asked.getSort().and(DEFAULT_SORT);
+        Sort.Order byLevel = sort.getOrderFor("level");
+        if (byLevel == null) {
+            return notifications.findAll(mine.and(specification(params)),
+                    PageRequest.of(asked.getPageNumber(), asked.getPageSize(), sort));
+        }
+        // The level is stored by name, and ERROR < INFO < SUCCESS < WARNING says nothing: order it by
+        // how serious it is (INFO, SUCCESS, WARNING, ERROR), the rest of the sort after it.
+        Specification<Notification> bySeverity = (root, query, cb) -> {
+            if (query.getResultType() != Long.class && query.getResultType() != long.class) {
+                Expression<Integer> severity = cb.<Integer>selectCase()
+                        .when(cb.equal(root.get("level"), NotificationLevel.ERROR), 3)
+                        .when(cb.equal(root.get("level"), NotificationLevel.WARNING), 2)
+                        .when(cb.equal(root.get("level"), NotificationLevel.SUCCESS), 1)
+                        .otherwise(0);
+                List<Order> orders = new ArrayList<>();
+                orders.add(byLevel.isAscending() ? cb.asc(severity) : cb.desc(severity));
+                for (Sort.Order o : sort) {
+                    if (!o.getProperty().equals("level")) {
+                        orders.add(o.isAscending() ? cb.asc(root.get(o.getProperty())) : cb.desc(root.get(o.getProperty())));
+                    }
+                }
+                query.orderBy(orders);
+            }
+            return null;
+        };
+        return notifications.findAll(mine.and(specification(params)).and(bySeverity),
+                PageRequest.of(asked.getPageNumber(), asked.getPageSize()));
     }
 
     /**

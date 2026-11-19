@@ -48,6 +48,10 @@ class NotificationFilterTest {
         assertThat(ids(user, "read", "true")).containsExactlyInAnyOrder(readAbnormal, paid);
         assertThat(ids(user, "read", "unread")).containsExactlyInAnyOrder(offline, abnormal);
         assertThat(ids(user, "level", "NOPE")).isEmpty();
+
+        // KAN-101: by how serious, ties newest first (then id), not by the stored name.
+        assertThat(ids(user, "_sort", "level", "_order", "asc")).containsExactly(paid, offline, readAbnormal, abnormal);
+        assertThat(ids(user, "_sort", "level", "_order", "desc")).containsExactly(readAbnormal, abnormal, offline, paid);
     }
 
     private Long save(User owner, NotificationLevel level, String title, boolean read) {
