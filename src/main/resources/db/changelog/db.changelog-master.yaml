@@ -182,3 +182,5 @@ databaseChangeLog:
       file: db/changelog/changes/087-remove-demo-doctors-of-086.sql
   - include:
       file: db/changelog/changes/088-healthcare-staff-replies-to-feedback.sql
+  - include:
+      file: db/changelog/changes/090-permission-names-vi.sql
