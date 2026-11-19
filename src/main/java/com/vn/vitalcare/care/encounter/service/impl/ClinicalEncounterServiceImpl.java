@@ -124,7 +124,14 @@ public class ClinicalEncounterServiceImpl implements ClinicalEncounterService {
         encounter.setClinic(clinician.getClinic());
         encounter.setStartedAt(OffsetDateTime.now(clock));
         if (request.appointmentId() != null) {
-            encounter.setAppointment(appointmentOf(patient, clinician, request.appointmentId()));
+            Appointment visit = appointmentOf(patient, clinician, request.appointmentId());
+            // One encounter per visit: its result and its bill hang on it. Two tabs pressing
+            // "Bắt đầu khám" at once queue on the visit's row; the second finds the first's.
+            repository.lockAppointment(visit.getId());
+            if (repository.visitHasEncounter(visit.getId())) {
+                throw new ConflictException("This visit already has an encounter");
+            }
+            encounter.setAppointment(visit);
         }
         apply(encounter, request);
 

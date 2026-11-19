@@ -52,6 +52,7 @@ class ClinicalEncounterServiceTest {
 
     private ClinicalEncounterRepository repository;
     private ServiceOrderRepository serviceOrders;
+    private AppointmentService appointments;
     private ClinicalEncounterService service;
     private Employee doctor;
     private Customer patient;
@@ -76,7 +77,8 @@ class ClinicalEncounterServiceTest {
 
         serviceOrders = mock(ServiceOrderRepository.class);
         signedInAs(Permissions.CLINICAL_ENCOUNTERS_WRITE, Permissions.CLINICAL_ENCOUNTERS_CONCLUDE);
-        service = new ClinicalEncounterServiceImpl(repository, customers, employees, mock(AppointmentService.class),
+        appointments = mock(AppointmentService.class);
+        service = new ClinicalEncounterServiceImpl(repository, customers, employees, appointments,
                 serviceOrders, new ClinicRowLevel(() -> CLINIC), Clock.fixed(NOW, ZoneOffset.UTC),
                 mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class),
                 mock(com.vn.vitalcare.care.billing.invoice.Invoices.class));
@@ -109,6 +111,43 @@ class ClinicalEncounterServiceTest {
         assertEquals("Đau ngực", created.getChiefComplaint());
         assertEquals(null, created.getClinicalNote());
         assertNotNull(created.getStartedAt());
+    }
+
+    /** A paid, checked-in visit of the patient at the doctor's clinic, ready to be examined. */
+    private com.vn.vitalcare.entity.Appointment visit(long id) {
+        org.springframework.test.util.ReflectionTestUtils.setField(patient, "id", 7L);
+        com.vn.vitalcare.entity.Appointment visit = new com.vn.vitalcare.entity.Appointment();
+        org.springframework.test.util.ReflectionTestUtils.setField(visit, "id", id);
+        visit.setCustomer(patient);
+        visit.setClinic(doctor.getClinic());
+        visit.checkIn(null, null);
+        visit.markPaid(OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC));
+        when(appointments.getOwn(patient, id)).thenReturn(visit);
+        return visit;
+    }
+
+    @Test
+    @DisplayName("a visit gets its encounter once its row is locked")
+    void createLocksTheVisitFirst() {
+        com.vn.vitalcare.entity.Appointment visit = visit(50L);
+
+        ClinicalEncounter created = service.create(new EncounterRequest(7L, 50L, "Ho", null, null, null, null, null));
+
+        assertEquals(visit, created.getAppointment());
+        verify(repository).lockAppointment(50L);
+    }
+
+    @Test
+    @DisplayName("a visit that already has an encounter is not given a second one (two tabs at once)")
+    void secondEncounterOfAVisitIsRefused() {
+        visit(50L);
+        when(repository.visitHasEncounter(50L)).thenReturn(true);
+
+        ConflictException refused = assertThrows(ConflictException.class,
+                () -> service.create(new EncounterRequest(7L, 50L, "Ho", null, null, null, null, null)));
+
+        assertEquals("This visit already has an encounter", refused.getMessage());
+        verify(repository, never()).persist(any());
     }
 
     @Test

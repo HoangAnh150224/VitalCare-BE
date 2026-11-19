@@ -38,6 +38,18 @@ public interface ClinicalEncounterRepository extends SecuredRepository<ClinicalE
     Optional<Long> lockRow(@Param("id") Long id);
 
     /**
+     * Locks the visit's row, so two "Bắt đầu khám" for one visit are taken one
+     * after the other. Unscoped: the caller has already proved the visit is its
+     * patient's, at its clinic.
+     */
+    @Query(value = "select id from appointment where id = :appointmentId for update", nativeQuery = true)
+    Optional<Long> lockAppointment(@Param("appointmentId") Long appointmentId);
+
+    /** Whether the visit already has a live encounter. Unscoped, as lockAppointment. */
+    @Query("select count(e) > 0 from ClinicalEncounter e where e.appointment.id = :appointmentId and e.deletedAt is null")
+    boolean visitHasEncounter(@Param("appointmentId") Long appointmentId);
+
+    /**
      * The encounters of one appointment, newest first — unscoped. Only for a
      * caller that has already proved the appointment is the signed-in
      * customer's own (MyVisitResults); never reachable from a staff path.

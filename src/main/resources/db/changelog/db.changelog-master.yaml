@@ -190,3 +190,5 @@ databaseChangeLog:
       file: db/changelog/changes/094-visit-reason-and-demo-service-bills.sql
   - include:
       file: db/changelog/changes/095-permission-service-orders-perform-vi.sql
+  - include:
+      file: db/changelog/changes/096-one-encounter-per-visit.sql
