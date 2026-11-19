@@ -71,13 +71,16 @@ public class MyProfileController {
         return ProfileResponse.from(service.updateOwnProfile(service.getForCurrentUser(), id, request));
     }
 
-    /** A relative only, and soft: their visits and results stay on record. */
+    /**
+     * A relative only, and soft: their visits and results stay on record. The deleted profile is
+     * echoed, as every other delete here does: the web client reads a body from it.
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.MY_PROFILES_WRITE + "')")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ProfileResponse delete(@PathVariable Long id) {
         Customer owner = service.getForCurrentUser();
-        service.deleteDependent(owner, id);
+        Customer deleted = service.deleteDependent(owner, id);
         audit.record("my_profiles", id, "delete", null, Map.of("guardianId", owner.getId()));
-        return ResponseEntity.noContent().build();
+        return ProfileResponse.from(deleted);
     }
 }
