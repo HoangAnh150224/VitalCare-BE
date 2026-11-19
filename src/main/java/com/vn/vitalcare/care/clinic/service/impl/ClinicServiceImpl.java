@@ -6,12 +6,17 @@ import com.vn.vitalcare.care.clinic.dto.ClinicRequest;
 import com.vn.vitalcare.care.clinic.repository.ClinicRepository;
 import com.vn.vitalcare.care.clinic.service.ClinicService;
 import com.vn.vitalcare.entity.Clinic;
+import com.vn.vitalcare.share.audit.AuditEvent;
+import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,11 +28,14 @@ public class ClinicServiceImpl implements ClinicService {
     private final ClinicRepository repository;
     private final ClinicProperties properties;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
-    public ClinicServiceImpl(ClinicRepository repository, ClinicProperties properties, Clock clock) {
+    public ClinicServiceImpl(ClinicRepository repository, ClinicProperties properties, Clock clock,
+                             ApplicationEventPublisher events) {
         this.repository = repository;
         this.properties = properties;
         this.clock = clock;
+        this.events = events;
     }
 
     @Override
@@ -44,16 +52,47 @@ public class ClinicServiceImpl implements ClinicService {
     @Override
     @Transactional
     public Clinic create(ClinicRequest request) {
+        if (repository.existsByClinicNameIgnoreCaseAndDeletedAtIsNull(request.name().trim())) {
+            throw new FieldValidationException("name", DUPLICATE_NAME);
+        }
         Clinic clinic = new Clinic();
         clinic.setClinicId(UUID.randomUUID());
         clinic.setOperatingStatus("OPERATING");
-        return repository.save(apply(clinic, request));
+        Clinic saved = repository.save(apply(clinic, request));
+        audit("create", null, saved);
+        return saved;
     }
 
     @Override
     @Transactional
     public Clinic update(UUID id, ClinicRequest request) {
-        return repository.save(apply(get(id), request));
+        Clinic clinic = get(id);
+        if (repository.existsByClinicNameIgnoreCaseAndDeletedAtIsNullAndClinicIdNot(request.name().trim(), id)) {
+            throw new FieldValidationException("name", DUPLICATE_NAME);
+        }
+        Map<String, Object> before = state(clinic);
+        Clinic saved = repository.save(apply(clinic, request));
+        audit("update", before, saved);
+        return saved;
+    }
+
+    static final String DUPLICATE_NAME = "Tên cơ sở đã tồn tại. Hãy đặt tên khác.";
+
+    /** KAN-49: a clinic's id is a UUID and the log's entity id a number, so the id rides in the state. */
+    private void audit(String action, Map<String, Object> before, Clinic clinic) {
+        events.publishEvent(new AuditEvent("clinics", null, action, before, state(clinic)));
+    }
+
+    private static Map<String, Object> state(Clinic clinic) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("clinicId", clinic.getClinicId().toString());
+        state.put("name", clinic.getClinicName());
+        state.put("address", clinic.getAddress());
+        state.put("contactPhone", clinic.getContactPhone());
+        state.put("contactEmail", clinic.getContactEmail());
+        state.put("contactPerson", clinic.getContactPerson());
+        state.put("operatingStatus", clinic.getOperatingStatus());
+        return state;
     }
 
     @Override
@@ -89,8 +128,11 @@ public class ClinicServiceImpl implements ClinicService {
             throw new IllegalArgumentException("Invalid clinic status");
         }
         Clinic clinic = getForUpdate(id);
+        Map<String, Object> before = state(clinic);
         clinic.setOperatingStatus(status);
-        return repository.save(clinic);
+        Clinic saved = repository.save(clinic);
+        audit("status_change", before, saved);
+        return saved;
     }
 
     @Override

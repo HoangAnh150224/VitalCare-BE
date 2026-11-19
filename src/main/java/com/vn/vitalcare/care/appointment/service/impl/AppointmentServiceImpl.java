@@ -184,7 +184,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         if (!patient.isCompleteForVisit()) {
             throw new FieldValidationException("patientId",
-                    "Fill in this profile's date of birth and gender before registering a visit");
+                    "Fill in this profile's date of birth, gender and ID number before registering a visit");
         }
         return book(patient, request, false);
     }
@@ -462,7 +462,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
         if (!other.isCompleteForVisit()) {
             throw new FieldValidationException("customerId",
-                    "Fill in this profile's date of birth and gender before registering a visit");
+                    "Fill in this profile's date of birth, gender and ID number before registering a visit");
         }
         if (repository.existsScheduledAtClinic(other.getId(), appointment.getClinicId(),
                 appointment.getAppointmentDate(), appointment.getId())) {

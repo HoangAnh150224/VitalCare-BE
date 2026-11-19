@@ -124,7 +124,7 @@ class AppointmentServiceTest {
         ClinicRepository clinics = mock(ClinicRepository.class);
         when(clinics.findByClinicIdAndDeletedAtIsNull(CLINIC)).thenReturn(Optional.of(clinic));
         ClinicService clinicService = new ClinicServiceImpl(
-                clinics, new ClinicProperties(ZoneId.of("Asia/Ho_Chi_Minh"), 30), clock);
+                clinics, new ClinicProperties(ZoneId.of("Asia/Ho_Chi_Minh"), 30), clock, event -> { });
 
         doctor = mock(Employee.class);
         when(doctor.getId()).thenReturn(DOCTOR);
@@ -165,6 +165,7 @@ class AppointmentServiceTest {
         customer.setUser(new User("+84912345678", null, "hash", "Nguyen Van A", UserStatus.ACTIVE));
         customer.setDateOfBirth(LocalDate.of(1990, 1, 1));
         customer.setGender("male");
+        customer.setNationalId("001090000001");
         this.customers = customers;
         when(customers.findByIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(customer));
     }
@@ -327,6 +328,12 @@ class AppointmentServiceTest {
         when(customers.findByIdAndGuardianIdAndDeletedAtIsNull(eq(5L), any())).thenReturn(Optional.of(incomplete));
         assertField("patientId", () -> service.bookOwn(customer, new BookingRequest(5L, DOCTOR, CLINIC, TUESDAY, "Sốt")));
 
+        // KAN-69: a date of birth and a gender without the ID number is still not enough.
+        Customer noId = relative();
+        noId.setNationalId(" ");
+        when(customers.findByIdAndGuardianIdAndDeletedAtIsNull(eq(7L), any())).thenReturn(Optional.of(noId));
+        assertField("patientId", () -> service.bookOwn(customer, new BookingRequest(7L, DOCTOR, CLINIC, TUESDAY, "Sốt")));
+
         // The owner's own profile is held to the same rule.
         customer.setGender(null);
         assertField("patientId", () -> service.bookOwn(customer, booking(TUESDAY)));
@@ -344,6 +351,7 @@ class AppointmentServiceTest {
         ReflectionTestUtils.setField(stranger, "id", 9L);
         stranger.setDateOfBirth(LocalDate.of(1980, 1, 1));
         stranger.setGender("female");
+        stranger.setNationalId("001180000001");
         when(customers.findByIdAndDeletedAtIsNull(9L)).thenReturn(Optional.of(stranger));
         Appointment appointment = stored(appointmentOn(TUESDAY));
 
@@ -365,6 +373,7 @@ class AppointmentServiceTest {
         child.setRelationship("child");
         child.setDateOfBirth(LocalDate.of(2018, 5, 1));
         child.setGender("male");
+        child.setNationalId("001218000001");
         return child;
     }
 

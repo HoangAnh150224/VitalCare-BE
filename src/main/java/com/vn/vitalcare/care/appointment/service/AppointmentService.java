@@ -75,7 +75,7 @@ public interface AppointmentService {
     /**
      * A customer registering for themselves or for one of the relatives under
      * their account, under the same rules. Refused, on {@code patientId}, when
-     * the profile is not theirs or does not yet give a date of birth and gender.
+     * the profile is not theirs or does not yet give a date of birth, gender and ID number.
      */
     Appointment bookOwn(Customer customer, BookingRequest request);
 

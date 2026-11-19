@@ -284,9 +284,12 @@ public class Customer extends BaseEntity {
         this.occupation = occupation;
     }
 
-    /** Whether the profile says enough to register a visit: a clinic needs an age and a sex. */
+    /**
+     * Whether the profile says enough to register a visit: a clinic needs an age, a sex and the
+     * identity document number (CCCD, a child's personal ID, a passport) it checks the patient by.
+     */
     public boolean isCompleteForVisit() {
-        return dateOfBirth != null && gender != null;
+        return dateOfBirth != null && gender != null && nationalId != null && !nationalId.isBlank();
     }
 
     public void setUser(User user) {

@@ -39,11 +39,17 @@ public class ClinicController {
         this.service = service;
     }
 
-    /** Unpaged: the list is short and every caller wants all of it. */
+    /**
+     * Unpaged: the list is short and every caller wants all of it.
+     * {@code ?operatingStatus=OPERATING} is what a booking picker asks for (KAN-47): a clinic
+     * that has stopped operating is not offered, and booking it is refused anyway.
+     */
     @GetMapping
-    public ResponseEntity<List<ClinicResponse>> list() {
+    public ResponseEntity<List<ClinicResponse>> list(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String operatingStatus) {
         // ponytail: one count per clinic; a grouped query if the list ever grows long.
         List<ClinicResponse> rows = service.listAll().stream()
+                .filter(clinic -> operatingStatus == null || operatingStatus.equals(clinic.getOperatingStatus()))
                 .map(clinic -> ClinicResponse.from(clinic, service.staffCount(clinic.getClinicId()))).toList();
         return ListResponse.of(rows, rows.size());
     }

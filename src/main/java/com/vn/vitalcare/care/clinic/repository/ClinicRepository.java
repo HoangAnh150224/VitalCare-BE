@@ -18,6 +18,11 @@ public interface ClinicRepository extends JpaRepository<Clinic, UUID> {
 
     List<Clinic> findByDeletedAtIsNullOrderByClinicNameAsc();
 
+    /** KAN-45: a clinic's name is how staff and patients pick it, so two live ones may not share it. */
+    boolean existsByClinicNameIgnoreCaseAndDeletedAtIsNull(String clinicName);
+
+    boolean existsByClinicNameIgnoreCaseAndDeletedAtIsNullAndClinicIdNot(String clinicName, UUID clinicId);
+
     /**
      * The clinic, locked until the transaction ends — taken by every booking
      * before it counts a slot.
