@@ -70,6 +70,10 @@ public class MyDevices {
         if (device.getPairedByUserId() != null && !device.getPairedByUserId().equals(me)) {
             throw new ConflictException("This device is paired with another phone; unpair it there first");
         }
+        // Pairing again would only move pairedAt: the first pairing is the one on record.
+        if (me.equals(device.getPairedByUserId())) {
+            throw new ConflictException("Thiết bị này đã được ghép với tài khoản của bạn.");
+        }
         device.pair(me, OffsetDateTime.now(clock));
         return worn;
     }

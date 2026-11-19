@@ -201,7 +201,10 @@ class PhoneNormalizationTest {
     }
 
     private static User existingUser() {
-        return new User("+84900000009", null, "irrelevant", "Existing Account", UserStatus.ACTIVE);
+        User user = new User("+84900000009", null, "irrelevant", "Existing Account", UserStatus.ACTIVE);
+        // Ending its sessions names the account in a cache eviction, which needs an id.
+        org.springframework.test.util.ReflectionTestUtils.setField(user, "id", 1L);
+        return user;
     }
 
     private static UserPatchRequest patchPhone(String phone) {

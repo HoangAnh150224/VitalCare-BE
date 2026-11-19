@@ -164,6 +164,7 @@ public class CustomerServiceImpl implements CustomerService {
         applyProfile(dependent, request);
         // The same person entered twice -- a double click on Save, usually.
         requireNotAnotherRelative(existing, dependent, null);
+        requireOwnNationalId(dependent.getNationalId(), null);
         Customer saved = repository.save(dependent);
         saved.setCustomerCode("KH%06d".formatted(saved.getId()));
         return saved;
@@ -178,12 +179,37 @@ public class CustomerServiceImpl implements CustomerService {
         // cannot be read once the transaction has closed.
         Customer profile = repository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
+        String nationalIdBefore = profile.getNationalId();
         applyProfile(profile, request);
         // Renamed into another relative already under the account: two profiles of one person.
         if (profile.isDependent()) {
             requireNotAnotherRelative(repository.findByGuardianIdAndDeletedAtIsNullOrderByIdAsc(owner.getId()), profile, id);
         }
+        // Only a number being changed is checked: a row that already shared one before the rule
+        // must still be able to save its address.
+        if (!java.util.Objects.equals(nationalIdBefore, profile.getNationalId())) {
+            requireOwnNationalId(profile.getNationalId(), id);
+        }
         return repository.save(profile);
+    }
+
+    @Override
+    @Transactional
+    public Customer deleteDependent(Customer owner, Long id) {
+        if (id.equals(owner.getId())) {
+            throw new ConflictException("Your own profile cannot be deleted");
+        }
+        Customer relative = repository.findByIdAndGuardianIdAndDeletedAtIsNull(id, owner.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Profile", id));
+        if (repository.hasOpenVisit(id)) {
+            throw new ConflictException("This relative has a visit under way");
+        }
+        if (repository.wearsDevice(id)) {
+            throw new ConflictException("This relative is still wearing a clinic device");
+        }
+        // Soft: the visits, results and invoices hanging from the row keep it.
+        relative.markDeleted(CurrentUser.id().orElse(null), clock.instant());
+        return repository.save(relative);
     }
 
     /**
@@ -208,6 +234,23 @@ public class CustomerServiceImpl implements CustomerService {
         }
     }
 
+    /**
+     * One identity number, one person: no other live profile, under this
+     * account or any other, may hold it. Checked here, not by a unique index,
+     * because older rows may already share a number.
+     */
+    private void requireOwnNationalId(String nationalId, Long selfId) {
+        boolean taken = selfId == null
+                ? repository.existsByNationalIdAndDeletedAtIsNull(nationalId)
+                : repository.existsByNationalIdAndDeletedAtIsNullAndIdNot(nationalId, selfId);
+        if (taken) {
+            throw new FieldValidationException("nationalId", "This identity number is already on another profile");
+        }
+    }
+
+    /** Letters (any accent) and spaces only: no digits or symbols in a person's name. */
+    private static final java.util.regex.Pattern NAME = java.util.regex.Pattern.compile("[\\p{L}\\p{M} ]+");
+
     /** Nobody is older than this: a date of birth further back is a typing slip (the forms say the same). */
     static final int MAX_AGE_YEARS = 120;
 
@@ -226,6 +269,9 @@ public class CustomerServiceImpl implements CustomerService {
             String relationship = request.relationship() == null ? "" : request.relationship().trim();
             if (name.isEmpty()) {
                 throw new FieldValidationException("fullName", "A name is required");
+            }
+            if (!NAME.matcher(name).matches()) {
+                throw new FieldValidationException("fullName", "A name may contain only letters and spaces");
             }
             // Stored as sign-in numbers are, so the desk finds a relative by
             // number however it was typed here.
@@ -255,10 +301,13 @@ public class CustomerServiceImpl implements CustomerService {
         if (request.ward() != null) {
             profile.setWard(blankToNull(request.ward()));
         }
-        // As in update: null leaves a field alone, an empty string clears a text one.
-        if (request.nationalIdIssuedOn() != null) {
-            profile.setNationalIdIssuedOn(request.nationalIdIssuedOn());
+        // The form always sends the issue date, so null is the date cleared.
+        if (request.nationalIdIssuedOn() != null && request.dateOfBirth() != null
+                && request.nationalIdIssuedOn().isBefore(request.dateOfBirth())) {
+            throw new FieldValidationException("nationalIdIssuedOn", "The issue date cannot be before the date of birth");
         }
+        profile.setNationalIdIssuedOn(request.nationalIdIssuedOn());
+        // As in update: null leaves a field alone, an empty string clears a text one.
         if (request.ethnicity() != null) {
             profile.setEthnicity(blankToNull(request.ethnicity()));
         }

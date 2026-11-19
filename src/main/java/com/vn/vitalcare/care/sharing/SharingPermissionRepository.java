@@ -23,13 +23,13 @@ public interface SharingPermissionRepository extends JpaRepository<SharingPermis
      */
     @EntityGraph(attributePaths = {"customer", "customer.user", "caregiver"})
     @Query("select p from SharingPermission p where p.caregiver.id = :userId and p.status = 'ACTIVE'"
-            + " and p.deletedAt is null and (p.expiresAt is null or p.expiresAt > :now) order by p.createdAt")
+            + " and p.deletedAt is null and p.customer.deletedAt is null and (p.expiresAt is null or p.expiresAt > :now) order by p.createdAt")
     List<SharingPermission> findInForceFor(@Param("userId") Long userId, @Param("now") OffsetDateTime now);
 
     /** A patient's grants in force (BR: at most two). */
     @EntityGraph(attributePaths = {"customer", "caregiver"})
     @Query("select p from SharingPermission p where p.customer.id = :customerId and p.status = 'ACTIVE'"
-            + " and p.deletedAt is null and (p.expiresAt is null or p.expiresAt > :now)")
+            + " and p.deletedAt is null and p.customer.deletedAt is null and (p.expiresAt is null or p.expiresAt > :now)")
     List<SharingPermission> findInForceOf(@Param("customerId") Long customerId, @Param("now") OffsetDateTime now);
 
     /** One grant with its patient and caregiver: what every answer about it shows. */

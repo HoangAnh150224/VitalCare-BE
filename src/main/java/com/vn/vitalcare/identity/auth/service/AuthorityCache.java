@@ -7,6 +7,7 @@ import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.rowlevel.ClinicPlacement;
 import com.vn.vitalcare.share.security.rowlevel.RowLevelGeneration;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -218,6 +219,8 @@ public class AuthorityCache {
      * @param clinicId    the clinic the account's staff record places it at,
      *                    from {@link ClinicPlacement}; null for anybody else
      * @param version     the stamp described on {@link #versionFor(long)}
+     * @param sessionsRevokedAt when the account's sessions were last ended; an
+     *                    access token issued before it is refused. Null if never
      * @param loadedAt    when this was read, for the expiry
      */
     public record Entry(
@@ -230,6 +233,7 @@ public class AuthorityCache {
             Long departmentId,
             UUID clinicId,
             String version,
+            Instant sessionsRevokedAt,
             long loadedAt) {
 
         static Entry of(User user, UUID clinicId, String policyGeneration) {
@@ -265,6 +269,7 @@ public class AuthorityCache {
                     null,
                     clinicId,
                     stamp,
+                    user.getSessionsRevokedAt(),
                     System.nanoTime());
         }
 

@@ -1,5 +1,6 @@
 package com.vn.vitalcare.identity.auth.service;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import org.springframework.security.core.GrantedAuthority;
@@ -37,13 +38,35 @@ public class AuthorizationService {
      *                                     cannot make requests any more
      */
     public Collection<GrantedAuthority> authoritiesOf(String subject) {
+        return entryFor(subject).authorities();
+    }
+
+    /**
+     * The same, for a token issued at {@code issuedAt}: refused if the account's
+     * sessions were ended after it was issued — a password changed or reset on
+     * another device — so that ending a session does not wait for the token to
+     * expire (KAN-80).
+     *
+     * @throws InvalidBearerTokenException as {@link #authoritiesOf(String)}, or
+     *                                     when the token's session has ended
+     */
+    public Collection<GrantedAuthority> authoritiesOf(String subject, Instant issuedAt) {
+        AuthorityCache.Entry entry = entryFor(subject);
+        Instant revokedAt = entry.sessionsRevokedAt();
+        if (revokedAt != null && (issuedAt == null || issuedAt.isBefore(revokedAt))) {
+            throw new InvalidBearerTokenException("This session has ended");
+        }
+        return entry.authorities();
+    }
+
+    private AuthorityCache.Entry entryFor(String subject) {
         AuthorityCache.Entry entry = cache.get(parse(subject))
                 .orElseThrow(() -> new InvalidBearerTokenException("This account no longer exists"));
 
         if (!entry.canSignIn()) {
             throw new InvalidBearerTokenException("This account is no longer active");
         }
-        return entry.authorities();
+        return entry;
     }
 
     /**

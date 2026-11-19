@@ -32,7 +32,7 @@ public record BookingRequest(
         LocalDate appointmentDate,
 
         @NotBlank(message = "A reason for the visit is required")
-        @Size(max = 255, message = "Reason must be at most 255 characters")
+        @Size(max = 500, message = "Reason must be at most 500 characters")
         String reason,
 
         /**

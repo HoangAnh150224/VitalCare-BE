@@ -100,6 +100,14 @@ public class User {
     @Column(name = "deleted_at")
     private Instant deletedAt;
 
+    /**
+     * When every session under the account was last ended (password changed or
+     * reset, account disabled, phone moved). An access token issued before it is
+     * refused, so ending a session does not wait for the token to expire.
+     */
+    @Column(name = "sessions_revoked_at")
+    private Instant sessionsRevokedAt;
+
     protected User() {
         // for JPA
     }
@@ -239,6 +247,14 @@ public class User {
 
     public void setDeletedAt(Instant deletedAt) {
         this.deletedAt = deletedAt;
+    }
+
+    public Instant getSessionsRevokedAt() {
+        return sessionsRevokedAt;
+    }
+
+    public void setSessionsRevokedAt(Instant sessionsRevokedAt) {
+        this.sessionsRevokedAt = sessionsRevokedAt;
     }
 
     public void setLastLoginAt(Instant lastLoginAt) {

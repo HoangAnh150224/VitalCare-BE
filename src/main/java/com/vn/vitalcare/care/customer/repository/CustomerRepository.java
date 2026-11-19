@@ -66,6 +66,23 @@ public interface CustomerRepository extends JpaRepository<Customer, Long>, JpaSp
 
     Optional<Customer> findByIdAndGuardianIdAndDeletedAtIsNull(Long id, Long guardianId);
 
+    /** Whether a live profile already holds this (normalized) identity number. */
+    boolean existsByNationalIdAndDeletedAtIsNull(String nationalId);
+
+    /** The same, besides the profile being edited. */
+    boolean existsByNationalIdAndDeletedAtIsNullAndIdNot(String nationalId, Long id);
+
+    /** A visit of this person's still under way: booked and not yet completed, cancelled or missed. */
+    @Query("select count(a) > 0 from Appointment a where a.customer.id = :customerId and a.deletedAt is null "
+            + "and a.status not in (com.vn.vitalcare.entity.AppointmentStatus.COMPLETED, "
+            + "com.vn.vitalcare.entity.AppointmentStatus.CANCELLED, com.vn.vitalcare.entity.AppointmentStatus.NO_SHOW)")
+    boolean hasOpenVisit(@Param("customerId") Long customerId);
+
+    /** A clinic device this person is still wearing. */
+    @Query("select count(d) > 0 from DeviceAssignment d where d.customer.id = :customerId and d.deletedAt is null "
+            + "and d.status = com.vn.vitalcare.entity.AssignmentStatus.ACTIVE")
+    boolean wearsDevice(@Param("customerId") Long customerId);
+
     /**
      * The customer, locked until the transaction ends — taken before
      * assigning a patient a carer or a device, so the "already on the team" /

@@ -104,7 +104,13 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             throw new MessageDeliveryException("Not signed in");
         }
 
-        Collection<GrantedAuthority> authorities = resolve(token.getSubject());
+        Collection<GrantedAuthority> authorities;
+        try {
+            // A session ended elsewhere (password changed) may not open a socket either.
+            authorities = authorizationService.authoritiesOf(token.getSubject(), token.getIssuedAt());
+        } catch (RuntimeException e) {
+            throw new MessageDeliveryException("This account is no longer active");
+        }
 
         // The principal's name is the user id, because that is what
         // `convertAndSendToUser` matches a message against.

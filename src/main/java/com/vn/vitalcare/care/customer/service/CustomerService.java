@@ -27,6 +27,14 @@ public interface CustomerService {
     /** Fills in the owner's own profile, or corrects a relative's. */
     Customer updateOwnProfile(Customer owner, Long id, ProfileRequest request);
 
+    /**
+     * Takes a relative off the account (soft delete): their past visits and
+     * results stay on record, and the place frees up for another relative.
+     * Never the owner's own profile, nor somebody with a visit under way or
+     * a clinic device on.
+     */
+    Customer deleteDependent(Customer owner, Long id);
+
     // --- the clinic's side -----------------------------------------------------
 
     /**

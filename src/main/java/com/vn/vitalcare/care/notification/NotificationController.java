@@ -3,6 +3,7 @@ package com.vn.vitalcare.care.notification;
 import com.vn.vitalcare.entity.Notification;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.security.Permissions;
+import com.vn.vitalcare.share.web.ListParams;
 import com.vn.vitalcare.share.web.ListResponse;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,13 +35,11 @@ public class NotificationController {
         this.notifier = notifier;
     }
 
-    /** A page of them, newest first; {@code read=unread} for the unread only. Simple-rest paging (_start/_end). */
+    /** A page of them, newest first unless sorted; simple-rest paging, {@code q} and field filters (see {@link Notifier#own}). */
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.NOTIFICATIONS_READ + "')")
-    public ResponseEntity<List<NotificationResponse>> list(@RequestParam(name = "_start", defaultValue = "0") int start,
-                                                           @RequestParam(name = "_end", defaultValue = "20") int end,
-                                                           @RequestParam(name = "read", required = false) String read) {
-        Page<Notification> page = notifier.own(me(), "unread".equals(read), start, end);
+    public ResponseEntity<List<NotificationResponse>> list(@RequestParam MultiValueMap<String, String> query) {
+        Page<Notification> page = notifier.own(me(), new ListParams(query));
         return ListResponse.of(page.getContent().stream().map(NotificationResponse::from).toList(),
                 page.getTotalElements());
     }

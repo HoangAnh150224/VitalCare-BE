@@ -2,13 +2,20 @@ package com.vn.vitalcare.care.notification;
 
 import com.vn.vitalcare.entity.Notification;
 import com.vn.vitalcare.entity.NotificationLevel;
+import com.vn.vitalcare.share.data.BaseEntitySpecifications;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.web.ListParams;
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +34,8 @@ public class Notifier {
     /** Minus the {@code /user} prefix Spring adds per session. */
     public static final String DESTINATION = "/queue/notifications";
     private static final int RECENT = 20;
+    private static final Set<String> SORTABLE = Set.of("level", "title", "createdAt");
+    private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
 
     /** Committed: push it. */
     public record Raised(Long userId, NotificationResponse notification) {
@@ -63,10 +72,59 @@ public class Notifier {
 
     // ---- the account's own -------------------------------------------------------------
 
-    /** A page by offset, as simple-rest asks ({@code _start}/{@code _end}); at most 100 at a time. */
-    public Page<Notification> own(Long userId, boolean unreadOnly, int start, int end) {
-        int size = Math.min(Math.max(end - start, 1), 100);
-        return notifications.findOwn(userId, unreadOnly, PageRequest.of(Math.max(start, 0) / size, size));
+    /** A page of the Notification Center: simple-rest paging, sorting, the quick filter and the advanced filter. */
+    public Page<Notification> own(Long userId, ListParams params) {
+        Specification<Notification> mine = (root, query, cb) -> cb.equal(root.get("userId"), userId);
+        return notifications.findAll(mine.and(specification(params)), params.pageable(SORTABLE, DEFAULT_SORT));
+    }
+
+    /**
+     * {@code q} and {@code title[_like|_ne]} on the title, {@code level[_ne]}, and
+     * {@code read[_ne]=true|false} ({@code unread} kept for older callers). A value
+     * that cannot be a level matches nothing rather than everything.
+     */
+    static Specification<Notification> specification(ListParams params) {
+        List<Specification<Notification>> specs = new ArrayList<>();
+        specs.add(BaseEntitySpecifications.notDeleted());
+        for (ListParams.Criterion criterion : params.filters()) {
+            String value = criterion.value().trim();
+            boolean negated = criterion.operator() == ListParams.Operator.NE;
+            switch (criterion.field()) {
+                case "title" -> specs.add((root, query, cb) -> switch (criterion.operator()) {
+                    case LIKE -> cb.like(cb.lower(root.get("title")), ListParams.likePattern(value));
+                    case NE -> cb.notEqual(root.get("title"), value);
+                    default -> cb.equal(root.get("title"), value);
+                });
+                case "level" -> {
+                    NotificationLevel level;
+                    try {
+                        level = NotificationLevel.valueOf(value.toUpperCase(Locale.ROOT));
+                    } catch (IllegalArgumentException e) {
+                        specs.add((root, query, cb) -> cb.disjunction());
+                        continue;
+                    }
+                    specs.add((root, query, cb) -> negated
+                            ? cb.notEqual(root.get("level"), level)
+                            : cb.equal(root.get("level"), level));
+                }
+                case "read" -> {
+                    boolean read = "true".equalsIgnoreCase(value);
+                    if (!read && !"false".equalsIgnoreCase(value) && !"unread".equalsIgnoreCase(value)) {
+                        specs.add((root, query, cb) -> cb.disjunction());
+                        continue;
+                    }
+                    boolean wantRead = read != negated;
+                    specs.add((root, query, cb) -> wantRead
+                            ? cb.isNotNull(root.get("readAt"))
+                            : cb.isNull(root.get("readAt")));
+                }
+                default -> {
+                }
+            }
+        }
+        params.search().ifPresent(term -> specs.add((root, query, cb) ->
+                cb.like(cb.lower(root.get("title")), ListParams.likePattern(term))));
+        return Specification.allOf(specs);
     }
 
     public List<Notification> recent(Long userId) {

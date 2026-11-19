@@ -184,3 +184,7 @@ databaseChangeLog:
       file: db/changelog/changes/088-healthcare-staff-replies-to-feedback.sql
   - include:
       file: db/changelog/changes/090-permission-names-vi.sql
+  - include:
+      file: db/changelog/changes/093-sessions-revoked-at.sql
+  - include:
+      file: db/changelog/changes/094-visit-reason-and-demo-service-bills.sql

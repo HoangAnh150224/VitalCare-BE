@@ -21,6 +21,7 @@ import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -203,7 +204,7 @@ public class UserService {
         }
         User saved = repository.save(user);
         if (wasActive && !saved.canSignIn()) {
-            refreshTokenService.revokeAllFor(saved, Instant.now());
+            endSessions(saved, Instant.now());
         }
         events.publishEvent(new AuthoritiesChanged.ForUser(saved.getId()));
         if (before != saved.getStatus()) {
@@ -345,7 +346,7 @@ public class UserService {
         // to somebody else or the account was taken over, the same reasons a
         // password reset ends every session.
         if ((wasActive && !saved.canSignIn()) || phoneChanged) {
-            refreshTokenService.revokeAllFor(saved, Instant.now());
+            endSessions(saved, Instant.now());
         }
 
         // Only when the request touched something authorisation depends on.
@@ -398,7 +399,7 @@ public class UserService {
         User user = get(id);
         user.setPasswordHash(hash("password", rawPassword));
         User saved = repository.save(user);
-        refreshTokenService.revokeAllFor(saved, Instant.now());
+        endSessions(saved, Instant.now());
         events.publishEvent(com.vn.vitalcare.share.audit.AuditEvent.of("users", saved.getId(), "password_reset"));
         return saved;
     }
@@ -421,8 +422,23 @@ public class UserService {
         // Other sessions end; the one making the change gets a fresh pair back
         // from the controller, so the person changing their password is not
         // signed out by their own action.
-        refreshTokenService.revokeAllFor(saved, Instant.now());
+        endSessions(saved, Instant.now());
         return saved;
+    }
+
+    /**
+     * Ends every session open under the account: the refresh tokens are revoked,
+     * and an access token issued before now is refused from the next request on
+     * (see {@code AuthorizationService}), rather than honoured until it expires.
+     * Stamped to the second, as a token's {@code iat} is, so a pair issued right
+     * after this — the one a password change hands back — still counts.
+     */
+    private void endSessions(User user, Instant now) {
+        user.setSessionsRevokedAt(now.truncatedTo(ChronoUnit.SECONDS));
+        repository.save(user);
+        refreshTokenService.revokeAllFor(user, now);
+        // The cached entry carries the stamp; drop it so the next request sees the new one.
+        events.publishEvent(new AuthoritiesChanged.ForUser(user.getId()));
     }
 
     /**
@@ -494,7 +510,7 @@ public class UserService {
         user.setStatus(UserStatus.INACTIVE);
         user.setDeletedAt(deletedAt);
         User archived = repository.save(user);
-        refreshTokenService.revokeAllFor(archived, deletedAt);
+        endSessions(archived, deletedAt);
         Map<String, Object> after = accountState(archived);
         after.put("deletedAt", archived.getDeletedAt().toString());
         events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", archived.getId(), "delete",

@@ -26,7 +26,7 @@ public record WalkInRequest(
         java.util.UUID clinicId,
 
         @NotBlank(message = "A reason for the visit is required")
-        @Size(max = 255, message = "Reason must be at most 255 characters")
+        @Size(max = 500, message = "Reason must be at most 500 characters")
         String reason,
 
         /** The department to be seen in, one of the specialties; only its rooms call the patient in. */
