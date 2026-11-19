@@ -14,6 +14,8 @@ import com.vn.vitalcare.identity.rowlevel.repository.RowLevelPolicyRepository;
 import com.vn.vitalcare.identity.rowlevel.repository.RowLevelPolicySpecifications;
 import com.vn.vitalcare.identity.user.entity.User;
 import com.vn.vitalcare.identity.user.service.UserService;
+import com.vn.vitalcare.share.audit.AuditEvent;
+import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.CurrentUser;
 import com.vn.vitalcare.share.security.rowlevel.Action;
@@ -23,6 +25,8 @@ import com.vn.vitalcare.share.security.rowlevel.ScopeTree;
 import com.vn.vitalcare.share.web.ListParams;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -137,6 +141,7 @@ public class RowLevelPolicyService {
         policy.setEnabled(request.enabled() == null || request.enabled());
         policy.setCreatedBy(currentUser());
         policy.setUpdatedBy(policy.getCreatedBy());
+        requireUnique(policy);
 
         RowLevelPolicy saved = repository.save(policy);
         record(saved, RowLevelPolicyAudit.Operation.CREATE, null, snapshot(saved));
@@ -209,6 +214,7 @@ public class RowLevelPolicyService {
             }
         }
         policy.setUpdatedBy(currentUser());
+        requireUnique(policy);
 
         RowLevelPolicy saved = repository.save(policy);
         record(saved, operationFor(request, wasEnabled), before, snapshot(saved));
@@ -292,6 +298,38 @@ public class RowLevelPolicyService {
         return roleService.get(id);
     }
 
+    /**
+     * Refuses a second policy that would say exactly what an existing one says —
+     * same kind, role, resource, action and conditions. Scopes are OR-ed, so a
+     * copy changes nothing but clutters the list and the audit trail.
+     *
+     * <p>ponytail: a service check, not a unique index — rows already duplicated
+     * in a deployed database would make the index migration fail. Two identical
+     * creates in the same instant can still both pass; add an index on
+     * (kind, role_id, resource, action, scope, check_scope) once data is clean.
+     */
+    private void requireUnique(RowLevelPolicy policy) {
+        Long roleId = policy.getRole() == null ? null : policy.getRole().getId();
+        boolean duplicate = repository
+                .findByKindAndResourceAndAction(policy.getKind(), policy.getResource(), policy.getAction())
+                .stream()
+                .filter(other -> !Objects.equals(other.getId(), policy.getId()))
+                .anyMatch(other -> Objects.equals(roleId, other.getRole() == null ? null : other.getRole().getId())
+                        && sameTree(other.getScope(), policy.getScope())
+                        && sameTree(other.getCheckScope(), policy.getCheckScope()));
+        if (duplicate) {
+            throw new ConflictException("Phạm vi dữ liệu đã tồn tại. Vui lòng kiểm tra lại.");
+        }
+    }
+
+    /** Equal as JSON, whatever key order or spacing the column hands back. Null only equals null. */
+    private boolean sameTree(String a, String b) {
+        if (a == null || b == null) {
+            return a == null && b == null;
+        }
+        return codec.read(a).equals(codec.read(b));
+    }
+
     private static RowLevelPolicyAudit.Operation operationFor(
             RowLevelPolicyPatchRequest request, boolean wasEnabled) {
 
@@ -323,6 +361,23 @@ public class RowLevelPolicyService {
                 // Captured rather than joined, so the entry stays readable once
                 // the account is gone.
                 CurrentUser.displayName().orElse("system")));
+
+        // The policy's own trail above keeps every version; the shared audit
+        // log (FE-20) is where an administrator actually looks for who changed
+        // what, so the change is announced there as well.
+        String auditAction = switch (operation) {
+            case CREATE -> "create";
+            case DELETE -> "delete";
+            case ENABLE, DISABLE -> "status_change";
+            default -> "update";
+        };
+        events.publishEvent(new AuditEvent(
+                "row_level_policies", policy.getId(), auditAction, asMap(before), asMap(after)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(String snapshot) {
+        return snapshot == null ? null : mapper.readValue(snapshot, Map.class);
     }
 
     /** The policy as JSON, for the audit trail. */

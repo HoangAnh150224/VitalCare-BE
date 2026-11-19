@@ -20,14 +20,14 @@ import tools.jackson.databind.JsonNode;
  *              error about a field nobody wrote
  */
 public record RowLevelPolicyRequest(
-        @NotBlank(message = "A kind is required") String kind,
+        @NotBlank(message = "Vui lòng chọn loại") String kind,
         RoleRef role,
-        @NotBlank(message = "A resource is required") @Size(max = 64) String resource,
-        @NotBlank(message = "An action is required") @Size(max = 16) String action,
-        @NotBlank(message = "A name is required") @Size(max = 160) String name,
+        @NotBlank(message = "Vui lòng chọn tài nguyên") @Size(max = 64) String resource,
+        @NotBlank(message = "Vui lòng chọn hành động") @Size(max = 16) String action,
+        @NotBlank(message = "Vui lòng nhập tên") @Size(max = 160) String name,
         @NotBlank(message = "Vui lòng nhập nhóm") @Size(max = 64) String policyGroup,
         @NotBlank(message = "Vui lòng nhập mô tả") @Size(max = 500) String description,
-        @NotNull(message = "A scope is required") JsonNode scope,
+        @NotNull(message = "Vui lòng nhập điều kiện") JsonNode scope,
         /**
          * The {@code WITH CHECK} clause, for a {@code write} policy: what the row
          * may look like <em>after</em> the save.

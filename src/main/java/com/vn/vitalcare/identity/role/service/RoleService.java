@@ -8,12 +8,16 @@ import com.vn.vitalcare.identity.role.dto.RoleRequest;
 import com.vn.vitalcare.identity.role.entity.Role;
 import com.vn.vitalcare.identity.role.repository.RoleRepository;
 import com.vn.vitalcare.identity.role.repository.RoleSpecifications;
+import com.vn.vitalcare.share.audit.AuditEvent;
 import com.vn.vitalcare.share.exception.ConflictException;
+import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.web.ListParams;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -29,6 +33,8 @@ public class RoleService {
     private static final Set<String> SORTABLE = Set.of("id", "code", "name", "systemRole");
 
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.asc("code"));
+
+    static final String INVALID_NAME = "Tên vai trò không hợp lệ. Vui lòng thử lại.";
 
     private final RoleRepository repository;
 
@@ -112,6 +118,7 @@ public class RoleService {
     @Transactional
     public Role update(Long id, RolePatchRequest request) {
         Role role = get(id);
+        Map<String, Object> before = state(role);
 
         if (request.code() != null) {
             String code = request.code().trim();
@@ -125,7 +132,13 @@ public class RoleService {
             role.setCode(code);
         }
         if (request.name() != null) {
-            role.setName(request.name().trim());
+            String name = request.name().trim();
+            // The DTO's pattern already refuses an all-whitespace name; this is
+            // the same rule for a caller that reaches the service another way.
+            if (name.isEmpty()) {
+                throw new FieldValidationException("name", INVALID_NAME);
+            }
+            role.setName(name);
         }
         if (request.description() != null) {
             role.setDescription(trimToNull(request.description()));
@@ -136,7 +149,9 @@ public class RoleService {
             role.setPermissions(resolvePermissions(request.permissions()));
             events.publishEvent(new AuthoritiesChanged.ForEveryone());
         }
-        return repository.save(role);
+        Role saved = repository.save(role);
+        events.publishEvent(new AuditEvent("roles", saved.getId(), "update", before, state(saved)));
+        return saved;
     }
 
     /**
@@ -149,10 +164,11 @@ public class RoleService {
     public Role delete(Long id) {
         Role role = get(id);
         if (role.isSystemRole()) {
-            throw new ConflictException(
-                    "%s is a system role and cannot be deleted".formatted(role.getCode()));
+            throw new ConflictException("Không thể xoá vai trò %s.".formatted(role.getCode()));
         }
+        Map<String, Object> before = state(role);
         repository.delete(role);
+        events.publishEvent(new AuditEvent("roles", id, "delete", before, null));
         // The RESTRICT foreign key means nobody still held it, so strictly
         // nothing cached can be wrong. Published anyway: the cost is one reload
         // per active account, and an eviction that turns out to be unnecessary
@@ -175,6 +191,16 @@ public class RoleService {
                 throw new ConflictException("A role with the code %s already exists".formatted(code));
             }
         });
+    }
+
+    /** What the audit log keeps of a role: its identity and what it grants. */
+    private static Map<String, Object> state(Role role) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("code", role.getCode());
+        m.put("name", role.getName());
+        m.put("description", role.getDescription());
+        m.put("permissions", role.getPermissions().stream().map(Permission::getCode).sorted().toList());
+        return m;
     }
 
     private static String trimToNull(String value) {

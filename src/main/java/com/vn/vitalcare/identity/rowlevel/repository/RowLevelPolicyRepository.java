@@ -1,6 +1,8 @@
 package com.vn.vitalcare.identity.rowlevel.repository;
 
+import com.vn.vitalcare.identity.rowlevel.entity.PolicyKind;
 import com.vn.vitalcare.identity.rowlevel.entity.RowLevelPolicy;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -15,4 +17,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
  */
 public interface RowLevelPolicyRepository
         extends JpaRepository<RowLevelPolicy, Long>, JpaSpecificationExecutor<RowLevelPolicy> {
+
+    /** The candidates a new or edited policy could duplicate; the trees are compared in the service. */
+    List<RowLevelPolicy> findByKindAndResourceAndAction(PolicyKind kind, String resource, String action);
 }

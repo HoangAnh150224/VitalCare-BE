@@ -20,7 +20,10 @@ public record RolePatchRequest(
                 message = "Code must be upper case letters, digits and underscores, starting with a letter")
         String code,
 
-        @Size(min = 1, max = 255, message = "Name must be between 1 and 255 characters")
+        @Size(min = 1, max = 255, message = "Tên vai trò chỉ trong khoảng 1-255 ký tự")
+        // Null means "unchanged", so @NotBlank cannot be used; this refuses a
+        // name made only of whitespace while still allowing null.
+        @Pattern(regexp = "(?s).*\\S.*", message = "Tên vai trò không hợp lệ. Vui lòng thử lại.")
         String name,
 
         @Size(max = 500, message = "Description must be at most 500 characters")
