@@ -19,6 +19,9 @@ public interface ClinicService {
     Clinic create(ClinicRequest request);
 
     Clinic update(UUID id, ClinicRequest request);
+
+    void delete(UUID id);
+
     Clinic changeOperatingStatus(UUID id, String status);
 
     /**

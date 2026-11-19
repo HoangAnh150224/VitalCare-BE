@@ -13,6 +13,7 @@ import com.vn.vitalcare.identity.user.repository.UserSpecifications;
 import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
+import com.vn.vitalcare.share.audit.AuditEvent;
 import com.vn.vitalcare.share.phone.PhoneNumbers;
 import com.vn.vitalcare.share.security.AuthoritiesChanged;
 import com.vn.vitalcare.share.security.CurrentUser;
@@ -20,8 +21,10 @@ import com.vn.vitalcare.share.security.Permissions;
 import com.vn.vitalcare.share.web.ListParams;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
@@ -276,7 +279,9 @@ public class UserService {
         requireRoleCreationWorkflow(roles);
         user.setRoles(roles);
 
-        return repository.save(user);
+        User saved = repository.save(user);
+        events.publishEvent(new AuditEvent("users", saved.getId(), "create", null, accountState(saved)));
+        return saved;
     }
 
     @Transactional
@@ -433,6 +438,22 @@ public class UserService {
         return passwordEncoder.encode(rawPassword);
     }
 
+    /** The fields an administrator can edit, excluding passwords and other secrets. */
+    private static Map<String, Object> profileState(User user) {
+        Map<String, Object> state = new LinkedHashMap<>();
+        state.put("fullName", user.getFullName());
+        state.put("phone", user.getPhone());
+        state.put("email", user.getEmail());
+        return state;
+    }
+
+    private Map<String, Object> accountState(User user) {
+        Map<String, Object> state = new LinkedHashMap<>(profileState(user));
+        state.put("status", user.getStatus().name());
+        state.put("roles", roleCodes(user.getRoles()));
+        return state;
+    }
+
     /** Stamps the successful sign-in. Called by the auth domain. */
     @Transactional
     public void recordLogin(User user, Instant when) {
@@ -466,19 +487,16 @@ public class UserService {
         }
         requireAdminSurvives(user, Set.of(), UserStatus.INACTIVE);
 
+        Map<String, Object> before = accountState(user);
+        before.put("deletedAt", user.getDeletedAt() == null ? null : user.getDeletedAt().toString());
         Instant deletedAt = Instant.now();
         UserStatus statusBefore = user.getStatus();
         user.setStatus(UserStatus.INACTIVE);
         user.setDeletedAt(deletedAt);
         User archived = repository.save(user);
         refreshTokenService.revokeAllFor(archived, deletedAt);
-        // A soft delete, so the record says what the account became rather
-        // than nothing: the row is still there, switched off and tombstoned.
-        java.util.Map<String, Object> before = profile(archived);
-        before.put("status", String.valueOf(statusBefore));
-        java.util.Map<String, Object> after = profile(archived);
-        after.put("status", String.valueOf(archived.getStatus()));
-        after.put("deletedAt", deletedAt.toString());
+        Map<String, Object> after = accountState(archived);
+        after.put("deletedAt", archived.getDeletedAt().toString());
         events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("users", archived.getId(), "delete",
                 before, after));
         events.publishEvent(new AuthoritiesChanged.ForUser(archived.getId()));

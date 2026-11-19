@@ -16,6 +16,8 @@ public record ClinicRequest(
         String address,
 
         @NotBlank(message = "Contact phone is required")
+        @Pattern(regexp = "^\\+?(?=(?:\\D*\\d){8,15}\\D*$)[0-9\\s().-]+$",
+                message = "Số điện thoại không hợp lệ. Vui lòng nhập một số khác")
         @Size(max = 50, message = "Phone must be at most 50 characters")
         // KAN-44: a Vietnamese mobile (0 + 9 digits) or landline (0 + 10 digits), or the same after +84,
         // separators allowed — the WalkInRequest pattern widened to the landline a clinic often lists.
