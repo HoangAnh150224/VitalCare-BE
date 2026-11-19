@@ -145,7 +145,6 @@ public class RowLevelPolicyService {
 
         RowLevelPolicy saved = repository.save(policy);
         record(saved, RowLevelPolicyAudit.Operation.CREATE, null, snapshot(saved));
-        events.publishEvent(new AuditEvent("row_level_policies", saved.getId(), "create", null, auditState(saved)));
         announce();
         return saved;
     }
@@ -154,7 +153,6 @@ public class RowLevelPolicyService {
     public RowLevelPolicy update(Long id, RowLevelPolicyPatchRequest request) {
         RowLevelPolicy policy = get(id);
         String before = snapshot(policy);
-        Map<String, Object> beforeState = auditState(policy);
         boolean wasEnabled = policy.isEnabled();
 
         RowLevelRegistry.Managed resource = resource(policy.getResource());
@@ -220,7 +218,6 @@ public class RowLevelPolicyService {
 
         RowLevelPolicy saved = repository.save(policy);
         record(saved, operationFor(request, wasEnabled), before, snapshot(saved));
-        events.publishEvent(new AuditEvent("row_level_policies", saved.getId(), "update", beforeState, auditState(saved)));
         announce();
         return saved;
     }
@@ -229,13 +226,11 @@ public class RowLevelPolicyService {
     public RowLevelPolicy delete(Long id) {
         RowLevelPolicy policy = get(id);
         String before = snapshot(policy);
-        Map<String, Object> beforeState = auditState(policy);
 
         // Recorded before the row goes, and the audit table has no foreign key
         // back to it, so the entry outlives the policy.
         record(policy, RowLevelPolicyAudit.Operation.DELETE, before, null);
         repository.delete(policy);
-        events.publishEvent(new AuditEvent("row_level_policies", policy.getId(), "delete", beforeState, null));
         announce();
 
         // Returned so the controller can echo the deleted row.
@@ -389,11 +384,6 @@ public class RowLevelPolicyService {
     private String snapshot(RowLevelPolicy policy) {
         JsonNode node = mapper.valueToTree(toResponse(policy));
         return mapper.writeValueAsString(node);
-    }
-
-    /** State for the system-wide activity log, alongside the policy-specific trail. */
-    private Map<String, Object> auditState(RowLevelPolicy policy) {
-        return Map.of("policy", mapper.valueToTree(toResponse(policy)));
     }
 
     /** Who is making the change, off the access token. Null on an unauthenticated call. */

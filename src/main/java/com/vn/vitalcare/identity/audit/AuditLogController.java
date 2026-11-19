@@ -43,38 +43,6 @@ public class AuditLogController {
     private static final Set<String> SORTABLE = Set.of("id", "occurredAt", "action", "entityType");
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Order.desc("occurredAt"), Sort.Order.desc("id"));
     private static final ZoneId ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-    private static final Map<String, String> ENTITY_LABELS = Map.ofEntries(
-            Map.entry("users", "Người dùng"),
-            Map.entry("employees", "Nhân viên"),
-            Map.entry("clinics", "Cơ sở"),
-            Map.entry("invoices", "Invoices"),
-            Map.entry("medical_records", "Hồ sơ bệnh án"),
-            Map.entry("device_assignments", "Phân công thiết bị"),
-            Map.entry("clinical_encounters", "Lần khám"),
-            Map.entry("result_returns", "Hẹn trả kết quả"),
-            Map.entry("alert_rules", "Quy tắc cảnh báo"),
-            Map.entry("alerts", "Cảnh báo"),
-            Map.entry("feedback", "Góp ý của bệnh nhân"),
-            Map.entry("reports", "Báo cáo tổng hợp"),
-            Map.entry("licenses", "Chứng chỉ hành nghề"),
-            Map.entry("sharing_permissions", "Quyền chia sẻ"),
-            Map.entry("shared_patients", "Người tôi chăm sóc"),
-            Map.entry("monitoring_orders", "Chỉ định theo dõi"),
-            Map.entry("emergency_alerts", "Cảnh báo khẩn"));
-    private static final Map<String, String> ACTION_LABELS = Map.ofEntries(
-            Map.entry("create", "Tạo mới"),
-            Map.entry("view", "Xem"),
-            Map.entry("update", "Cập nhật"),
-            Map.entry("role_change", "Đổi vai trò"),
-            Map.entry("status_change", "Đổi trạng thái"),
-            Map.entry("membership_end", "Kết thúc thành viên"),
-            Map.entry("transfer", "Chuyển cơ sở"),
-            Map.entry("password_reset", "Đặt lại mật khẩu"),
-            Map.entry("delete", "Xóa"),
-            Map.entry("assign", "Cấp / gán"),
-            Map.entry("return", "Thu hồi"),
-            Map.entry("pay", "Thu tiền"));
-
     /**
      * What the audit screen shows for an entity type and an action — the FE's
      * {@code humanizeResource} and {@code AUDIT_ACTION_LABELS} — so a search for
@@ -98,6 +66,9 @@ public class AuditLogController {
             Map.entry("clinical_encounters", "Lần khám"),
             Map.entry("roles", "Vai trò"),
             Map.entry("row_level_policies", "Phạm vi dữ liệu"),
+            Map.entry("invoices", "Hóa đơn"),
+            Map.entry("device_assignments", "Phân công thiết bị"),
+            Map.entry("sharing_permissions", "Quyền chia sẻ"),
             // Shown as "Cơ sở"; "Phòng khám" is what the issue tracker and most people call one.
             Map.entry("clinics", "Cơ sở phòng khám"));
     private static final Map<String, String> ACTION_LABELS = Map.ofEntries(

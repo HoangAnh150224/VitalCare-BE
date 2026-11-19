@@ -16,10 +16,6 @@ public interface ClinicRepository extends JpaRepository<Clinic, UUID> {
 
     Optional<Clinic> findByClinicIdAndDeletedAtIsNull(UUID clinicId);
 
-    boolean existsByClinicNameIgnoreCaseAndDeletedAtIsNull(String clinicName);
-
-    boolean existsByClinicNameIgnoreCaseAndDeletedAtIsNullAndClinicIdNot(String clinicName, UUID clinicId);
-
     List<Clinic> findByDeletedAtIsNullOrderByClinicNameAsc();
 
     /** KAN-45: a clinic's name is how staff and patients pick it, so two live ones may not share it. */
