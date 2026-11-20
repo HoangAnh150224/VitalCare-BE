@@ -94,9 +94,10 @@ public class Feedback {
                 specs.add((root, q, cb) -> cb.equal(root.get("rating"), r));
             }
         }
+        // Marks ignored as well as case (KAN-109): "tran thi bich" finds "Trần Thị Bích".
         params.search().ifPresent(term -> specs.add((root, q, cb) -> cb.or(
-                cb.like(cb.lower(root.join("customer").get("fullName")), ListParams.likePattern(term)),
-                cb.like(cb.lower(root.get("comment")), ListParams.likePattern(term)))));
+                cb.like(ListParams.folded(cb, root.join("customer").get("fullName")), ListParams.foldedPattern(term)),
+                cb.like(ListParams.folded(cb, root.get("comment")), ListParams.foldedPattern(term)))));
         return feedback.findAll(Specification.allOf(specs),
                 params.pageable(SORTABLE, Sort.by(Sort.Order.desc("createdAt"))));
     }

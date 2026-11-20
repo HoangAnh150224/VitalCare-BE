@@ -1,5 +1,7 @@
 package com.vn.vitalcare.share.web;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -180,5 +182,42 @@ public final class ListParams {
     /** Case-insensitive {@code LIKE} pattern for a {@code _like} value. */
     public static String likePattern(String value) {
         return "%" + value.toLowerCase(Locale.ROOT) + "%";
+    }
+
+    /** Each Vietnamese marked vowel (and đ), in lower case, beside the letter it is written on. */
+    private static final String[][] MARKS = {
+            {"àáạảãâầấậẩẫăằắặẳẵ", "a"}, {"èéẹẻẽêềếệểễ", "e"}, {"ìíịỉĩ", "i"},
+            {"òóọỏõôồốộổỗơờớợởỡ", "o"}, {"ùúụủũưừứựửữ", "u"}, {"ỳýỵỷỹ", "y"}, {"đ", "d"}};
+    private static final String MARKED;
+    private static final String PLAIN;
+
+    static {
+        StringBuilder marked = new StringBuilder();
+        StringBuilder plain = new StringBuilder();
+        for (String[] mark : MARKS) {
+            marked.append(mark[0]);
+            plain.append(mark[1].repeat(mark[0].length()));
+        }
+        MARKED = marked.toString();
+        PLAIN = plain.toString();
+    }
+
+    /**
+     * A column lower-cased and without Vietnamese marks, so {@code foldedPattern("tran thi bich")}
+     * finds "Trần Thị Bích". Plain SQL {@code translate}, so no database extension is needed.
+     */
+    public static Expression<String> folded(CriteriaBuilder cb, Expression<String> value) {
+        return cb.function("translate", String.class, cb.lower(value), cb.literal(MARKED), cb.literal(PLAIN));
+    }
+
+    /** The {@code LIKE} pattern to compare with {@link #folded}: the term folded the same way. */
+    public static String foldedPattern(String value) {
+        String lower = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
+        StringBuilder out = new StringBuilder(lower.length());
+        for (char c : lower.toCharArray()) {
+            int at = MARKED.indexOf(c);
+            out.append(at < 0 ? c : PLAIN.charAt(at));
+        }
+        return "%" + out + "%";
     }
 }

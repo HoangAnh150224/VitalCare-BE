@@ -84,4 +84,12 @@ public interface EmployeeRepository extends SecuredRepository<Employee, Long> {
             + "and u.deletedAt is null and u.status = com.vn.vitalcare.identity.user.entity.UserStatus.ACTIVE "
             + "and r.code = 'CLINIC_ADMIN'")
     long countOtherActiveAdmins(@Param("clinicId") UUID clinicId, @Param("excludedId") Long excludedId);
+
+    /**
+     * Whether another current member of staff, at any clinic, already holds this licence number (KAN-112).
+     * Unscoped on purpose: a licence number is the practitioner's, not the clinic's.
+     */
+    @Query("select count(e) > 0 from Employee e where lower(trim(e.licenseNo)) = lower(trim(:licenseNo))"
+            + " and e.deletedAt is null and (:exceptId is null or e.id <> :exceptId)")
+    boolean licenseNoTaken(@Param("licenseNo") String licenseNo, @Param("exceptId") Long exceptId);
 }

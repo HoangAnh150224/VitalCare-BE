@@ -134,6 +134,7 @@ public class EmployeeServiceImpl implements EmployeeService {
                     "Only a Clinic Administrator can create clinic staff");
         }
         checkProfileOptions(request.specialty(), request.professionalTitle(), request.clinicPosition(), null);
+        checkLicenseNo(request.licenseNo(), null);
         Employee employee = new Employee();
         employee.setStaffType(request.staffType());
         employee.setSpecialty(blankToNull(request.specialty()));
@@ -165,6 +166,8 @@ public class EmployeeServiceImpl implements EmployeeService {
         // Their clinic is what their own policies compare against, and it is
         // read into the authority cache: drop anything cached for the account.
         events.publishEvent(new AuthoritiesChanged.ForUser(user.getId()));
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", saved.getId(), "create",
+                null, profile(saved)));
         return saved;
     }
 
@@ -210,6 +213,10 @@ public class EmployeeServiceImpl implements EmployeeService {
         }
 
         checkProfileOptions(request.specialty(), request.professionalTitle(), request.clinicPosition(), employee);
+        if (request.licenseNo() != null) {
+            checkLicenseNo(request.licenseNo(), employee.getId());
+        }
+        java.util.Map<String, Object> before = profile(employee);
         if (request.specialty() != null) {
             employee.setSpecialty(blankToNull(request.specialty()));
         }
@@ -222,12 +229,70 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (request.clinicPosition() != null) {
             employee.setClinicPosition(blankToNull(request.clinicPosition()));
         }
-        if (request.status() != null && request.status() != employee.getStatus()) {
+        EmployeeStatus wasStatus = employee.getStatus();
+        if (request.status() != null && request.status() != wasStatus) {
             changeStatus(employee, request.status());
         }
         // WITH CHECK, on the state this save leaves behind.
         rowLevel.checkWritable(employee);
-        return repository.persist(employee);
+        Employee saved = repository.persist(employee);
+        auditUpdate(employee, before, wasStatus);
+        return saved;
+    }
+
+    /**
+     * What an edit changed, in the activity log (KAN-114). Leaving through the edit form is the same
+     * act as "Kết thúc thành viên" from the list or the detail page, so it is logged the same way.
+     */
+    private void auditUpdate(Employee employee, java.util.Map<String, Object> before, EmployeeStatus wasStatus) {
+        java.util.Map<String, Object> after = profile(employee);
+        java.util.Map<String, Object> changedBefore = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Object> changedAfter = new java.util.LinkedHashMap<>();
+        after.forEach((field, value) -> {
+            if (!"status".equals(field) && !java.util.Objects.equals(before.get(field), value)) {
+                changedBefore.put(field, before.get(field));
+                changedAfter.put(field, value);
+            }
+        });
+        if (!changedAfter.isEmpty()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", employee.getId(), "update",
+                    changedBefore, changedAfter));
+        }
+        if (employee.getStatus() == wasStatus) {
+            return;
+        }
+        Long userId = employee.getUser().getId();
+        if (employee.getStatus() == EmployeeStatus.INACTIVE) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", employee.getId(), "membership_end",
+                    java.util.Map.of("status", "active", "userId", userId),
+                    java.util.Map.of("status", "inactive", "userId", userId, "reason", "Nghỉ việc")));
+        } else {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("employees", employee.getId(), "status_change",
+                    java.util.Map.of("status", wasStatus.name().toLowerCase(java.util.Locale.ROOT)),
+                    java.util.Map.of("status", employee.getStatus().name().toLowerCase(java.util.Locale.ROOT))));
+        }
+    }
+
+    /** The fields of a staff profile the activity log shows; nulls kept, so a cleared field reads as cleared. */
+    private static java.util.Map<String, Object> profile(Employee employee) {
+        java.util.Map<String, Object> fields = new java.util.LinkedHashMap<>();
+        fields.put("fullName", employee.getUser() == null ? null : employee.getUser().getFullName());
+        fields.put("staffType", employee.getStaffType() == null ? null : employee.getStaffType().name());
+        fields.put("specialty", employee.getSpecialty());
+        fields.put("professionalTitle", employee.getProfessionalTitle());
+        fields.put("licenseNo", employee.getLicenseNo());
+        fields.put("clinicPosition", employee.getClinicPosition());
+        fields.put("status", employee.getStatus() == null ? null : employee.getStatus().name().toLowerCase(java.util.Locale.ROOT));
+        return fields;
+    }
+
+    /** KAN-112: a licence number belongs to one practitioner; a second current one is refused. */
+    private void checkLicenseNo(String licenseNo, Long exceptId) {
+        String value = blankToNull(licenseNo);
+        if (value != null && repository.licenseNoTaken(value, exceptId)) {
+            throw new com.vn.vitalcare.share.exception.FieldValidationException(
+                    "licenseNo", "Mã số chứng chỉ đã tồn tại. Vui lòng thử mã khác.");
+        }
     }
 
     /**
