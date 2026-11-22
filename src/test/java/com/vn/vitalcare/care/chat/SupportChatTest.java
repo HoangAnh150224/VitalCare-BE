@@ -292,4 +292,62 @@ class SupportChatTest {
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(60)).build();
         SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(token));
     }
+// ---- FE-15 staff side and the conversation list (Report-5.1, sheet BE_Gaps) ----
+
+    private static Conversation conversation(long id, Long about) {
+        Conversation c = new Conversation();
+        org.springframework.test.util.ReflectionTestUtils.setField(c, "id", id);
+        if (about != null) c.setAbout(about, "Bé Na");
+        return c;
+    }
+
+    @Test
+    @DisplayName("BG-06 a member of staff follows their own clinic; somebody tied to none, every clinic still operating")
+    void followedClinics() {
+        com.vn.vitalcare.care.staff.service.ClinicScope scope = mock(com.vn.vitalcare.care.staff.service.ClinicScope.class);
+        SupportChat staffChat = new SupportChat(conversations, messages, clinics, scope, mock(UserService.class), mock(FileStorage.class),
+                mock(RowLevelSecurity.class), events, mock(com.vn.vitalcare.care.notification.Notifier.class), shared, new TickingClock());
+        when(scope.currentClinicId()).thenReturn(Optional.of(CLINIC));
+        assertEquals(List.of(CLINIC), staffChat.followedClinics());
+        when(scope.currentClinicId()).thenReturn(Optional.empty());
+        com.vn.vitalcare.entity.Clinic open = new com.vn.vitalcare.entity.Clinic();
+        open.setClinicId(CLINIC);
+        open.setOperatingStatus("OPERATING");
+        com.vn.vitalcare.entity.Clinic closed = new com.vn.vitalcare.entity.Clinic();
+        closed.setClinicId(java.util.UUID.randomUUID());
+        closed.setOperatingStatus("SUSPENDED");
+        when(clinics.listAll()).thenReturn(List.of(open, closed));
+        assertEquals(List.of(CLINIC), staffChat.followedClinics());
+    }
+
+    @Test
+    @DisplayName("BG-07 unread counts per conversation for the inbox; an empty page asks nothing")
+    void unreadByStaff() {
+        assertEquals(java.util.Map.of(), chat.unreadByStaff(List.of()));
+        org.mockito.Mockito.verifyNoInteractions(messages);
+        when(messages.countUnreadByStaff(any(), any())).thenReturn(List.<Object[]>of(new Object[] {3L, 2L}));
+        assertEquals(java.util.Map.of(3L, 2L), chat.unreadByStaff(List.of(conversation(3L, null))));
+    }
+
+    @Test
+    @DisplayName("BG-08 my conversations: one about a patient no longer shared with me is hidden; unread counts shown")
+    void ownListFollowsTheGrant() {
+        signIn(77L);
+        when(shared.mine()).thenReturn(List.of());
+        when(conversations.findOwn(77L)).thenReturn(List.of(conversation(1L, null), conversation(2L, 900L)));
+        when(messages.countUnreadByCustomer(any(), any())).thenReturn(List.<Object[]>of(new Object[] {1L, 4L}));
+        List<ChatResponses.Own> mine = chat.ownList();
+        assertEquals(List.of(1L), mine.stream().map(ChatResponses.Own::id).toList());
+        assertEquals(4L, mine.get(0).unread());
+    }
+
+    @Test
+    @DisplayName("BG-09 which clinics know a patient: only for a caregiver the patient shares with")
+    void clinicsAboutNeedsAGrant() {
+        signIn(77L);
+        when(shared.require(eq(900L), any())).thenThrow(new ResourceNotFoundException("Shared patient", 900L));
+        assertThrows(ResourceNotFoundException.class, () -> chat.clinicsAbout(900L));
+        org.mockito.Mockito.verify(conversations, org.mockito.Mockito.never()).clinicsKnowing(any());
+    }
 }
+

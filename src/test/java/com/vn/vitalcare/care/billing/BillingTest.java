@@ -493,4 +493,81 @@ class BillingTest {
         service.setPrice(BigDecimal.valueOf(price));
         return service;
     }
+// ---- FE-23 Online Payment from the portal and following a rescheduled visit (Report-5.1, sheet BE_Gaps) ----
+
+    private Invoice mine() {
+        Invoice invoice = issued();
+        Customer me = new Customer();
+        ReflectionTestUtils.setField(me, "id", 1L);
+        when(customers.getForCurrentUser()).thenReturn(me);
+        when(invoices.findOwn(1L)).thenReturn(java.util.List.of(invoice));
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+        return invoice;
+    }
+
+    @Test
+    @DisplayName("BG-01 paying one of my bills online: a pending VNPay attempt and the signed URL for its total")
+    void onlineStartsAPendingAttempt() {
+        Invoice invoice = mine();
+        Map<String, String> params = query(service.startVnpayForInvoice(42L, "1.2.3.4"));
+        assertEquals("15000000", params.get("vnp_Amount"));
+        assertTrue(params.get("vnp_TxnRef").startsWith("42-"));
+        assertTrue(params.get("vnp_OrderInfo").contains(invoice.getInvoiceNumber()));
+        assertTrue(vnpay.verify(params));
+        Payment attempt = byRef.get(params.get("vnp_TxnRef"));
+        assertEquals(PaymentMethod.VNPAY, attempt.getMethod());
+        assertEquals(InvoiceStatus.UNPAID, invoice.getStatus());
+    }
+
+    @Test
+    @DisplayName("BG-02 a settled bill cannot be paid online again")
+    void onlineRefusesASettledBill() {
+        Invoice invoice = mine();
+        invoice.markPaid(java.time.OffsetDateTime.now());
+        assertEquals("This bill is already settled",
+                assertThrows(ConflictException.class, () -> service.startVnpayForInvoice(42L, "1.2.3.4")).getMessage());
+    }
+
+    @Test
+    @DisplayName("BG-03 somebody else's bill is not found")
+    void onlineOnlyForMyOwnBills() {
+        mine();
+        assertThrows(com.vn.vitalcare.share.exception.ResourceNotFoundException.class,
+                () -> service.startVnpayForInvoice(99L, "1.2.3.4"));
+    }
+
+    @Test
+    @DisplayName("BG-04 with VNPay not configured, online payment is refused and says why")
+    void onlineNotSetUp() {
+        mine();
+        Invoices offline = new Invoices(invoices, payments, orders, mock(MedicalServiceCatalog.class), appointments,
+                customers, mock(ClinicService.class), () -> Optional.of(CLINIC),
+                new VnpayClient("", "", "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html", "http://localhost/return",
+                        Clock.fixed(NOW, ZoneOffset.UTC)),
+                new ClinicRowLevel(() -> CLINIC), mock(EntityManager.class),
+                mock(org.springframework.context.ApplicationEventPublisher.class), Clock.fixed(NOW, ZoneOffset.UTC));
+        assertEquals(false, offline.onlinePaymentEnabled());
+        assertEquals("Online payment is not set up for this clinic yet",
+                assertThrows(ConflictException.class, () -> offline.startVnpayForInvoice(42L, "1.2.3.4")).getMessage());
+    }
+
+    @Test
+    @DisplayName("BG-05 a rescheduled visit's unpaid bill follows it to its clinic and patient; a paid one stays")
+    void unpaidBillFollowsTheRescheduledVisit() {
+        Invoice invoice = issued();
+        Appointment visit = invoice.getAppointment();
+        Customer relative = new Customer();
+        ReflectionTestUtils.setField(relative, "id", 5L);
+        ReflectionTestUtils.setField(invoice.getCustomer(), "id", 1L);
+        Clinic other = new Clinic();
+        other.setClinicId(java.util.UUID.fromString("0f9d2c1a-1111-4e7e-9c41-2d8e0a7b3c19"));
+        visit.setClinic(other);
+        visit.setCustomer(relative);
+        when(invoices.findExamOf(7L)).thenReturn(Optional.of(invoice));
+        when(invoices.findForUpdate(42L)).thenReturn(Optional.of(invoice));
+        service.onRescheduled(new com.vn.vitalcare.care.appointment.service.VisitEvents.Rescheduled(7L));
+        assertEquals(other.getClinicId(), invoice.getClinicId());
+        assertEquals(relative, invoice.getCustomer());
+    }
 }
+

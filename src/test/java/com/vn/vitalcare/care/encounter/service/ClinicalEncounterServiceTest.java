@@ -243,4 +243,64 @@ class ClinicalEncounterServiceTest {
         assertEquals(null, service.update(1L, new EncounterRequest(null, null, "Sốt", null, none, null, null, null))
                 .getVitals());
     }
+// ---- FE-18 sending the patient out for services, referring them (Report-5.1, sheet BE_Gaps) ----
+
+    @SuppressWarnings("unchecked")
+    private ClinicalEncounter openVisit() {
+        ClinicalEncounter encounter = new ClinicalEncounter();
+        org.springframework.test.util.ReflectionTestUtils.setField(encounter, "id", 1L);
+        encounter.setClinic(doctor.getClinic());
+        encounter.setCustomer(patient);
+        encounter.setAppointment(visit(10L));
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(encounter));
+        return encounter;
+    }
+
+    private static com.vn.vitalcare.entity.ServiceOrder order(com.vn.vitalcare.entity.ServiceOrderStatus status) {
+        com.vn.vitalcare.entity.ServiceOrder o = new com.vn.vitalcare.entity.ServiceOrder();
+        org.springframework.test.util.ReflectionTestUtils.setField(o, "status", status);
+        return o;
+    }
+
+    @Test
+    @DisplayName("BG-10 a patient with a service still to do is sent out of the room to have it done")
+    void sendOutWhileAServiceWaits() {
+        ClinicalEncounter encounter = openVisit();
+        when(serviceOrders.findByEncounter(1L)).thenReturn(java.util.List.of(order(com.vn.vitalcare.entity.ServiceOrderStatus.ORDERED)));
+        service.sendOut(1L);
+        org.mockito.Mockito.verify(appointments).sendAway(encounter.getAppointment());
+    }
+
+    @Test
+    @DisplayName("BG-11 nothing ordered left to do: the patient is not sent out")
+    void sendOutNeedsSomethingToDo() {
+        openVisit();
+        when(serviceOrders.findByEncounter(1L)).thenReturn(java.util.List.of(order(com.vn.vitalcare.entity.ServiceOrderStatus.REVIEWED)));
+        assertEquals("Nothing ordered is waiting to be done; order a service first",
+                assertThrows(ConflictException.class, () -> service.sendOut(1L)).getMessage());
+        org.mockito.Mockito.verify(appointments, org.mockito.Mockito.never()).sendAway(any());
+    }
+
+    @Test
+    @DisplayName("BG-12 referring hands the visit to the chosen doctor with the reason")
+    void referToAnotherDoctor() {
+        ClinicalEncounter encounter = openVisit();
+        service.refer(1L, new com.vn.vitalcare.care.encounter.dto.ReferRequest(9L, "Khám tim mạch"));
+        org.mockito.Mockito.verify(appointments).referFrom(encounter.getAppointment(), 9L, "Khám tim mạch");
+    }
+
+    @Test
+    @DisplayName("BG-13 a concluded encounter, or one without a registered visit, can be neither sent out nor referred")
+    @SuppressWarnings("unchecked")
+    void onlyAnOpenRegisteredVisit() {
+        ClinicalEncounter done = openVisit();
+        done.setStatus(EncounterStatus.COMPLETED);
+        assertEquals("This encounter is concluded", assertThrows(ConflictException.class, () -> service.sendOut(1L)).getMessage());
+        ClinicalEncounter loose = new ClinicalEncounter();
+        loose.setClinic(doctor.getClinic());
+        when(repository.findOne(any(Specification.class))).thenReturn(Optional.of(loose));
+        assertEquals("This encounter is not tied to a registered visit", assertThrows(ConflictException.class,
+                () -> service.refer(1L, new com.vn.vitalcare.care.encounter.dto.ReferRequest(9L, "x"))).getMessage());
+    }
 }
+
