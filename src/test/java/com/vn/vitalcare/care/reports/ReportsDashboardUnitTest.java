@@ -90,6 +90,19 @@ class ReportsDashboardUnitTest {
     }
 
     @Test
+    @DisplayName("KAN-136: today's visit total leaves out the cancelled and the no-shows, which keep their own count")
+    void rp02b_totalLeavesOutCancelled() {
+        as(MINE, "CLINIC_ADMIN");
+        reports.dashboard(null);
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc, atLeastOnce()).queryForMap(sql.capture(), any(SqlParameterSource.class));
+        assertThat(sql.getAllValues()).filteredOn(s -> s.contains("from appointment a")).singleElement()
+                .asString()
+                .contains("count(*) filter (where status not in ('CANCELLED', 'NO_SHOW')) as total")
+                .contains("count(*) filter (where status in ('CANCELLED', 'NO_SHOW')) as cancelled");
+    }
+
+    @Test
     @DisplayName("Staff tied to no clinic and not administrator: refused before any query")
     void rp03_noClinicRefused() {
         as(null, "DOCTOR");

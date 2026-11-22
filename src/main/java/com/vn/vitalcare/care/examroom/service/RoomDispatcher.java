@@ -81,6 +81,20 @@ public class RoomDispatcher {
      */
     @Transactional
     public Optional<Appointment> dispatch(Long roomId) {
+        return dispatch(roomId, recallAfter);
+    }
+
+    /**
+     * The same, for somebody pressing "call next": whoever was passed over
+     * may be called back at once (they are back at the desk), still after
+     * everybody never called. Only a room filling on its own waits.
+     */
+    @Transactional
+    public Optional<Appointment> dispatchNow(Long roomId) {
+        return dispatch(roomId, Duration.ZERO);
+    }
+
+    private Optional<Appointment> dispatch(Long roomId, Duration grace) {
         Optional<ExamRoom> locked = lock(roomId);
         if (locked.isEmpty() || locked.get().getStatus() != ExamRoomStatus.AVAILABLE) {
             return Optional.empty();
@@ -95,7 +109,7 @@ public class RoomDispatcher {
         OffsetDateTime calledAt = OffsetDateTime.now(clock);
         // The doctor's own visits and the clinic's shared line in one order: referrals and returns first, then by payment.
         Optional<Appointment> next = appointments.lockNextInQueue(
-                doctor.get().getId(), room.getClinicId(), room.getDepartment(), now.toLocalDate(), calledAt.minus(recallAfter));
+                doctor.get().getId(), room.getClinicId(), room.getDepartment(), now.toLocalDate(), calledAt.minus(grace));
         if (next.isEmpty()) {
             return Optional.empty();
         }

@@ -46,7 +46,9 @@ public final class DoctorScheduleSpecifications {
         }
 
         params.search().ifPresent(term -> specs.add((root, query, cb) ->
-                cb.like(cb.lower(root.get("employee").get("user").get("fullName")), ListParams.likePattern(term))));
+                // Marks ignored as well as case (KAN-116): "dang minh tuan" finds "Đặng Minh Tuấn".
+                cb.like(ListParams.folded(cb, root.get("employee").get("user").get("fullName")),
+                        ListParams.foldedPattern(term))));
 
         List<Long> ids = params.ids();
         if (!ids.isEmpty()) {

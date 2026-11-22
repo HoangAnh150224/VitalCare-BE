@@ -11,8 +11,12 @@ import org.springframework.data.repository.query.Param;
 
 public interface SharingPermissionRepository extends JpaRepository<SharingPermission, Long> {
 
-    /** Every grant of these profiles, in force or not — the patient's Sharing Permission List and History. */
-    @EntityGraph(attributePaths = {"customer", "caregiver"})
+    /**
+     * Every grant of these profiles, in force or not — the patient's Sharing Permission List and History,
+     * and the clinic's Caregiver Access List. The patient's account comes too: an account owner takes
+     * their name from it, and the clinic's list is mapped with no transaction open (KAN-140).
+     */
+    @EntityGraph(attributePaths = {"customer", "customer.user", "caregiver"})
     @Query("select p from SharingPermission p where p.customer.id in :customerIds and p.deletedAt is null"
             + " order by p.createdAt desc")
     List<SharingPermission> findForProfiles(@Param("customerIds") Collection<Long> customerIds);

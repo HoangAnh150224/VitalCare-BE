@@ -145,6 +145,15 @@ class ServiceOrdersUnitTest {
         verify(notifier).notify(any(), any(), eq("result"), eq("Đã có kết quả X-quang ngực"), anyString(), any());
     }
 
+    @Test void so06b_firstResultTellsTheOrderingDoctorOnce() {
+        ServiceOrder o = existing(ServiceOrderStatus.IN_PROGRESS);
+        ReflectionTestUtils.setField(o, "createdById", 9L);
+        service.recordResult(30L, new ServiceOrderRequests.Result("Phổi sáng"));
+        service.recordResult(30L, new ServiceOrderRequests.Result("Phổi sáng, tim bình thường"));
+        verify(notifier).notify(eq(9L), any(), eq("result"), eq("Có kết quả dịch vụ bạn chỉ định: X-quang ngực"),
+                anyString(), eq("/service-orders/show/30"));
+    }
+
     @Test void so07_reviewedResultIsClosed() {
         existing(ServiceOrderStatus.REVIEWED);
         assertEquals("This order is closed; its result can no longer change", assertThrows(ConflictException.class,

@@ -5,6 +5,7 @@ import com.vn.vitalcare.care.staff.service.ClinicScope;
 import com.vn.vitalcare.entity.AlertRule;
 import com.vn.vitalcare.share.audit.AuditEvent;
 import com.vn.vitalcare.share.data.BaseEntitySpecifications;
+import com.vn.vitalcare.share.exception.ConflictException;
 import com.vn.vitalcare.share.exception.FieldValidationException;
 import com.vn.vitalcare.share.exception.ResourceNotFoundException;
 import com.vn.vitalcare.share.security.CurrentUser;
@@ -79,7 +80,9 @@ public class AlertRules {
                 }
             }
         }
-        params.search().ifPresent(term -> specs.add((r, q, cb) -> cb.like(cb.lower(r.get("name")), ListParams.likePattern(term))));
+        // Marks ignored as well as case (KAN-116): "nhiet do co the" finds "Nhiệt độ cơ thể cao".
+        params.search().ifPresent(term -> specs.add((r, q, cb) ->
+                cb.like(ListParams.folded(cb, r.get("name")), ListParams.foldedPattern(term))));
         return rules.findAll(Specification.allOf(specs), params.pageable(SORTABLE,
                 Sort.by(Sort.Order.asc("metric"), Sort.Order.asc("operator"), Sort.Order.asc("threshold"))));
     }
@@ -92,6 +95,7 @@ public class AlertRules {
     public AlertRule create(AlertDtos.RuleRequest request) {
         AlertRule rule = new AlertRule();
         apply(rule, request, true);
+        refuseDuplicate(rule, true, true);
         AlertRule saved = rules.persist(rule);
         rules.flush();
         rowLevel.checkWritable(saved);
@@ -103,7 +107,11 @@ public class AlertRules {
     public AlertRule update(Long id, AlertDtos.RuleRequest request) {
         AlertRule rule = find(id, Action.WRITE);
         Map<String, Object> before = state(rule);
+        String nameBefore = rule.getName();
+        String conditionBefore = conditionOf(rule);
         apply(rule, request, false);
+        // Only what this save changes is checked: pausing a rule that already had a twin still works.
+        refuseDuplicate(rule, !rule.getName().equalsIgnoreCase(nameBefore), !conditionOf(rule).equals(conditionBefore));
         rowLevel.checkWritable(rule);
         AlertRule saved = rules.persist(rule);
         events.publishEvent(new AuditEvent("alert_rules", saved.getId(), "update", before, state(saved)));
@@ -156,6 +164,42 @@ public class AlertRules {
             }
             rule.setClinicId(clinic);
         }
+    }
+
+    /**
+     * KAN-123: within one scope (the clinic's own rules, or one patient's) no two live rules bear the same
+     * name, and no two say the same thing (measure, direction, threshold and severity).
+     */
+    private void refuseDuplicate(AlertRule rule, boolean byName, boolean byCondition) {
+        if (!byName && !byCondition) {
+            return;
+        }
+        Specification<AlertRule> twin = (r, q, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> same = new ArrayList<>();
+            if (byName) {
+                same.add(cb.equal(cb.lower(r.get("name")), rule.getName().toLowerCase(Locale.ROOT)));
+            }
+            if (byCondition) {
+                same.add(cb.and(cb.equal(r.get("metric"), rule.getMetric()),
+                        cb.equal(r.get("operator"), rule.getOperator()),
+                        cb.equal(r.get("threshold"), rule.getThreshold()),
+                        cb.equal(r.get("severity"), rule.getSeverity())));
+            }
+            return cb.and(cb.equal(r.get("clinicId"), rule.getClinicId()),
+                    rule.getCustomer() == null ? cb.isNull(r.get("customer"))
+                            : cb.equal(r.get("customer").get("id"), rule.getCustomer().getId()),
+                    rule.getId() == null ? cb.conjunction() : cb.notEqual(r.get("id"), rule.getId()),
+                    cb.or(same.toArray(new jakarta.persistence.criteria.Predicate[0])));
+        };
+        if (rules.count(Specification.allOf(twin, BaseEntitySpecifications.notDeleted())) > 0) {
+            throw new ConflictException("Quy tắc đã tồn tại.");
+        }
+    }
+
+    private static String conditionOf(AlertRule r) {
+        return r.getMetric() + "|" + r.getOperator() + "|"
+                + (r.getThreshold() == null ? null : r.getThreshold().stripTrailingZeros().toPlainString())
+                + "|" + r.getSeverity();
     }
 
     private AlertRule find(Long id, Action action) {

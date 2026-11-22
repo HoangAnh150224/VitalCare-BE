@@ -33,7 +33,7 @@ class GuestFirstAidUnitTest {
         history = mock(FirstAidHistoryRepository.class);
         when(history.findPublished()).thenAnswer(call -> published);
         articles = new FirstAidArticles(mock(FirstAidArticleRepository.class), history, mock(UserService.class),
-                Clock.systemUTC());
+                Clock.systemUTC(), event -> { });
     }
 
     private FirstAidArticleHistory step(long articleId, int revision, String title, String summary,

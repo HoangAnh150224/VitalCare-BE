@@ -92,7 +92,7 @@ public class Reports {
                        count(*) filter (where triggered_at >= :dayStart) as raised_today
                 from alert a where a.deleted_at is null""" + and("a", clinicId), p));
         body.put("appointmentsToday", jdbc.queryForMap("""
-                select count(*) as total,
+                select count(*) filter (where status not in ('CANCELLED', 'NO_SHOW')) as total,
                        count(*) filter (where status = 'BOOKED') as scheduled,
                        count(*) filter (where status = 'CHECKED_IN') as awaiting_payment,
                        count(*) filter (where status = 'READY_FOR_EXAMINATION') as waiting,

@@ -185,6 +185,14 @@ public class ServiceOrders {
                     "Bác sĩ sẽ xem kết quả và tư vấn cho bạn.",
                     saved.getEncounter().getAppointment() == null ? null
                             : "/my-appointments/show/" + saved.getEncounter().getAppointment().getId());
+            // KAN-154: the doctor who ordered it hears too, unless they entered the result themselves.
+            Long doctor = saved.getCreatedById();
+            if (doctor != null && !doctor.equals(CurrentUser.id().orElse(null))) {
+                notifier.notify(doctor, com.vn.vitalcare.entity.NotificationLevel.INFO, "result",
+                        "Có kết quả dịch vụ bạn chỉ định: " + saved.getService().getName(),
+                        "Bệnh nhân " + saved.getCustomer().getFullName() + ". Mời bác sĩ xem và duyệt kết quả.",
+                        "/service-orders/show/" + saved.getId());
+            }
         }
         return saved;
     }

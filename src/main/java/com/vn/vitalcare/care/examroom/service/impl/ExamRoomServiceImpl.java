@@ -64,6 +64,8 @@ public class ExamRoomServiceImpl implements ExamRoomService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final VisitReturns visitReturns;
+    // KAN-149: who the caller is on staff, for checkOwnRoom.
+    private final com.vn.vitalcare.care.staff.service.EmployeeService employees;
 
     public ExamRoomServiceImpl(ExamRoomRepository rooms,
                                AppointmentRepository appointments,
@@ -73,7 +75,9 @@ public class ExamRoomServiceImpl implements ExamRoomService {
                                RowLevelSecurity rowLevel,
                                ApplicationEventPublisher events,
                                Clock clock,
-                               VisitReturns visitReturns) {
+                               VisitReturns visitReturns,
+                               com.vn.vitalcare.care.staff.service.EmployeeService employees) {
+        this.employees = employees;
         this.rooms = rooms;
         this.appointments = appointments;
         this.dispatcher = dispatcher;
@@ -230,7 +234,8 @@ public class ExamRoomServiceImpl implements ExamRoomService {
         if (dispatcher.doctorInRoom(roomId, dispatcher.now()).isEmpty()) {
             throw new ConflictException("No doctor is scheduled in this room right now");
         }
-        if (dispatcher.dispatch(roomId).isEmpty()) {
+        // Pressed by somebody: no wait before calling back a patient just passed over (KAN-145).
+        if (dispatcher.dispatchNow(roomId).isEmpty()) {
             throw new ConflictException("Nobody is waiting for this room's doctor");
         }
         return board(room.getClinicId());
@@ -324,7 +329,42 @@ public class ExamRoomServiceImpl implements ExamRoomService {
     /** The room through the write scope (another clinic's is not found), then locked and re-read. */
     private ExamRoom lockForWrite(Long roomId) {
         find(roomId, Action.WRITE);
-        return dispatcher.lock(roomId).orElseThrow(() -> new ResourceNotFoundException("Exam room", roomId));
+        ExamRoom room = dispatcher.lock(roomId).orElseThrow(() -> new ResourceNotFoundException("Exam room", roomId));
+        checkOwnRoom(room);
+        return room;
+    }
+
+    /**
+     * KAN-149: a doctor works the room their session puts them in now, or the
+     * one their own patient is still in, never a colleague's. Whoever checks
+     * patients in (the front desk, the clinic administrator) works every room
+     * of the clinic, as does anybody who is not a doctor.
+     */
+    private void checkOwnRoom(ExamRoom room) {
+        if (com.vn.vitalcare.share.security.CurrentUser.has(
+                com.vn.vitalcare.share.security.Permissions.APPOINTMENTS_CHECK_IN)) {
+            return;
+        }
+        Employee me;
+        try {
+            me = employees.getForCurrentUser();
+        } catch (ConflictException noStaffProfile) {
+            return;
+        }
+        if (me.getStaffType() != com.vn.vitalcare.entity.StaffType.DOCTOR) {
+            return;
+        }
+        Appointment inside = room.getCurrentAppointment();
+        boolean myPatientInside = inside != null && inside.getEmployee() != null
+                && me.getId().equals(inside.getEmployee().getId());
+        boolean myRoomNow = dispatcher.roomOfDoctor(me.getId(), dispatcher.now())
+                .filter(mine -> room.getId().equals(mine.getId()))
+                .isPresent();
+        if (!myPatientInside && !myRoomNow) {
+            // Answered as the generic 403, which the FE already says in Vietnamese.
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "A doctor may only operate the room of their own current session");
+        }
     }
 
     private static Appointment requireOccupant(ExamRoom room, Long expectedAppointmentId) {

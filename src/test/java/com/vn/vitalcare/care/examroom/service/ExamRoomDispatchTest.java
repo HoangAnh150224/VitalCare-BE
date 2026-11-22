@@ -71,6 +71,7 @@ class ExamRoomDispatchTest {
 
     private ExamRoom room;
     private Employee doctor;
+    private Employee caller;
 
     @BeforeEach
     void setUp() {
@@ -81,11 +82,19 @@ class ExamRoomDispatchTest {
         ClinicService clinicService = mock(ClinicService.class);
         when(clinicService.timeZone()).thenReturn(ZoneId.of("Asia/Ho_Chi_Minh"));
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        // KAN-149: the caller is the front desk unless a test says otherwise.
+        caller = new Employee();
+        ReflectionTestUtils.setField(caller, "id", 12L);
+        caller.setStaffType(com.vn.vitalcare.entity.StaffType.RECEPTIONIST);
+        com.vn.vitalcare.care.staff.service.EmployeeService employees =
+                mock(com.vn.vitalcare.care.staff.service.EmployeeService.class);
+        when(employees.getForCurrentUser()).thenReturn(caller);
 
         dispatcher = new RoomDispatcher(rooms, appointments, hours, mock(DoctorScheduleRepository.class),
                 clinicService, events, mock(EntityManager.class), Duration.ofMinutes(3), clock);
         service = new ExamRoomServiceImpl(rooms, appointments, dispatcher, clinicService, () -> Optional.of(CLINIC),
-                new ClinicRowLevel(() -> CLINIC), events, clock, mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class));
+                new ClinicRowLevel(() -> CLINIC), events, clock, mock(com.vn.vitalcare.care.appointment.service.VisitReturns.class),
+                employees);
 
         Clinic clinic = new Clinic();
         ReflectionTestUtils.setField(clinic, "clinicId", CLINIC);
@@ -146,6 +155,21 @@ class ExamRoomDispatchTest {
         // 09:00 at the clinic, three minutes' grace for somebody passed over.
         verify(appointments).lockNextInQueue(11L, CLINIC, null, TODAY,
                 java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC).minus(Duration.ofMinutes(3)));
+    }
+
+    @Test
+    @DisplayName("KAN-145: pressing \"call next\" calls back somebody just passed over at once, with no grace")
+    void callNextDoesNotWaitToRecall() {
+        onDuty();
+        Appointment passedOver = checkedIn(103L, 3);
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        // Only an ask with no grace finds them: the room filling on its own would still wait.
+        when(appointments.lockNextInQueue(11L, CLINIC, null, TODAY, now)).thenReturn(Optional.of(passedOver));
+
+        service.callNext(7L);
+
+        assertEquals(AppointmentStatus.IN_EXAM, passedOver.getStatus());
+        assertSame(passedOver, room.getCurrentAppointment());
     }
 
     @Test
@@ -329,6 +353,40 @@ class ExamRoomDispatchTest {
 
         assertEquals(0, dispatcher.releaseStranded());
         assertSame(doctor, kept.getEmployee());
+    }
+
+    @Test
+    @DisplayName("KAN-149: a doctor works only the room of their own session, or the one their own patient is in")
+    void doctorCannotOperateAColleaguesRoom() {
+        caller.setStaffType(com.vn.vitalcare.entity.StaffType.DOCTOR);
+        Appointment inside = inRoom(100L);
+        AppointmentStatus before = inside.getStatus();
+
+        // Room 7 holds doctor 11's patient and is not doctor 12's room: all six are refused.
+        Class<org.springframework.security.access.AccessDeniedException> denied =
+                org.springframework.security.access.AccessDeniedException.class;
+        assertThrows(denied, () -> service.pause(7L));
+        assertThrows(denied, () -> service.resume(7L));
+        assertThrows(denied, () -> service.finish(7L, null));
+        assertThrows(denied, () -> service.passOver(7L, null));
+        assertThrows(denied, () -> service.noShow(7L, null));
+        assertThrows(denied, () -> service.callNext(7L));
+        assertEquals(before, inside.getStatus());
+        assertEquals(ExamRoomStatus.OCCUPIED, room.getStatus());
+
+        // Their session puts them in room 7: theirs to work.
+        DoctorWorkingHours session = new DoctorWorkingHours(caller, DayOfWeek.TUESDAY, LocalTime.of(8, 0),
+                LocalTime.of(12, 0), 30, room);
+        when(hours.findRoomOfDoctorAt(eq(12L), anyShort(), any())).thenReturn(List.of(session));
+        service.pause(7L);
+        assertEquals(ExamRoomStatus.PAUSED, room.getStatus());
+        service.resume(7L);
+
+        // No session now, but the patient inside is their own: they may still finish.
+        when(hours.findRoomOfDoctorAt(eq(12L), anyShort(), any())).thenReturn(List.of());
+        inside.setEmployee(caller);
+        service.finish(7L, null);
+        assertEquals(AppointmentStatus.COMPLETED, inside.getStatus());
     }
 
     private void onDuty() {

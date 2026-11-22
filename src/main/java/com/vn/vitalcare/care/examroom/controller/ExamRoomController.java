@@ -74,9 +74,10 @@ public class ExamRoomController {
     /**
      * The caller's own slice of their clinic's board — a doctor's queue: the
      * room their session puts them in now (who is inside, who waits, who is
-     * out for services), their patients waiting with no room, those of theirs
-     * still to pay the fee, and the clinic's shared line any free room of
-     * theirs calls from. Nothing of another doctor's.
+     * out for services), their patients waiting with no room, those still
+     * to pay the fee who are theirs or, with no doctor yet, would join the
+     * shared line of a room of theirs, and the clinic's shared line any free
+     * room of theirs calls from. Nothing of another doctor's.
      *
      * <p>Answers an empty board to an account without a staff profile.
      * Before {@code /{id}}, so "mine" is not read as an id.
@@ -89,14 +90,30 @@ public class ExamRoomController {
         if (me == null) {
             return new RoomBoardResponse(board.clinicId(), board.at(), List.of(), List.of(), List.of(), List.of());
         }
+        List<RoomBoardResponse.RoomCard> myRooms =
+                board.rooms().stream().filter(room -> isMe(room.doctor(), me)).toList();
         return new RoomBoardResponse(
                 board.clinicId(),
                 board.at(),
-                board.rooms().stream().filter(room -> isMe(room.doctor(), me)).toList(),
+                myRooms,
                 board.withoutRoom().stream().filter(queue -> isMe(queue.doctor(), me)).toList(),
                 board.awaitingPayment() == null ? List.of()
-                        : board.awaitingPayment().stream().filter(unpaid -> isMe(unpaid.doctor(), me)).toList(),
+                        : board.awaitingPayment().stream()
+                                .filter(unpaid -> unpaid.doctor() != null
+                                        ? isMe(unpaid.doctor(), me)
+                                        : myRooms.stream().anyMatch(room -> calls(room, unpaid.visit())))
+                                .toList(),
                 board.sharedQueue() == null ? List.of() : board.sharedQueue());
+    }
+
+    /**
+     * Whether the room would call this visit from the shared line once its fee
+     * is paid: a room of a department calls only that department's patients
+     * (and those of none). Keep in step with AppointmentRepository#lockNextInQueue.
+     */
+    private static boolean calls(RoomBoardResponse.RoomCard room, RoomBoardResponse.Visit visit) {
+        return room.department() == null || visit.department() == null
+                || room.department().equals(visit.department());
     }
 
     /** The caller's staff profile, or null for an account without one. */

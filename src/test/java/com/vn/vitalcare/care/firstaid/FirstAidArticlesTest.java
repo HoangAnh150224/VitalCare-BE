@@ -38,6 +38,7 @@ class FirstAidArticlesTest {
 
     private FirstAidArticleRepository articles;
     private final List<FirstAidArticleHistory> steps = new ArrayList<>();
+    private final List<Object> audited = new ArrayList<>();
     private FirstAidArticles service;
     private FirstAidArticle article;
 
@@ -67,7 +68,29 @@ class FirstAidArticlesTest {
                         && step.getToStatus() == FirstAidStatus.PUBLISHED)
                 .toList());
         service = new FirstAidArticles(articles, history, mock(UserService.class),
-                Clock.fixed(Instant.parse("2026-10-30T03:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-10-30T03:00:00Z"), ZoneOffset.UTC), audited::add);
+    }
+
+    @Test
+    @DisplayName("KAN-133: create, edit, publish, pause, reopen and archive each reach the activity log")
+    void everyStepIsAudited() {
+        signIn(DOCTOR, "ROLE_CLINIC_ADMIN", Permissions.FIRST_AID_ARTICLES_WRITE, Permissions.FIRST_AID_ARTICLES_REVIEW);
+        service.create(content("Hướng dẫn"));
+        service.update(5L, content("Hướng dẫn mới"));
+        service.publish(5L, null);
+        service.pause(5L);
+        service.resume(5L);
+        service.archive(5L, null);
+        List<com.vn.vitalcare.share.audit.AuditEvent> events = audited.stream()
+                .map(com.vn.vitalcare.share.audit.AuditEvent.class::cast).toList();
+        assertEquals(List.of("create", "update", "publish", "pause", "resume", "archive"),
+                events.stream().map(com.vn.vitalcare.share.audit.AuditEvent::action).toList());
+        assertTrue(events.stream().allMatch(event -> "first_aid_articles".equals(event.entityType())
+                && Long.valueOf(5L).equals(event.entityId())));
+        assertEquals("Hướng dẫn", events.get(1).before().get("title"));
+        assertEquals("Hướng dẫn mới", events.get(1).after().get("title"));
+        assertEquals("published", events.get(3).before().get("status"));
+        assertEquals("paused", events.get(3).after().get("status"));
     }
 
     @AfterEach
@@ -228,6 +251,19 @@ class FirstAidArticlesTest {
         assertEquals(1, service.published(null, FirstAidCategory.GENERAL).size());
         assertTrue(service.published(null, FirstAidCategory.FEVER).isEmpty());
         assertTrue(service.published("không có", null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("KAN-129: a title another article in use already has is refused, on create and on edit")
+    void duplicateTitle() {
+        signIn(NURSE, Permissions.FIRST_AID_ARTICLES_WRITE);
+        when(articles.titleTaken("Bỏng nhẹ", FirstAidStatus.ARCHIVED, -1L)).thenReturn(true);
+        assertThrows(FieldValidationException.class, () -> service.create(content("  Bỏng nhẹ ")));
+
+        service.create(content("Khó thở"));
+        when(articles.titleTaken("Bỏng nhẹ", FirstAidStatus.ARCHIVED, 5L)).thenReturn(true);
+        assertThrows(FieldValidationException.class, () -> service.update(5L, content("Bỏng nhẹ")));
+        assertEquals("Khó thở", article.getTitle());
     }
 
     private void publishedByReview(String title) {

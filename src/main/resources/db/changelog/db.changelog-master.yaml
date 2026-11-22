@@ -192,3 +192,7 @@ databaseChangeLog:
       file: db/changelog/changes/095-permission-service-orders-perform-vi.sql
   - include:
       file: db/changelog/changes/096-one-encounter-per-visit.sql
+  - include:
+      file: db/changelog/changes/132-kan-132-first-aid-content-admin-only.sql
+  - include:
+      file: db/changelog/changes/153-kan-153-front-desk-assigns-care-team.sql

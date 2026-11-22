@@ -203,6 +203,11 @@ public class DoctorAvailabilityServiceImpl implements DoctorAvailabilityService 
             if (!entry.endTime().isAfter(entry.startTime())) {
                 throw new FieldValidationException("sessions", "A session must end after it starts");
             }
+            // KAN-119: a visit longer than its session leaves the session with no turn at all.
+            if (entry.visitMinutes() * 60 > entry.endTime().toSecondOfDay() - entry.startTime().toSecondOfDay()) {
+                throw new FieldValidationException("sessions",
+                        "Phút mỗi lượt phải nhỏ hơn hoặc bằng tổng giờ làm việc. Vui lòng thử lại.");
+            }
         }
         List<WorkingHoursEntry> sorted = new ArrayList<>(sessions);
         sorted.sort(Comparator.comparing(WorkingHoursEntry::dayOfWeek).thenComparing(WorkingHoursEntry::startTime));

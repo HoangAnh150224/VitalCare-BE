@@ -1,5 +1,6 @@
 package com.vn.vitalcare.care.appointment.repository;
 
+import com.vn.vitalcare.care.appointment.service.BookingCodes;
 import com.vn.vitalcare.entity.Appointment;
 import jakarta.persistence.criteria.JoinType;
 import com.vn.vitalcare.entity.AppointmentStatus;
@@ -47,15 +48,20 @@ public final class AppointmentSpecifications {
             var customer = root.join("customer");
             // Left: a dependent has no account, and carries a name and number of their own.
             var user = customer.join("user", JoinType.LEFT);
+            // The slip's code as typed: any case, with or without its dash, and its
+            // first characters are enough (JMFD finds JMFDJ728). Anything else is no code.
+            String code = BookingCodes.normalize(term);
             return cb.or(
+                    code.matches("[A-Z0-9]+")
+                            ? cb.like(root.get("bookingCode"), code + "%")
+                            : cb.disjunction(),
                     cb.like(cb.lower(user.get("fullName")), ListParams.likePattern(term)),
                     cb.like(user.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(customer.get("fullName")), ListParams.likePattern(term)),
                     cb.like(customer.get("phone"), ListParams.likePattern(PhoneNumbers.searchTail(term))),
                     cb.like(cb.lower(customer.get("customerCode")), ListParams.likePattern(term)),
                     // UC-02: the desk finds a visit by the patient's citizen id too, exactly.
-                    cb.equal(customer.get("nationalId"), term.trim()),
-                    cb.equal(cb.lower(root.get("bookingCode")), term.trim().toLowerCase(java.util.Locale.ROOT)));
+                    cb.equal(customer.get("nationalId"), term.trim()));
         }));
 
         List<Long> ids = params.ids();

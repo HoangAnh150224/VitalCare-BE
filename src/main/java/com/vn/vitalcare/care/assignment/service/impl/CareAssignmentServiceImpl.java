@@ -54,6 +54,7 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
     private final Clock clock;
 
     private final com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders;
+    private final com.vn.vitalcare.care.notification.Notifier notifier;
 
     public CareAssignmentServiceImpl(MonitoringAssignmentRepository careTeams,
                                      DeviceAssignmentRepository deviceAssignments,
@@ -63,8 +64,10 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
                                      RowLevelSecurity rowLevel,
                                      ClinicScope clinicScope,
                                      com.vn.vitalcare.care.monitoring.MonitoringOrderRepository monitoringOrders,
+                                     com.vn.vitalcare.care.notification.Notifier notifier,
                                      Clock clock) {
         this.monitoringOrders = monitoringOrders;
+        this.notifier = notifier;
         this.careTeams = careTeams;
         this.deviceAssignments = deviceAssignments;
         this.customerService = customerService;
@@ -137,7 +140,17 @@ public class CareAssignmentServiceImpl implements CareAssignmentService {
         MonitoringAssignment assignment = new MonitoringAssignment();
         assignment.start(patient, employee, CurrentUser.id().orElse(null), OffsetDateTime.now(clock));
         assignment.setNote(blankToNull(request.note()));
-        return careTeams.save(assignment);
+        MonitoringAssignment saved = careTeams.save(assignment);
+        // KAN-154: the member of staff hears of their new patient, unless they put themselves on the team.
+        Long assignee = employee.getUser() == null ? null : employee.getUser().getId();
+        if (assignee != null && !assignee.equals(CurrentUser.id().orElse(null))) {
+            notifier.notify(assignee, com.vn.vitalcare.entity.NotificationLevel.INFO, "assignment",
+                    "Bạn được phân công theo dõi bệnh nhân mới",
+                    "Bệnh nhân " + patient.getFullName() + " (" + patient.getCustomerCode()
+                            + ") đã được phân công cho bạn theo dõi.",
+                    "/my-patients/show/" + patient.getId());
+        }
+        return saved;
     }
 
     @Override

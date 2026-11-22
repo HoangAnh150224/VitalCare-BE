@@ -49,6 +49,7 @@ class CareAssignmentServiceTest {
     private CustomerService customers;
     private EmployeeService employees;
     private DeviceService devices;
+    private com.vn.vitalcare.care.notification.Notifier notifier;
     private CareAssignmentService service;
 
     @BeforeEach
@@ -59,13 +60,14 @@ class CareAssignmentServiceTest {
         employees = mock(EmployeeService.class);
         devices = mock(DeviceService.class);
         monitoringOrders = mock(com.vn.vitalcare.care.monitoring.MonitoringOrderRepository.class);
+        notifier = mock(com.vn.vitalcare.care.notification.Notifier.class);
         // Consent recorded, unless a test says otherwise (BF-04).
         when(monitoringOrders.hasActive(any())).thenReturn(true);
         when(careTeams.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(deviceAssignments.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service = new CareAssignmentServiceImpl(careTeams, deviceAssignments, customers, employees, devices,
-                ClinicRowLevel.unrestricted(), Optional::empty, monitoringOrders, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
+                ClinicRowLevel.unrestricted(), Optional::empty, monitoringOrders, notifier, Clock.fixed(Instant.parse("2026-10-05T03:00:00Z"), ZoneOffset.UTC));
     }
 
     @Test
@@ -79,6 +81,11 @@ class CareAssignmentServiceTest {
         assertEquals(AssignmentStatus.ACTIVE, assignment.getStatus());
         assertEquals(5L, assignment.getEmployee().getId());
         assertNotNull(assignment.getAssignedAt());
+        // KAN-154: the assigned member of staff (user 205) is told once, with the way to the patient.
+        verify(notifier).notify(org.mockito.ArgumentMatchers.eq(205L), any(),
+                org.mockito.ArgumentMatchers.eq("assignment"),
+                org.mockito.ArgumentMatchers.eq("Bạn được phân công theo dõi bệnh nhân mới"), any(),
+                org.mockito.ArgumentMatchers.eq("/my-patients/show/1"));
     }
 
     @Test

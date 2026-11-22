@@ -50,9 +50,12 @@ public class FirstAidArticles {
     private final FirstAidHistoryRepository history;
     private final UserService userService;
     private final Clock clock;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public FirstAidArticles(FirstAidArticleRepository articles, FirstAidHistoryRepository history,
-                            UserService userService, Clock clock) {
+                            UserService userService, Clock clock,
+                            org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
         this.articles = articles;
         this.history = history;
         this.userService = userService;
@@ -74,6 +77,7 @@ public class FirstAidArticles {
 
     @Transactional
     public FirstAidArticle create(FirstAidRequests.Content content) {
+        ensureTitleAvailable(content.title(), null);
         FirstAidArticle article = new FirstAidArticle();
         apply(article, content);
         article.setStatus(FirstAidStatus.DRAFT);
@@ -81,6 +85,8 @@ public class FirstAidArticles {
         article.setAuthorId(CurrentUser.id().orElse(null));
         FirstAidArticle saved = articles.save(article);
         record(saved, null, null);
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("first_aid_articles", saved.getId(), "create",
+                null, state(saved)));
         return saved;
     }
 
@@ -100,6 +106,8 @@ public class FirstAidArticles {
         if (from == FirstAidStatus.PENDING_REVIEW) {
             throw new ConflictException("This content is waiting for review; it can be changed once the reviewer has decided");
         }
+        ensureTitleAvailable(content.title(), id);
+        Map<String, Object> before = state(article);
         apply(article, content);
         if (from != FirstAidStatus.DRAFT) {
             article.setRevision(article.getRevision() + 1);
@@ -111,6 +119,19 @@ public class FirstAidArticles {
         }
         FirstAidArticle saved = articles.save(article);
         record(saved, from, null);
+        // Only what this edit changed, as the staff log does (KAN-133).
+        Map<String, Object> changedBefore = new LinkedHashMap<>();
+        Map<String, Object> changedAfter = new LinkedHashMap<>();
+        state(saved).forEach((field, value) -> {
+            if (!Objects.equals(before.get(field), value)) {
+                changedBefore.put(field, before.get(field));
+                changedAfter.put(field, value);
+            }
+        });
+        if (!changedAfter.isEmpty()) {
+            events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("first_aid_articles", saved.getId(), "update",
+                    changedBefore, changedAfter));
+        }
         return saved;
     }
 
@@ -277,7 +298,37 @@ public class FirstAidArticles {
         article.setStatus(to);
         FirstAidArticle saved = articles.save(article);
         record(saved, from, note);
+        // The activity log (KAN-133): every step, with the status it left and the one it reached.
+        String action = switch (to) {
+            case PENDING_REVIEW -> "submit";
+            case REVIEWED -> "approve";
+            case DRAFT -> "reject";
+            case PUBLISHED -> from == FirstAidStatus.PAUSED ? "resume" : "publish";
+            case PAUSED -> "pause";
+            case ARCHIVED -> "archive";
+        };
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("status", to.getValue());
+        if (note != null) {
+            after.put("note", note);
+        }
+        events.publishEvent(new com.vn.vitalcare.share.audit.AuditEvent("first_aid_articles", saved.getId(), action,
+                Map.of("status", from.getValue()), after));
         return saved;
+    }
+
+    /** The parts of an article the activity log shows; nulls kept, so a cleared field reads as cleared. */
+    private static Map<String, Object> state(FirstAidArticle article) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("title", article.getTitle());
+        fields.put("category", article.getCategory() == null ? null : article.getCategory().name());
+        fields.put("summary", article.getSummary());
+        fields.put("body", article.getBody());
+        fields.put("emergencyWarning", article.getEmergencyWarning());
+        fields.put("videoUrl", article.getVideoUrl());
+        fields.put("status", article.getStatus() == null ? null : article.getStatus().getValue());
+        fields.put("revision", article.getRevision());
+        return fields;
     }
 
     private void record(FirstAidArticle article, FirstAidStatus from, String note) {
@@ -314,6 +365,18 @@ public class FirstAidArticles {
                 .map(FirstAidArticleHistory::getActorId)
                 .filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toSet());
+    }
+
+    /**
+     * KAN-129: two articles in use may not share a title (letter case and outer
+     * spaces aside); an archived one gives its title up. Checked here, with no
+     * unique index behind it: titles saved before this rule already repeat.
+     */
+    private void ensureTitleAvailable(String title, Long selfId) {
+        // No article has id -1, so a new one is compared with all of them.
+        if (articles.titleTaken(title.trim(), FirstAidStatus.ARCHIVED, selfId == null ? -1L : selfId)) {
+            throw new FieldValidationException("title", "Tiêu đề đã tồn tại. Hãy đặt tiêu đề khác.");
+        }
     }
 
     private static void apply(FirstAidArticle article, FirstAidRequests.Content content) {

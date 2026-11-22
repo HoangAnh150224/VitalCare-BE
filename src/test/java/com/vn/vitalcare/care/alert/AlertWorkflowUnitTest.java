@@ -127,6 +127,32 @@ class AlertWorkflowUnitTest {
         assertThrows(ResourceNotFoundException.class, () -> rules.get(9L));
     }
 
+    @Test void ar06_duplicateRuleRefused_unchangedRuleStillSaves() {
+        when(ruleRepo.count(any(Specification.class))).thenReturn(1L);
+        assertEquals("Quy tắc đã tồn tại.",
+                assertThrows(ConflictException.class, () -> rules.create(rule("SPO2", "BELOW", "92", "WARNING"))).getMessage());
+        verify(ruleRepo, never()).persist(any());
+        // Pausing a rule changes neither its name nor its condition: no twin is looked for.
+        AlertRule existing = rules_existing();
+        when(ruleRepo.findOne(any(Specification.class))).thenReturn(Optional.of(existing));
+        rules.update(1L, new AlertDtos.RuleRequest("sốt", "BODY_TEMPERATURE", "ABOVE", new BigDecimal("38.0"), "WARNING",
+                false, "Theo dõi", null, null));
+        assertEquals(false, existing.isEnabled());
+        assertThrows(ConflictException.class, () -> rules.update(1L, new AlertDtos.RuleRequest("Sốt", "BODY_TEMPERATURE",
+                "ABOVE", new BigDecimal("39"), "WARNING", true, "Theo dõi", null, null)));
+    }
+
+    private static AlertRule rules_existing() {
+        AlertRule r = new AlertRule();
+        r.setClinicId(CLINIC);
+        r.setName("Sốt");
+        r.setMetric("BODY_TEMPERATURE");
+        r.setOperator("ABOVE");
+        r.setThreshold(new BigDecimal("38"));
+        r.setSeverity("WARNING");
+        return r;
+    }
+
     @Test void al01_acknowledgeOnlyAnOpenAlert() {
         Alert a = alert(Alert.OPEN);
         alerts.acknowledge(1L);

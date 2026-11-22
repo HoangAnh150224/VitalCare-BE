@@ -162,6 +162,10 @@ class DoctorAvailabilityUnitTest {
                 () -> s.replaceWeek(doctor, List.of(entry(1, "09:00", "08:00", null)))).getMessage());
         assertEquals("Two sessions on the same day overlap", assertThrows(FieldValidationException.class,
                 () -> s.replaceWeek(doctor, List.of(entry(1, "08:00", "10:00", null), entry(1, "09:30", "11:00", null)))).getMessage());
+        // KAN-119: a 61-minute visit does not fit a 60-minute session.
+        assertEquals("Phút mỗi lượt phải nhỏ hơn hoặc bằng tổng giờ làm việc. Vui lòng thử lại.",
+                assertThrows(FieldValidationException.class, () -> s.replaceWeek(doctor, List.of(
+                        new WorkingHoursEntry(1, LocalTime.of(8, 0), LocalTime.of(9, 0), 61, null)))).getMessage());
         verify(hours, never()).deleteWeek(anyLong());
     }
 
