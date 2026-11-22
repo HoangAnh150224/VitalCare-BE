@@ -5,18 +5,19 @@ controller → Bean Validation → service → repository / SQL → database, an
 the only stand-ins are for systems outside it:
 
 - the SMS gateway (`TextedCodes` keeps the last code "texted" to a number, so a test types it like a person would);
-- the payment gateways SePay and VNPay, whose calls `BillingIT` signs with test secrets the way they sign theirs.
+- the payment gateways SePay and VNPay, whose calls `BillingIT` signs with test secrets the way they sign theirs;
+- the MQTT broker, whose authentication hooks `SyncIT` calls with a test hook secret.
 
 ## Two kinds of suite
 
 | Base class | Transaction | Used by |
 |---|---|---|
 | `IntegrationTestBase` | each test rolls back | the first suites (Account, Login, Logout, FE-01 account, Guest security, Public site, First aid, Guest chat, Appointment flow), which also change seed rows |
-| `CommittedIntegrationTest` | every request commits, as in production | Device, VitalSign, Alert, Patient, Care, Schedule, Sharing, ClinicStaff, Encounter, Billing, Chat |
+| `CommittedIntegrationTest` | every request commits, as in production | Device, VitalSign, Alert, Patient, Care, Schedule, Sharing, ClinicStaff, Encounter, Billing, Chat, Admin, License, Sync, VisitExtras |
 
 The committed suites catch what a rollback transaction hides: with `spring.jpa.open-in-view=false`, a response built
-after the service's transaction has ended cannot load a lazy association. They found DEF-ALR-01, DEF-MON-01 and
-DEF-SHR-01 this way. They also let what runs after commit run (alerts raised by AlertEngine, notifications).
+after the service's transaction has ended cannot load a lazy association. They found DEF-ALR-01, DEF-MON-01,
+DEF-SHR-01 and DEF-SYN-01 this way. They also let what runs after commit run (alerts raised by AlertEngine, notifications).
 They only create data of their own (097 numbers, `IT-` device codes, rooms named "Phòng hô hấp thử") and never change
 seed rows, so the database stays usable run after run.
 

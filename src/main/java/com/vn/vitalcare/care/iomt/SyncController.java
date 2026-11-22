@@ -83,6 +83,7 @@ public class SyncController {
 
     @GetMapping("/api/device_syncs")
     @PreAuthorize("hasAuthority('" + Permissions.DEVICE_SYNCS_READ + "')")
+    @Transactional(readOnly = true) // DEF-SYN-01: the response reads the batch's device and customer after the query
     public ResponseEntity<List<BatchResponse>> batches(@RequestParam MultiValueMap<String, String> query) {
         ListParams params = new ListParams(query);
         Page<SyncBatch> page = batches.findAll(
@@ -93,6 +94,7 @@ public class SyncController {
 
     @GetMapping("/api/device_syncs/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.DEVICE_SYNCS_READ + "')")
+    @Transactional(readOnly = true) // DEF-SYN-01: the response reads the batch's device and customer after the query
     public BatchResponse batch(@PathVariable Long id) {
         return BatchResponse.of(batch(id, Action.READ));
     }
@@ -100,6 +102,7 @@ public class SyncController {
     /** The readings refused in one upload. */
     @GetMapping("/api/device_syncs/{id}/failures")
     @PreAuthorize("hasAuthority('" + Permissions.DEVICE_SYNCS_READ + "')")
+    @Transactional(readOnly = true) // DEF-SYN-01: the response reads the batch's device and customer after the query
     public List<FailureResponse> batchFailures(@PathVariable Long id) {
         batch(id, Action.READ);
         return failures.findAll(Specification.allOf(rowLevel.scope(SyncFailure.class, Action.READ),
@@ -111,6 +114,7 @@ public class SyncController {
 
     @GetMapping("/api/sync_failures")
     @PreAuthorize("hasAuthority('" + Permissions.SYNC_FAILURES_READ + "')")
+    @Transactional(readOnly = true) // DEF-SYN-01: the response reads the batch's device and customer after the query
     public ResponseEntity<List<FailureResponse>> failures(@RequestParam MultiValueMap<String, String> query) {
         ListParams params = new ListParams(query);
         Page<SyncFailure> page = failures.findAll(
@@ -121,6 +125,7 @@ public class SyncController {
 
     @GetMapping("/api/sync_failures/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.SYNC_FAILURES_READ + "')")
+    @Transactional(readOnly = true) // DEF-SYN-01: the response reads the batch's device and customer after the query
     public FailureResponse failure(@PathVariable Long id) {
         return failure(failure(id, Action.READ));
     }
