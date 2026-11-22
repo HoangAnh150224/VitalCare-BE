@@ -106,6 +106,13 @@ class ClinicStaffIT extends CommittedIntegrationTest {
     }
 
     // ---------------------------------------------------------------- first-aid articles
+    /** A second clinic administrator of clinic 1, created by the system administrator: approving needs someone other than the author. */
+    private String freshClinicAdmin() throws Exception {
+        String phone = newPhone();
+        createStaff(tokenOf(ADMIN), phone, "clinic_admin", CLINIC_1).andExpect(status().isCreated());
+        return tokenFor(phone, "Passw0rd!");
+    }
+
     private Long draft(String token, String title) throws Exception {
         return Long.valueOf(json(callJson(token, post("/api/first_aid_articles"), """
                 {"title":"%s","category":"wound","summary":"Làm mát vết bỏng bằng nước sạch","body":"## Làm ngay\\n1. Xả nước mát 20 phút",
@@ -115,35 +122,39 @@ class ClinicStaffIT extends CommittedIntegrationTest {
     /** Draft → submitted → approved by someone else → published: only then on the public page. */
     @Test
     void cls08_articleIsPublicOnlyAfterSomeoneElseApproves() throws Exception {
-        Doctor author = freshDoctor();
-        Doctor reviewer = freshDoctor();
+        // First-aid content belongs to clinic administrators (KAN-133): a doctor's token is refused; the reviewer is a second clinic administrator.
+        String author = clinicAdmin;
+        String reviewer = freshClinicAdmin();
+        callJson(tokenOf(DOCTOR_1), post("/api/first_aid_articles"), """
+                {"title":"Sơ cứu IT bác sĩ %s","category":"wound","summary":"Làm mát vết bỏng bằng nước sạch","body":"## Làm ngay\\n1. Xả nước mát 20 phút",
+                 "emergencyWarning":"Gọi 115 nếu bỏng rộng"}""".formatted(newPhone())).andExpect(status().isForbidden());
         // A title of its own, archived at the end: the public list is shared with FirstAidIT, which searches the seed.
         String title = "Sơ cứu IT công khai " + newPhone();
-        Long id = draft(author.token(), title);
+        Long id = draft(author, title);
         mvc.perform(get("/api/public/first_aid").param("q", title)).andExpect(jsonPath("$[*].title", not(hasItem(title))));
-        call(author.token(), post("/api/first_aid_articles/" + id + "/submit")).andExpect(status().isOk());
-        call(author.token(), post("/api/first_aid_articles/" + id + "/approve")).andExpect(status().is4xxClientError());
-        call(reviewer.token(), post("/api/first_aid_articles/" + id + "/approve")).andExpect(status().isOk());
-        call(reviewer.token(), post("/api/first_aid_articles/" + id + "/publish")).andExpect(status().isOk());
+        call(author, post("/api/first_aid_articles/" + id + "/submit")).andExpect(status().isOk());
+        call(author, post("/api/first_aid_articles/" + id + "/approve")).andExpect(status().is4xxClientError());
+        call(reviewer, post("/api/first_aid_articles/" + id + "/approve")).andExpect(status().isOk());
+        call(reviewer, post("/api/first_aid_articles/" + id + "/publish")).andExpect(status().isOk());
         mvc.perform(get("/api/public/first_aid").param("q", title)).andExpect(jsonPath("$[*].title", hasItem(title)));
-        callJson(reviewer.token(), post("/api/first_aid_articles/" + id + "/archive"), "{\"note\":\"Dọn dữ liệu test\"}").andExpect(status().isOk());
+        callJson(reviewer, post("/api/first_aid_articles/" + id + "/archive"), "{\"note\":\"Dọn dữ liệu test\"}").andExpect(status().isOk());
     }
 
     @Test
     void cls09_returnNeedsAReason_archivedLeavesThePublicPage() throws Exception {
-        Doctor author = freshDoctor();
-        Doctor reviewer = freshDoctor();
-        Long id = draft(author.token(), "Sơ cứu IT " + newPhone());
-        call(author.token(), post("/api/first_aid_articles/" + id + "/submit")).andExpect(status().isOk());
-        callJson(reviewer.token(), post("/api/first_aid_articles/" + id + "/reject"), "{\"note\":\"\"}").andExpect(status().is4xxClientError());
-        callJson(reviewer.token(), post("/api/first_aid_articles/" + id + "/reject"), "{\"note\":\"Bổ sung hình minh hoạ\"}")
+        String author = clinicAdmin;
+        String reviewer = freshClinicAdmin();
+        Long id = draft(author, "Sơ cứu IT " + newPhone());
+        call(author, post("/api/first_aid_articles/" + id + "/submit")).andExpect(status().isOk());
+        callJson(reviewer, post("/api/first_aid_articles/" + id + "/reject"), "{\"note\":\"\"}").andExpect(status().is4xxClientError());
+        callJson(reviewer, post("/api/first_aid_articles/" + id + "/reject"), "{\"note\":\"Bổ sung hình minh hoạ\"}")
                 .andExpect(status().isOk());
         String title = "Sơ cứu IT2 " + newPhone();
-        Long other = draft(author.token(), title);
-        call(author.token(), post("/api/first_aid_articles/" + other + "/submit")).andExpect(status().isOk());
-        call(reviewer.token(), post("/api/first_aid_articles/" + other + "/approve")).andExpect(status().isOk());
-        call(reviewer.token(), post("/api/first_aid_articles/" + other + "/publish")).andExpect(status().isOk());
-        callJson(reviewer.token(), post("/api/first_aid_articles/" + other + "/archive"), "{\"note\":\"Nội dung cũ\"}").andExpect(status().isOk());
+        Long other = draft(author, title);
+        call(author, post("/api/first_aid_articles/" + other + "/submit")).andExpect(status().isOk());
+        call(reviewer, post("/api/first_aid_articles/" + other + "/approve")).andExpect(status().isOk());
+        call(reviewer, post("/api/first_aid_articles/" + other + "/publish")).andExpect(status().isOk());
+        callJson(reviewer, post("/api/first_aid_articles/" + other + "/archive"), "{\"note\":\"Nội dung cũ\"}").andExpect(status().isOk());
         mvc.perform(get("/api/public/first_aid").param("q", title)).andExpect(jsonPath("$[*].title", not(hasItem(title))));
     }
 }
