@@ -85,6 +85,7 @@ public class AlertController {
 
     @GetMapping("/alerts")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<AlertDtos.AlertResponse>> alerts(@RequestParam MultiValueMap<String, String> query) {
         Page<Alert> page = alerts.list(new ListParams(query));
         return ListResponse.of(page.getContent().stream().map(AlertDtos.AlertResponse::of).toList(), page.getTotalElements());
@@ -98,6 +99,7 @@ public class AlertController {
 
     @GetMapping("/alerts/readings")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<AlertDtos.AbnormalReading>> readings(
             @RequestParam MultiValueMap<String, String> query,
             @RequestParam(name = "_start", defaultValue = "0") int start,
@@ -108,6 +110,7 @@ public class AlertController {
 
     @GetMapping("/alerts/{id}")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_READ + "')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public AlertDtos.AlertDetail alert(@PathVariable Long id) {
         return detail(alerts.get(id));
     }
@@ -142,24 +145,28 @@ public class AlertController {
 
     @PostMapping("/alerts/{id}/acknowledge")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public AlertDtos.AlertDetail acknowledge(@PathVariable Long id) {
         return detail(alerts.acknowledge(id));
     }
 
     @PostMapping("/alerts/{id}/notes")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public AlertDtos.AlertDetail note(@PathVariable Long id, @Valid @RequestBody AlertDtos.Note body) {
         return detail(alerts.note(id, body.note()));
     }
 
     @PostMapping("/alerts/{id}/resolve")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public AlertDtos.AlertDetail resolve(@PathVariable Long id, @Valid @RequestBody AlertDtos.Note body) {
         return detail(alerts.resolve(id, body.note()));
     }
 
     @PostMapping("/alerts/{id}/dismiss")
     @PreAuthorize("hasAuthority('" + Permissions.ALERTS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public AlertDtos.AlertDetail dismiss(@PathVariable Long id, @Valid @RequestBody AlertDtos.Note body) {
         return detail(alerts.dismiss(id, body.note()));
     }
@@ -195,6 +202,10 @@ public class AlertController {
         audit.record("vital_signs", patientId, "view", null, java.util.Map.of("what", "alert " + alertId + " live"));
     }
 
+    /**
+     * Called inside the endpoint's transaction: the patient's name may come from their account, a lazy
+     * association, and open-in-view is off (DEF-ALR-01).
+     */
     private AlertDtos.AlertDetail detail(Alert alert) {
         return new AlertDtos.AlertDetail(AlertDtos.AlertResponse.of(alert), alert.getHandlingNotes(),
                 alert.getDismissReason(), alerts.history(alert).stream().map(AlertDtos.ActionResponse::of).toList());

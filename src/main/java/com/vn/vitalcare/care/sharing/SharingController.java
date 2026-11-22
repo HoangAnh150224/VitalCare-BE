@@ -164,6 +164,8 @@ public class SharingController {
     /** Caregiver Access List: everybody the patient shared with, in force or not. */
     @GetMapping("/api/customers/{customerId}/caregivers")
     @PreAuthorize("hasAuthority('" + Permissions.CUSTOMERS_READ + "')")
+    // The patient's name may come from their account, a lazy association; open-in-view is off (DEF-SHR-01).
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<SharingDtos.PermissionResponse> caregivers(@PathVariable Long customerId) {
         customers.get(customerId);
         return repository.findForProfiles(List.of(customerId)).stream().map(this::dto).toList();

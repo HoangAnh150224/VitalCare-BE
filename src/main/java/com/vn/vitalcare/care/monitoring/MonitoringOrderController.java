@@ -28,6 +28,10 @@ public class MonitoringOrderController {
         this.orders = orders;
     }
 
+    /**
+     * Built inside the endpoint's transaction: the patient's name may come from their account, a lazy association,
+     * and open-in-view is off (DEF-MON-01).
+     */
     public record OrderResponse(Long id, Long customerId, String customerName, Long encounterId, String reason,
                                 String decision, String consentNote, String status, OffsetDateTime decidedAt,
                                 String orderedByName, OffsetDateTime endedAt, String endNote) {
@@ -41,6 +45,7 @@ public class MonitoringOrderController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.MONITORING_ORDERS_READ + "')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<OrderResponse> forPatient(@RequestParam Long customerId) {
         return orders.forPatient(customerId).stream().map(OrderResponse::of).toList();
     }
@@ -48,12 +53,14 @@ public class MonitoringOrderController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAuthority('" + Permissions.MONITORING_ORDERS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public OrderResponse create(@Valid @RequestBody MonitoringOrders.OrderRequest request) {
         return OrderResponse.of(orders.create(request));
     }
 
     @PostMapping("/{id}/end")
     @PreAuthorize("hasAuthority('" + Permissions.MONITORING_ORDERS_WRITE + "')")
+    @org.springframework.transaction.annotation.Transactional
     public OrderResponse end(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body) {
         return OrderResponse.of(orders.end(id, body == null ? null : body.get("note")));
     }
