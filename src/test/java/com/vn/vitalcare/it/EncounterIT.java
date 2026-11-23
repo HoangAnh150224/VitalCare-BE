@@ -1,16 +1,20 @@
 package com.vn.vitalcare.it;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 
 /**
  * FE-18 Clinical Encounter and FE-22 Service Orders / Results end to end: the doctor's encounter and its conclusion
@@ -178,5 +182,33 @@ class EncounterIT extends CommittedIntegrationTest {
         call(desk, post("/api/result_returns/" + ret + "/arrive")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ARRIVED"));
         assertTrue(count("select count(*) from result_return where id = ? and arrived_at is not null", ret) == 1);
+    }
+
+    /** The technician attaches the result's scan: paid first, checked by content, downloaded as an attachment, closed after review. */
+    @Test
+    void enc10_resultFilesAreAttachedAndDownloaded() throws Exception {
+        Visit v = inExamination();
+        Long order = order(v);
+        String tech = technician();
+        byte[] pdf = "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF".getBytes();
+        upload(tech, order, "x-quang.pdf", pdf).andExpect(status().isConflict());
+        payOrder(order);
+        call(tech, post("/api/service_orders/" + order + "/start")).andExpect(status().isOk());
+        upload(tech, order, "x-quang.pdf", "chỉ là chữ".getBytes()).andExpect(status().isUnprocessableContent());
+        upload(doctor.token(), order, "x-quang.pdf", pdf).andExpect(status().isForbidden());
+        String file = json(upload(tech, order, "../x-quang.pdf", pdf).andExpect(status().isOk())
+                .andExpect(jsonPath("$.files[0].name").value("x-quang.pdf")), "$.files[0].id");
+        call(doctor.token(), get("/api/service_orders/" + order + "/files/" + file)).andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", startsWith("attachment")))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"));
+        call(doctor.token(), get("/api/service_orders/" + order + "/files/999999999")).andExpect(status().isNotFound());
+        callJson(tech, patch("/api/service_orders/" + order + "/result"), "{\"resultText\":\"Phổi sáng\"}").andExpect(status().isOk());
+        call(doctor.token(), post("/api/service_orders/" + order + "/review")).andExpect(status().isOk());
+        upload(tech, order, "x-quang.pdf", pdf).andExpect(status().isConflict());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions upload(String token, Long order, String name, byte[] bytes) throws Exception {
+        return mvc.perform(multipart("/api/service_orders/" + order + "/files")
+                .file(new MockMultipartFile("file", name, "application/pdf", bytes)).header("Authorization", bearer(token)));
     }
 }

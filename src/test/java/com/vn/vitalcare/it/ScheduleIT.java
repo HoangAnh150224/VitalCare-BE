@@ -197,4 +197,23 @@ class ScheduleIT extends CommittedIntegrationTest {
         call(room.doctor().token(), post("/api/exam_rooms/" + room.id() + "/resume")).andExpect(status().isOk());
         assertEquals(0, count("select count(*) from exam_room where id = ? and status = 'PAUSED'", room.id()));
     }
+
+    /** A called patient who has stepped out is passed over: back to the queue, the room is free; a stale board is refused. */
+    @Test
+    void sch10_passOverSendsThePatientBackToTheQueue() throws Exception {
+        Room room = roomOnDuty();
+        Long visit = readyPatient(newPhone());
+        inRoom(room, visit);
+        String doctor = room.doctor().token();
+        // Paused so the free room does not take the patient straight back in (AutoDispatch).
+        call(doctor, post("/api/exam_rooms/" + room.id() + "/pause")).andExpect(status().isOk());
+        call(doctor, post("/api/exam_rooms/" + room.id() + "/pass-over").param("appointmentId", "999999999"))
+                .andExpect(status().isConflict());
+        call(doctor, post("/api/exam_rooms/" + room.id() + "/pass-over").param("appointmentId", visit.toString()))
+                .andExpect(status().isOk());
+        assertEquals(1, count("select count(*) from appointment where id = ? and status = 'READY_FOR_EXAMINATION' "
+                + "and exam_room_id is null and called_at is null and skipped_at is not null", visit));
+        call(doctor, post("/api/exam_rooms/" + room.id() + "/pass-over")).andExpect(status().isConflict());
+        call(doctor, post("/api/exam_rooms/" + room.id() + "/resume")).andExpect(status().isOk());
+    }
 }
